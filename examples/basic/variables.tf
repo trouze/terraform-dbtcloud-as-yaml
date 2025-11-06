@@ -11,26 +11,33 @@ variable "dbt_token" {
 }
 
 variable "dbt_pat" {
-  type = string
-  sensitive = true
-  default = ""
+  description = "dbt Cloud Personal Access Token (optional, defaults to dbt_api_token)"
+  type        = string
+  sensitive   = true
+  default     = ""
 }
 
 variable "dbt_host_url" {
-  description = "dbt Cloud host URL"
+  description = "dbt Cloud host URL (e.g., https://cloud.getdbt.com)"
   type        = string
   default     = "https://cloud.getdbt.com"
 }
 
+variable "yaml_file_path" {
+  description = "Path to the dbt configuration YAML file"
+  type        = string
+  default     = "./dbt-config.yml"
+}
+
 variable "token_map" {
-  description = "Map of credential token names to values"
+  description = "Map of database credentials (warehouse tokens, API keys, etc.)"
   type        = map(string)
-  default     = {}
   sensitive   = true
+  default     = {}
 }
 
 variable "target_name" {
-  description = "Default target name"
+  description = "Override the default target name from dbt_project.yml"
   type        = string
-  default     = "prod"
+  default     = ""
 }

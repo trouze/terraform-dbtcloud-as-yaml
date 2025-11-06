@@ -1,53 +1,77 @@
-# Example dbt Cloud configuration
-# Copy this file and update it with your own values
-
+# yaml-language-server: $schema=https://raw.githubusercontent.com/trouze/dbt-terraform-modules-yaml/refs/heads/main/schemas/v1.json
 project:
-  name: my_dbt_project
+  name: Training Sandbox
   repository:
-    remote_url: https://github.com/your-org/your-dbt-repo.git
-  
+    remote_url: "your-org/group/repo"
+    gitlab_project_id: 1234
+    pull_request_url_template: "https://gitlab.com/your-org/group/repo/-/merge_requests/new?merge_request%5Bsource_branch%5D={{source}}&merge_request%5Btarget_branch%5D={{destination}}"
   environments:
-    - name: Development
-      type: development
-      connection_id: 12345  # Replace with your connection ID
+    - name: Prod
       credential:
-        token_name: dev_token
-        schema: dev_schema
-      dbt_version: "1.5.0"
-      jobs:
-        - name: dev_run
-          description: "Development dbt run"
-          is_active: true
-          execute_steps:
-            - "dbt run"
-            - "dbt test"
-          triggers:
-            schedule: false
-            github_webhook: true
-            git_provider_webhook: false
-            on_merge: false
-    
-    - name: Production
+        token_name: dbtcloud_databricks_token_dbt_svcprincipal_ucpr
+        catalog: training
+        schema: default
+      connection_id: 12345678
+      deployment_type: production
       type: deployment
-      connection_id: 12346  # Replace with your connection ID
-      credential:
-        token_name: prod_token
-        schema: prod_schema
-      dbt_version: "1.5.0"
+      custom_branch: main
       jobs:
-        - name: daily_prod_build
-          description: "Daily production build"
-          is_active: true
-          execute_steps:
-            - "dbt run"
-            - "dbt test"
-            - "dbt docs generate"
+        - name: Production Job
+          execute_steps: 
+            - dbt compile
           triggers:
-            schedule: true
             github_webhook: false
             git_provider_webhook: false
+            schedule: false
             on_merge: false
-          schedule_type: "every_day"
-          schedule_hours: [6]
-          num_threads: 8
-          generate_docs: true
+          description: Production deployment job
+          num_threads: 4
+          schedule_days: [0, 1, 2, 3, 4, 5, 6]
+          schedule_hours: [0]
+          schedule_type: days_of_week
+        - name: Prod CI Job
+          execute_steps:
+            - dbt clone --select state:modified+,config.materialized:incremental,state:old
+            - dbt build --select state:modified+
+          triggers:
+            github_webhook: false
+            git_provider_webhook: true
+            schedule: false
+            on_merge: false
+          description: Prod CI job to test changed models..
+          num_threads: 4
+          deferring_environment: Prod
+    - name: QA
+      credential:
+        token_name: dbtcloud_databricks_token_dbt_svcprincipal_ucnp
+        catalog: training
+        schema: default
+      connection_id: 12345678
+      deployment_type: staging
+      type: deployment
+      custom_branch: staging
+      jobs:
+        - name: Staging Job
+          execute_steps: 
+            - dbt clone --full-refresh
+            - dbt build
+          triggers:
+            github_webhook: false
+            git_provider_webhook: false
+            schedule: false
+            on_merge: false
+          description: Staging deployment job
+          num_threads: 4
+          schedule_days: [0, 1, 2, 3, 4, 5, 6]
+          schedule_hours: [0]
+          schedule_type: days_of_week
+          deferring_environment: Prod
+    - name: Development
+      connection_id: 12345678
+      type: development
+      custom_branch: staging
+  environment_variables:
+    - name: DBT_DATABRICKS_WORKSPACE
+      environment_values:
+        - env: project
+          value: ucnp
