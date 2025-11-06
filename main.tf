@@ -12,7 +12,7 @@
 #############################################
 
 module "project" {
-  source = "${path.module}/modules/project"
+  source = "./modules/project"
 
   project_name = local.project_config.project.name
   target_name  = var.target_name
@@ -23,7 +23,7 @@ module "project" {
 #############################################
 
 module "repository" {
-  source = "${path.module}/modules/repository"
+  source = "./modules/repository"
   providers = {
     dbtcloud = dbtcloud.pat_provider
   }
@@ -33,7 +33,7 @@ module "repository" {
 }
 
 module "project_repository" {
-  source = "${path.module}/modules/project_repository"
+  source = "./modules/project_repository"
 
   repository_id = module.repository.project_repository_id
   project_id    = module.project.project_id
@@ -44,7 +44,7 @@ module "project_repository" {
 #############################################
 
 module "credentials" {
-  source = "${path.module}/modules/credentials"
+  source = "./modules/credentials"
 
   environments_data = local.project_config.project.environments
   project_id        = module.project.project_id
@@ -56,7 +56,7 @@ module "credentials" {
 #############################################
 
 module "environments" {
-  source = "${path.module}/modules/environments"
+  source = "./modules/environments"
 
   project_id        = module.project.project_id
   environments_data = local.project_config.project.environments
@@ -68,7 +68,7 @@ module "environments" {
 #############################################
 
 module "jobs" {
-  source = "${path.module}/modules/jobs"
+  source = "./modules/jobs"
 
   project_id        = module.project.project_id
   environments_data = local.project_config.project.environments
@@ -80,7 +80,7 @@ module "jobs" {
 #############################################
 
 module "environment_variables" {
-  source = "${path.module}/modules/environment_variables"
+  source = "./modules/environment_variables"
 
   project_id             = module.project.project_id
   environment_variables  = lookup(local.project_config.project, "environment_variables", {})
@@ -95,7 +95,7 @@ module "environment_variables" {
 #############################################
 
 module "environment_variable_job_overrides" {
-  source = "${path.module}/modules/environment_variable_job_overrides"
+  source = "./modules/environment_variable_job_overrides"
 
   project_id        = module.project.project_id
   environments_data = local.project_config.project.environments
