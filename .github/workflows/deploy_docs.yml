@@ -9,8 +9,9 @@ on:
       - 'docs/**'
       - 'mkdocs.yml'
       - '*.tf'
-      - 'modules/**/*.tf'
+      - 'modules/**'
       - 'schemas/**'
+      - 'examples/**'
       - '.github/workflows/deploy_docs.yml'
   
   pull_request:
@@ -19,8 +20,9 @@ on:
       - 'docs/**'
       - 'mkdocs.yml'
       - '*.tf'
-      - 'modules/**/*.tf'
+      - 'modules/**'
       - 'schemas/**'
+      - 'examples/**'
 
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
