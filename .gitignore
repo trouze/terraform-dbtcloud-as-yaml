@@ -36,3 +36,18 @@ override.tf.json
 .terraformrc
 terraform.rc
 .env
+
+# Importer output files (timestamped with run IDs)
+dev_support/samples/account_*_run_*__snapshot__*.json
+dev_support/samples/account_*_run_*__summary__*.md
+dev_support/samples/account_*_run_*__details__*.md
+dev_support/samples/account_*_run_*__logs__*.log
+dev_support/samples/importer_runs.json
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+*.egg-info/

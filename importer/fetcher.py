@@ -29,6 +29,16 @@ def slug(value: str) -> str:
 
 def fetch_account_snapshot(client: DbtCloudClient) -> AccountSnapshot:
     log.info("Fetching dbt Cloud account snapshot ...")
+    
+    # Fetch account information
+    log.info("Fetching account details (v2)")
+    try:
+        account_data = client.get("/", version="v2")
+        account_name = account_data.get("data", {}).get("name", None)
+    except Exception as exc:
+        log.warning("Failed to fetch account name: %s", exc)
+        account_name = None
+    
     globals_model = Globals(
         connections=_fetch_connections(client),
         repositories=_fetch_repositories(client),
@@ -38,6 +48,7 @@ def fetch_account_snapshot(client: DbtCloudClient) -> AccountSnapshot:
 
     return AccountSnapshot(
         account_id=client.settings.account_id,
+        account_name=account_name,
         globals=globals_model,
         projects=projects,
     )
@@ -91,7 +102,7 @@ def _fetch_projects(client: DbtCloudClient, globals_model: Globals) -> List[Proj
         )
         project_id = project.id or 0
         project.environments = list(_fetch_environments(client, project_id, globals_model.connections))
-        project.jobs = list(_fetch_jobs(client, project_id))
+        project.jobs = list(_fetch_jobs(client, project_id, project.environments))
         project.environment_variables = list(_fetch_environment_variables(client, project_id))
         projects.append(project)
     return projects
@@ -136,13 +147,26 @@ def _fetch_environments(
         )
 
 
-def _fetch_jobs(client: DbtCloudClient, project_id: int) -> Iterable[Job]:
+def _fetch_jobs(client: DbtCloudClient, project_id: int, environments: list) -> Iterable[Job]:
     log.info("Fetching jobs for project %s", project_id)
+    # Build a mapping of environment_id -> environment_key
+    env_id_to_key = {env.id: env.key for env in environments if env.id}
+    
     params = {"project_id": project_id, "order_by": "id"}
     for item in client.paginate("/jobs/", params=params):
         job_key = slug(item["name"])
+        # Try to get environment from the embedded object first, then from environment_id
         environment = item.get("environment") or {}
-        environment_key = slug(environment.get("name") or f"env_{environment.get('id', 'unknown')}")
+        environment_id = environment.get("id") or item.get("environment_id")
+        
+        # Map environment_id to key, or fallback to slug of environment name
+        if environment_id and environment_id in env_id_to_key:
+            environment_key = env_id_to_key[environment_id]
+        elif environment.get("name"):
+            environment_key = slug(environment["name"])
+        else:
+            environment_key = f"env_{environment_id or 'unknown'}"
+        
         yield Job(
             key=job_key,
             id=item.get("id"),
@@ -156,14 +180,37 @@ def _fetch_jobs(client: DbtCloudClient, project_id: int) -> Iterable[Job]:
 
 def _fetch_environment_variables(client: DbtCloudClient, project_id: int) -> Iterable[EnvironmentVariable]:
     """Fetch project-scoped environment variables (v3)."""
+    log.info("Fetching environment variables for project %s (v3)", project_id)
     path = f"/projects/{project_id}/environment-variables/environment/"
     try:
-        for item in client.paginate(path, version="v3"):
-            values = {entry["environment_name"]: entry["value"] for entry in item.get("values", []) if entry.get("environment_name")}
-            yield EnvironmentVariable(name=item["name"], environment_values=values)
+        # This endpoint doesn't paginate - it returns all variables at once
+        response = client.get(path, version="v3")
+        
+        # The response structure is: {'status': {...}, 'data': {'environments': [...], 'variables': {...}}}
+        data = response.get("data", {})
+        variables = data.get("variables", {})
+        
+        # variables is a dict like: {'VAR_NAME': {'project': {...}, 'EnvName': {...}, ...}}
+        for var_name, env_values in variables.items():
+            # env_values is a dict with environment names as keys (plus 'project' for the default)
+            # Extract the project default value
+            project_default = None
+            if "project" in env_values and isinstance(env_values["project"], dict):
+                project_default = env_values["project"].get("value")
+            
+            # Extract environment-specific values (excluding project default)
+            environment_values = {
+                env_name: details["value"]
+                for env_name, details in env_values.items()
+                if env_name != "project" and isinstance(details, dict) and "value" in details
+            }
+            yield EnvironmentVariable(
+                name=var_name,
+                project_default=project_default,
+                environment_values=environment_values
+            )
     except Exception as exc:  # pragma: no cover - network dependent
         log.warning("Failed to fetch environment variables for project %s: %s", project_id, exc)
-        return []
 
 
 def _find_connection_key(connections: Dict[str, Connection], connection_id: int | None) -> str:

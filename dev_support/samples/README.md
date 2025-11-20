@@ -4,7 +4,13 @@ This directory contains sanitized JSON snapshots captured by the importer from r
 
 ## Files
 
-- **`account_snapshot.json`** – Full account snapshot (17 projects, 3 connections, 15 repositories) captured via `python -m importer fetch`. Contains:
+The importer generates timestamped files for each run:
+
+- **`account_{ID}_snapshot__{timestamp}.json`** – Full account snapshot with all resources
+- **`account_{ID}_summary__{timestamp}.md`** – High-level summary with counts by resource type
+- **`account_{ID}_details__{timestamp}.md`** – Detailed tree showing IDs and names
+
+The latest snapshot contains 17 projects, 3 connections, and 15 repositories, including:
   - Globals: connections, repositories
   - Projects with environments, jobs, and environment variables
   - Some environment variables are redacted (marked with `**********` by the API for secrets)
@@ -19,17 +25,18 @@ The snapshot JSON follows the `AccountSnapshot` Pydantic model defined in `impor
   "account_name": null,
   "globals": {
     "connections": { "<key>": { "id": ..., "name": ..., "details": {...} } },
-    "repositories": { "<key>": { "id": ..., "remote_url": ..., "details": {...} } }
+    "repositories": { "<key>": { "id": ..., "remote_url": ..., "metadata": {...} } }
   },
   "projects": [
     {
       "key": "<slug>",
       "id": 123,
       "name": "...",
-      "repository_id": 456,
+      "repository_key": "<slug>",
       "environments": [...],
       "environment_variables": [...],
-      "details": {...}
+      "jobs": [...],
+      "metadata": {...}
     }
   ]
 }
@@ -52,6 +59,8 @@ To regenerate after code changes:
 ```bash
 cd /path/to/repo
 source .venv/bin/activate
-python -m importer fetch --output dev_support/samples/account_snapshot.json
+python -m importer fetch --output dev_support/samples/snapshot.json --reports-dir dev_support/samples
 ```
+
+The importer will automatically generate timestamped snapshot, summary, and details files.
 

@@ -31,7 +31,7 @@ Prototype CLI for Phase 1 of the importer plan. It authenticates against the dbt
 Run the fetch command to capture the current account state:
 
 ```bash
-python -m importer fetch --output dev_support/samples/account_snapshot.json
+python -m importer fetch --output dev_support/samples/snapshot.json --reports-dir dev_support/samples
 ```
 
 Flags:
@@ -40,8 +40,26 @@ Flags:
 |------|-------------|
 | `--output PATH` | Optional path to write the JSON snapshot (defaults to stdout). |
 | `--compact` | Emit compact JSON instead of pretty-printed output. |
+| `--reports-dir PATH` | Directory to write summary/details markdown reports (defaults to same directory as output). |
+| `--auto-timestamp / --no-auto-timestamp` | Automatically add timestamp to output filename (default: enabled). |
 
 After completion, the CLI prints a summary table with counts for projects, connections, and repositories. Additional metrics will be added as new globals are fetched.
+
+### Output Files
+
+When `--auto-timestamp` is enabled (default), the importer generates timestamped files with sequential run IDs:
+
+- **Snapshot**: `account_{ACCOUNT_ID}_run_{RUN}__{snapshot}__{TIMESTAMP}.json` - Raw JSON account data
+- **Summary**: `account_{ACCOUNT_ID}_run_{RUN}__summary__{TIMESTAMP}.md` - High-level counts and per-project breakdown
+- **Details**: `account_{ACCOUNT_ID}_run_{RUN}__details__{TIMESTAMP}.md` - Detailed tree showing IDs and names for all resources
+- **Logs**: `account_{ACCOUNT_ID}_run_{RUN}__logs__{TIMESTAMP}.log` - Execution logs
+
+Where:
+- `{ACCOUNT_ID}` is the dbt Cloud account ID
+- `{RUN}` is a zero-padded 3-digit sequential run number (001, 002, 003...)
+- `{TIMESTAMP}` is in the format `YYYYMMDD_HHMMSS` (UTC)
+
+All files from the same run share the same run ID and timestamp. Run IDs are tracked in `importer_runs.json` in the output directory, which maintains a sequential counter per account.
 
 If `python -m importer fetch` reports missing env vars, ensure the `.env` file is readable within your shell environment (the repo ships with `.env` in `.gitignore`, so you need to create it locally).
 
@@ -55,7 +73,6 @@ If `python -m importer fetch` reports missing env vars, ensure the `.env` file i
 
 ## Next Steps
 
-- Add retries/backoff + rate limit handling to the client.
-- Persist raw API payloads under `dev_support/samples/` for schema normalization tests.
 - Extend the globals map with service tokens, groups, notifications, PrivateLink endpoints, and semantic layer configs per the Phase 1 inventory.
+- Begin Phase 2: YAML normalization from the account snapshot into v2 schema format.
 

@@ -62,6 +62,7 @@ class Job(ImporterBaseModel):
 
 class EnvironmentVariable(ImporterBaseModel):
     name: str
+    project_default: Optional[str] = None
     environment_values: Dict[str, str]
 
 
