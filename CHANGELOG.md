@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.4-dev] - 2025-11-21
+
+### Added
+- Importer: Service tokens now use Terraform-compatible `service_token_permissions` structure with `permission_set`, `all_projects`, `project_id`, and `writable_environment_categories` fields extracted from API metadata
+- Importer: Groups now include `assign_by_default` and `sso_mapping_groups` fields in normalized output
+- Importer: Groups now include `group_permissions` structure with proper project scoping when permissions are defined
+- Importer: Notifications now include all Terraform-required fields: `user_id`, `on_warning`, `external_email`, `slack_channel_id`, `slack_channel_name`
+- Importer: Added `on_warning`, `external_email`, `slack_channel_id`, `slack_channel_name` fields to `Notification` model
+- Docs: Created `dev_support/terraform_readiness_audit.md` documenting Terraform schema compatibility analysis
+- Docs: Created `dev_support/connection_provider_config_research.md` documenting API limitations for connection configuration
+- Docs: Created `dev_support/terraform_readiness_implementation.md` with comprehensive implementation summary
+
+### Changed
+- Importer: Notification normalization now outputs numeric `notification_type` (1=internal, 2=Slack, 4=external email) instead of string types for Terraform compatibility
+- Importer: Notification normalization no longer uses nested `type`/`target` structure, outputs flat Terraform-compatible fields instead
+- Importer: Service token normalization now maps `project_id: null` to `all_projects: true` for proper Terraform structure
+- Importer: Group normalization now extracts permissions from `metadata.group_permissions` instead of flat `permission_sets` array
+- Importer: Updated `_fetch_notifications()` to populate new fields (`on_warning`, `external_email`, `slack_channel_id`, `slack_channel_name`) from API responses
+
+### Fixed
+- Importer: Service tokens now properly structured for Terraform `dbtcloud_service_token` resource (was using flat `scopes` array)
+- Importer: Groups now properly structured for Terraform `dbtcloud_group` resource (was missing permissions and SSO mappings)
+- Importer: Notifications now properly structured for Terraform `dbtcloud_notification` resource (was missing user_id and job associations)
+
 ## [0.3.3-dev] - 2025-11-21
 
 ### Changed

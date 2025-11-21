@@ -206,12 +206,16 @@ def _fetch_notifications(client: DbtCloudClient) -> Dict[str, Notification]:
             notifications[key] = Notification(
                 key=key,
                 id=item.get("id"),
-                notification_type=notif_type,
+                notification_type=item.get("type") or notif_type,  # Use API type if available
                 state=item.get("state"),
                 user_id=item.get("user_id"),
                 on_success=item.get("on_success", []),
                 on_failure=item.get("on_failure", []),
                 on_cancel=item.get("on_cancel", []),
+                on_warning=item.get("on_warning", []),
+                external_email=item.get("external_email"),
+                slack_channel_id=item.get("slack_channel_id"),
+                slack_channel_name=item.get("slack_channel_name"),
                 metadata=item,
             )
     except Exception as exc:

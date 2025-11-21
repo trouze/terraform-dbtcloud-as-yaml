@@ -51,12 +51,16 @@ class Group(ImporterBaseModel):
 class Notification(ImporterBaseModel):
     key: str
     id: Optional[int] = None
-    notification_type: Optional[int] = None  # 1=email, 2=slack, 3=webhook
+    notification_type: Optional[int] = None  # 1=internal, 2=slack, 4=external
     state: Optional[int] = None  # 1=active, 2=inactive
     user_id: Optional[int] = None
     on_success: List[int] = Field(default_factory=list)  # List of job IDs
     on_failure: List[int] = Field(default_factory=list)  # List of job IDs
     on_cancel: List[int] = Field(default_factory=list)  # List of job IDs
+    on_warning: List[int] = Field(default_factory=list)  # List of job IDs
+    external_email: Optional[str] = None  # For type 4 (external email)
+    slack_channel_id: Optional[str] = None  # For type 2 (Slack)
+    slack_channel_name: Optional[str] = None  # For type 2 (Slack)
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
 

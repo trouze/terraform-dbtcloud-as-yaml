@@ -303,7 +303,7 @@ def _normalize_service_tokens(
     config: MappingConfig,
     context: NormalizationContext,
 ) -> List[Dict[str, Any]]:
-    """Normalize service tokens to v2 format."""
+    """Normalize service tokens to v2 format with service_token_permissions structure."""
     result = []
     exclude_keys = config.get_exclude_keys("service_tokens")
     exclude_ids = config.get_exclude_ids("service_tokens")
@@ -321,14 +321,33 @@ def _normalize_service_tokens(
         if _get_element_id(token):
             context.register_element(_get_element_id(token), normalized_key)
         
-        # Use permission_sets directly (already in correct format)
-        scopes = token.permission_sets if hasattr(token, 'permission_sets') else []
-        
         token_data = {
             "key": normalized_key,
             "name": token.name,
-            "scopes": scopes,
         }
+        
+        # Add state if present
+        if token.state:
+            token_data["state"] = token.state
+        
+        # Build service_token_permissions from metadata.permission_grants
+        permission_grants = token.metadata.get("permission_grants", [])
+        if permission_grants:
+            token_data["service_token_permissions"] = []
+            for grant in permission_grants:
+                perm = {
+                    "permission_set": grant["permission_set"],
+                    "all_projects": grant["project_id"] is None,
+                }
+                # Add project_id if this is a project-specific permission
+                if grant["project_id"] is not None:
+                    perm["project_id"] = grant["project_id"]
+                
+                # Add writable_environment_categories if present and non-empty
+                if grant.get("writable_environment_categories"):
+                    perm["writable_environment_categories"] = grant["writable_environment_categories"]
+                
+                token_data["service_token_permissions"].append(perm)
         
         if not config.should_strip_source_ids() and token.id:
             token_data["id"] = token.id
@@ -343,7 +362,7 @@ def _normalize_groups(
     config: MappingConfig,
     context: NormalizationContext,
 ) -> List[Dict[str, Any]]:
-    """Normalize groups to v2 format."""
+    """Normalize groups to v2 format with group_permissions structure."""
     result = []
     exclude_keys = config.get_exclude_keys("groups")
     exclude_ids = config.get_exclude_ids("groups")
@@ -364,8 +383,34 @@ def _normalize_groups(
         group_data = {
             "key": normalized_key,
             "name": group.name,
-            "members": [],  # Not available in importer data
         }
+        
+        # Add assign_by_default if present
+        if group.assign_by_default is not None:
+            group_data["assign_by_default"] = group.assign_by_default
+        
+        # Add sso_mapping_groups if present and non-empty
+        if group.sso_mapping_groups:
+            group_data["sso_mapping_groups"] = group.sso_mapping_groups
+        
+        # Build group_permissions from metadata.group_permissions
+        group_permissions = group.metadata.get("group_permissions", [])
+        if group_permissions:
+            group_data["group_permissions"] = []
+            for perm in group_permissions:
+                perm_data = {
+                    "permission_set": perm["permission_set"],
+                    "all_projects": perm["project_id"] is None,
+                }
+                # Add project_id if this is a project-specific permission
+                if perm["project_id"] is not None:
+                    perm_data["project_id"] = perm["project_id"]
+                
+                # Add writable_environment_categories if present and non-empty
+                if perm.get("writable_environment_categories"):
+                    perm_data["writable_environment_categories"] = perm["writable_environment_categories"]
+                
+                group_data["group_permissions"].append(perm_data)
         
         if not config.should_strip_source_ids() and group.id:
             group_data["id"] = group.id
@@ -380,7 +425,7 @@ def _normalize_notifications(
     config: MappingConfig,
     context: NormalizationContext,
 ) -> List[Dict[str, Any]]:
-    """Normalize notifications to v2 format."""
+    """Normalize notifications to v2 format with Terraform-compatible structure."""
     result = []
     exclude_keys = config.get_exclude_keys("notifications")
     exclude_ids = config.get_exclude_ids("notifications")
@@ -398,24 +443,40 @@ def _normalize_notifications(
         if _get_element_id(notif):
             context.register_element(_get_element_id(notif), normalized_key)
         
-        # Map notification_type integers to strings
-        type_map = {1: "email", 2: "slack", 3: "webhook"}
-        notif_type = type_map.get(notif.notification_type, "email")
-        
-        # Build target object based on type
-        target = {}
-        if notif_type == "email":
-            target["email"] = notif.metadata.get("external_email", "unknown@example.com")
-        elif notif_type == "slack":
-            target["channel"] = notif.metadata.get("slack_channel_name") or notif.metadata.get("slack_channel_id", "unknown")
-        elif notif_type == "webhook":
-            target["url"] = notif.metadata.get("url", "https://example.com/webhook")
-        
         notif_data = {
             "key": normalized_key,
-            "type": notif_type,
-            "target": target,
         }
+        
+        # Add user_id (required by Terraform)
+        if notif.user_id:
+            notif_data["user_id"] = notif.user_id
+        
+        # Add notification_type as numeric (Terraform expects numbers, not strings)
+        if notif.notification_type:
+            notif_data["notification_type"] = notif.notification_type
+        
+        # Add state if present
+        if notif.state:
+            notif_data["state"] = notif.state
+        
+        # Add job trigger lists
+        if notif.on_success:
+            notif_data["on_success"] = notif.on_success
+        if notif.on_failure:
+            notif_data["on_failure"] = notif.on_failure
+        if notif.on_cancel:
+            notif_data["on_cancel"] = notif.on_cancel
+        if notif.on_warning:
+            notif_data["on_warning"] = notif.on_warning
+        
+        # Add type-specific fields
+        if notif.external_email:
+            notif_data["external_email"] = notif.external_email
+        
+        if notif.slack_channel_id:
+            notif_data["slack_channel_id"] = notif.slack_channel_id
+        if notif.slack_channel_name:
+            notif_data["slack_channel_name"] = notif.slack_channel_name
         
         if not config.should_strip_source_ids() and notif.id:
             notif_data["id"] = notif.id
