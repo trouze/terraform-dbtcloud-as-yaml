@@ -87,6 +87,9 @@ normalization_options:
   # Include inactive/soft-deleted resources (include_in_conversion=false)
   include_inactive: false
   
+  # Include provider-specific connection details (adapter_version, ssh_tunnel, config)
+  include_connection_details: true
+  
   # YAML formatting preferences
   yaml_style:
     indent: 2

@@ -81,6 +81,11 @@ class MappingConfig(BaseModel):
     def should_include_inactive(self) -> bool:
         return self.normalization_options.get("include_inactive", False)
 
+    @property
+    def include_connection_details(self) -> bool:
+        """Whether to include provider-specific connection details."""
+        return self.normalization_options.get("include_connection_details", True)
+
     def get_yaml_indent(self) -> int:
         yaml_style = self.normalization_options.get("yaml_style", {})
         return yaml_style.get("indent", 2)

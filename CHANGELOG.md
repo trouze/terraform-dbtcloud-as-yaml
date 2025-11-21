@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.3-dev] - 2025-11-21
+
+### Changed
+- Importer: Connection normalization now strips unnecessary source IDs and metadata from `details` object (previously included `id`, `account_id`, `created_at`, `updated_at`, `environment__count`, etc.)
+- Importer: Only essential provider-specific configuration (adapter_version, ssh_tunnel, config) is preserved in connection details, making YAML cleaner and more portable
+
+### Added
+- Importer: New `include_connection_details` option in mapping configuration (default: `true`) to control whether provider-specific connection details are included in normalized YAML
+
 ## [0.3.2-dev] - 2025-11-21
 
 ### Fixed

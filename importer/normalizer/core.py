@@ -174,9 +174,25 @@ def _normalize_connections(
                 conn_data["private_link_endpoint_key"] = lookup_id
                 context.add_placeholder(lookup_id, f"PrivateLink endpoint ID {privatelink_id}")
         
-        # Add provider-specific details
-        if conn.details:
-            conn_data["details"] = conn.details
+        # Add only essential provider-specific configuration
+        if conn.details and config.include_connection_details:
+            essential_fields = {}
+            
+            # Include adapter version if present
+            if "adapter_version" in conn.details:
+                essential_fields["adapter_version"] = conn.details["adapter_version"]
+            
+            # Include SSH tunnel setting if enabled
+            if conn.details.get("is_ssh_tunnel_enabled"):
+                essential_fields["is_ssh_tunnel_enabled"] = True
+            
+            # Include provider-specific config if present
+            if conn.details.get("config"):
+                essential_fields["config"] = conn.details["config"]
+            
+            # Only add details if we have essential fields
+            if essential_fields:
+                conn_data["details"] = essential_fields
         
         result.append(conn_data)
     

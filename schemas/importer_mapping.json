@@ -96,6 +96,11 @@
           "default": false,
           "description": "Include inactive/soft-deleted resources (marked with include_in_conversion=false)."
         },
+        "include_connection_details": {
+          "type": "boolean",
+          "default": true,
+          "description": "Include provider-specific connection details (adapter_version, ssh_tunnel, config). If false, connections only include key, name, and type."
+        },
         "yaml_style": {
           "type": "object",
           "description": "YAML formatting preferences.",

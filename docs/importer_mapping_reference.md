@@ -306,6 +306,33 @@ Whether to include resources marked as `include_in_conversion: false` in the sou
 - `false`: Exclude inactive resources
 - `true`: Include all resources regardless of active status
 
+### `include_connection_details`
+
+**Type**: Boolean  
+**Default**: `true`
+
+Whether to include provider-specific connection details in the normalized output. When enabled, the normalizer preserves essential configuration fields like `adapter_version`, `is_ssh_tunnel_enabled`, and provider-specific `config`.
+
+- `true`: Include essential provider-specific details (adapter_version, ssh_tunnel, config)
+- `false`: Only include key, name, and type fields (minimal output)
+
+When `true`, the normalizer strips out unnecessary source metadata (`id`, `account_id`, `created_at`, `updated_at`, `environment__count`, etc.) while preserving configuration that Terraform might need.
+
+**Example** (minimal connection output):
+```yaml
+normalization_options:
+  include_connection_details: false
+```
+
+This produces cleaner YAML:
+```yaml
+connections:
+  - key: snowflake_prod
+    name: Snowflake Production
+    type: snowflake
+    # No details field at all
+```
+
 ### `yaml_style`
 
 **Type**: Object
@@ -456,6 +483,7 @@ normalization_options:
   secret_handling: redact
   multi_project_mode: single_file
   include_inactive: false
+  include_connection_details: true
   
   yaml_style:
     indent: 2
