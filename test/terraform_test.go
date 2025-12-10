@@ -262,6 +262,139 @@ func TestDocumentation(t *testing.T) {
 	}
 }
 
+// TestV2BasicConfiguration validates v2 schema with minimal YAML
+func TestV2BasicConfiguration(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := filepath.Join(os.TempDir(), "dbt-terraform-test-v2-basic")
+	defer os.RemoveAll(tmpDir)
+
+	err := copyDir("fixtures/v2_basic", tmpDir)
+	require.NoError(t, err, "Failed to copy v2_basic fixture directory")
+
+	terraformOptions := &terraform.Options{
+		TerraformDir: tmpDir,
+		VarFiles:     []string{"terraform.tfvars"},
+		Lock:         true,
+		NoColor:      true,
+		Logger:       t,
+		Vars: map[string]interface{}{
+			"dbt_account_id": "999999",
+			"dbt_host_url":   "https://cloud.getdbt.com",
+		},
+		EnvVars: map[string]string{
+			"TF_INPUT": "false",
+		},
+	}
+
+	defer terraform.Destroy(t, terraformOptions)
+
+	terraform.Init(t, terraformOptions)
+	planOutput := terraform.Plan(t, terraformOptions)
+
+	// Verify plan output contains v2 module
+	assert.Contains(t, planOutput, "module.projects_v2")
+	assert.Contains(t, planOutput, "module.dbt_cloud.module.projects_v2")
+	assert.NotContains(t, planOutput, "Error")
+}
+
+// TestV2CompleteConfiguration validates v2 schema with multi-project setup
+func TestV2CompleteConfiguration(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := filepath.Join(os.TempDir(), "dbt-terraform-test-v2-complete")
+	defer os.RemoveAll(tmpDir)
+
+	err := copyDir("fixtures/v2_complete", tmpDir)
+	require.NoError(t, err, "Failed to copy v2_complete fixture directory")
+
+	terraformOptions := &terraform.Options{
+		TerraformDir: tmpDir,
+		VarFiles:     []string{"terraform.tfvars"},
+		Lock:         true,
+		NoColor:      true,
+		Logger:       t,
+		Vars: map[string]interface{}{
+			"dbt_account_id": "999999",
+			"dbt_host_url":   "https://cloud.getdbt.com",
+		},
+		EnvVars: map[string]string{
+			"TF_INPUT": "false",
+		},
+	}
+
+	defer terraform.Destroy(t, terraformOptions)
+
+	terraform.Init(t, terraformOptions)
+	planOutput := terraform.Plan(t, terraformOptions)
+
+	// Verify v2 module and multi-project resources
+	assert.Contains(t, planOutput, "module.projects_v2")
+	assert.Contains(t, planOutput, "dbtcloud_project.projects")
+	assert.Contains(t, planOutput, "dbtcloud_global_connection.connections")
+	assert.NotContains(t, planOutput, "Error")
+}
+
+// TestV2YAMLParsing validates v2 YAML file structure
+func TestV2YAMLParsing(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := filepath.Join(os.TempDir(), "dbt-terraform-test-v2-yaml")
+	defer os.RemoveAll(tmpDir)
+
+	err := copyDir("fixtures/v2_basic", tmpDir)
+	require.NoError(t, err)
+
+	yamlPath := filepath.Join(tmpDir, "dbt-config.yml")
+	yamlContent, err := os.ReadFile(yamlPath)
+	require.NoError(t, err, "Failed to read v2 YAML file")
+
+	yamlStr := string(yamlContent)
+	// Verify v2 schema structure
+	assert.Contains(t, yamlStr, "version: 2")
+	assert.Contains(t, yamlStr, "account:")
+	assert.Contains(t, yamlStr, "globals:")
+	assert.Contains(t, yamlStr, "projects:")
+}
+
+// TestV2Outputs validates v2 module exports expected outputs
+func TestV2Outputs(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := filepath.Join(os.TempDir(), "dbt-terraform-test-v2-outputs")
+	defer os.RemoveAll(tmpDir)
+
+	err := copyDir("fixtures/v2_basic", tmpDir)
+	require.NoError(t, err)
+
+	terraformOptions := &terraform.Options{
+		TerraformDir: tmpDir,
+		VarFiles:     []string{"terraform.tfvars"},
+		Lock:         true,
+		NoColor:      true,
+		Logger:       t,
+		Vars: map[string]interface{}{
+			"dbt_account_id": "999999",
+			"dbt_host_url":   "https://cloud.getdbt.com",
+		},
+		EnvVars: map[string]string{
+			"TF_INPUT": "false",
+		},
+	}
+
+	defer terraform.Destroy(t, terraformOptions)
+
+	terraform.Init(t, terraformOptions)
+
+	// Check that expected v2 outputs are defined
+	outputs := terraform.OutputAll(t, terraformOptions)
+	expectedV2Outputs := []string{"v2_project_ids", "v2_environment_ids", "v2_job_ids"}
+
+	for _, output := range expectedV2Outputs {
+		assert.Contains(t, outputs, output, fmt.Sprintf("Expected v2 output '%s' not found", output))
+	}
+}
+
 // Helper functions
 
 // copyDir recursively copies a directory

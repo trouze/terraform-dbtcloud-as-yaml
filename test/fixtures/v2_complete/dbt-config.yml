@@ -1,0 +1,117 @@
+# yaml-language-server: $schema=../../../schemas/v2.json
+version: 2
+
+account:
+  name: Complete Test Account
+  host_url: https://cloud.getdbt.com
+  id: 12345
+
+globals:
+  connections:
+    - key: prod_connection
+      name: Production Connection
+      type: databricks
+    - key: dev_connection
+      name: Development Connection
+      type: databricks
+  repositories:
+    - key: main_repo
+      remote_url: https://github.com/test-org/main-repo.git
+      git_clone_strategy: deploy_key
+  service_tokens:
+    - key: ci_token
+      name: CI Service Token
+      service_token_permissions:
+        - permission_set: job_runner
+          all_projects: true
+  groups:
+    - key: developers
+      name: Developers
+      assign_by_default: false
+      group_permissions:
+        - permission_set: developer
+          all_projects: true
+
+projects:
+  - key: analytics
+    name: Analytics Project
+    repository: main_repo
+    environments:
+      - key: production
+        name: Production
+        type: deployment
+        connection: prod_connection
+        credential:
+          token_name: prod_token
+          schema: analytics_prod
+          catalog: main_catalog
+        dbt_version: "1.7.0"
+        jobs:
+          - key: daily_build
+            name: Daily Build
+            environment_key: production
+            description: "Daily production build"
+            execute_steps:
+              - "dbt run"
+              - "dbt test"
+            triggers:
+              schedule: true
+              github_webhook: false
+              git_provider_webhook: false
+              on_merge: false
+            schedule_type: every_day
+            schedule_hours: [2]
+            num_threads: 8
+            generate_docs: true
+      - key: development
+        name: Development
+        type: development
+        connection: dev_connection
+        credential:
+          token_name: dev_token
+          schema: analytics_dev
+        dbt_version: "1.7.0"
+        jobs:
+          - key: ci_check
+            name: CI Check
+            environment_key: development
+            execute_steps:
+              - "dbt run"
+              - "dbt test"
+            triggers:
+              schedule: false
+              github_webhook: true
+              git_provider_webhook: false
+              on_merge: true
+    environment_variables:
+      - name: ENV_VAR_1
+        environment_values:
+          production: "prod_value"
+          development: "dev_value"
+  - key: marketing
+    name: Marketing Project
+    repository: main_repo
+    environments:
+      - key: production
+        name: Production
+        type: deployment
+        connection: prod_connection
+        credential:
+          token_name: prod_token
+          schema: marketing_prod
+        dbt_version: "1.6.0"
+        jobs:
+          - key: weekly_report
+            name: Weekly Report
+            environment_key: production
+            execute_steps:
+              - "dbt run --select tag:weekly"
+            triggers:
+              schedule: true
+              github_webhook: false
+              git_provider_webhook: false
+              on_merge: false
+            schedule_type: every_week
+            schedule_days: [1]
+            schedule_hours: [9]
+
