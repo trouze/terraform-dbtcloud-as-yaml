@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-dev] - 2025-01-27
+
+### Added
+- **Phase 3 Complete**: Terraform v2 module (`modules/projects_v2/`) fully implemented for multi-project YAML consumption
+- Terraform: Added automatic schema version detection in root `main.tf` (v1 vs v2 routing)
+- Terraform: Created `modules/projects_v2/` with complete resource creation logic (globals, projects, environments, jobs, env vars)
+- Terraform: Added LOOKUP placeholder resolution via `dbtcloud_global_connections` data source
+- Terraform: Added key-based resource reference resolution (connections, repositories, environments)
+- Terraform: Added v2-specific outputs (`v2_project_ids`, `v2_environment_ids`, `v2_job_ids`, etc.)
+- Testing: Added v2 test fixtures (`test/fixtures/v2_basic/`, `test/fixtures/v2_complete/`)
+- Testing: Added Terratest coverage for v2 schema (TestV2BasicConfiguration, TestV2CompleteConfiguration, TestV2YAMLParsing, TestV2Outputs)
+- Docs: Created `dev_support/phase3_implementation_changelog.md` documenting Phase 3 implementation
+- Docs: Created `dev_support/importer_implementation_status.md` master status tracking document
+- Docs: Updated `dev_support/PROJECT_OVERVIEW.md` with v2 module implementation status (Section 19)
+
+### Changed
+- Terraform: Root module now conditionally routes to v1 or v2 modules based on YAML schema version
+- Terraform: Outputs now support both v1 and v2 schemas with conditional returns
+- Environment: Migrated Terraform installation from Homebrew to `tfenv` for access to latest versions (1.14.1)
+
+### Notes
+- Phase 3 completes the end-to-end workflow: fetch → normalize → apply
+- v2 module supports multi-project configurations with global resources
+- Backward compatible: v1 YAML files continue to work unchanged
+- See `dev_support/phase3_implementation_changelog.md` for complete implementation details
+
 ## [0.3.4-dev] - 2025-11-21
 
 ### Added
