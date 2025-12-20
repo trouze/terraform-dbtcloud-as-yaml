@@ -7,6 +7,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1] - 2025-12-19
+
+### Added
+- **Phase 5 E2E Testing Infrastructure**: Complete end-to-end testing setup with automated test script
+- Testing: Created `dev_support/phase5_e2e_testing_guide.md` - 677-line comprehensive testing guide with 6-phase workflow
+- Testing: Created `test/e2e_test/` directory structure with `main.tf`, `env.example`, and `README.md`
+- Testing: Created `test/run_e2e_test.sh` - Automated E2E test script with prerequisite checking, workspace cleaning, and summary generation
+- Testing: Script includes Python/Terraform detection, virtual environment auto-activation, and color-coded console output
+- Docs: Significantly expanded End-to-End Testing Readiness Checklist in implementation status document with step-by-step instructions, commands, and verification steps
+- Docs: Created "Prerequisites for API Research" section documenting Semantic Layer, Model Notifications, License Maps, and Feature Flags research needs
+- Docs: Added explicit blockers, dependencies, and related limitations to all roadmap items in implementation status document
+- Docs: Linked Known Issues to relevant roadmap items (e.g., module variable recognition bug linked to short-term roadmap)
+- Docs: Updated `test/README.md` with Quick Start section for automated E2E testing
+- Docs: Added cross-references between implementation status, E2E testing guide, and known issues documents
+
+### Changed
+- **Version:** Updated from 0.4.0-dev to 0.4.1
+- Docs: Aligned Semantic Layer timeline across documents from "Near-Term (0.4.0-dev)" to "Medium-Term (Next Quarter)" for consistency
+- Docs: Restructured Next Steps & Roadmap in implementation status document with "Critical Path" vs "Parallel Work" sections
+- Docs: Enhanced Phase 5 testing section with comprehensive troubleshooting (15+ common issues with solutions)
+- Docs: Updated importer_implementation_status.md timestamp to 2025-12-19 with detailed change log
+- Testing: Updated test script export directory path from `importer_export/` to `dev_support/samples/` to match actual importer output
+
+### Fixed
+- **Critical:** Fixed infinite recursive module loading in `test_module_call.tf` causing filesystem errors
+  - Root module was loading itself recursively creating 50+ nested module levels
+  - Module names exceeded filesystem path length limits (255+ characters)
+  - Solution: Disabled `test_module_call.tf` by renaming to `.disabled`
+- Testing: Fixed provider version conflict between e2e test (`~> 0.3`) and root (`~> 1.3`) causing init failures
+  - Updated `test/e2e_test/main.tf` to use `dbtcloud ~> 1.3` matching other test fixtures
+- Testing: Fixed Python command detection in test script to support `python3` (macOS default) in addition to `python`
+- Testing: Added virtual environment auto-detection and activation in test script for missing dependencies
+- Gitignore: Added e2e test output files (dbt-cloud-config.yml, test_log.md, test_summary.md, plan_output.txt, tfplan)
+
+### Documentation
+- Created comprehensive Phase 5 E2E testing guide covering:
+  - Complete 6-phase workflow (Fetch → Normalize → Validate → Plan → Apply → Cleanup)
+  - Detailed prerequisites and environment setup instructions
+  - Step-by-step instructions with expected outputs for each phase
+  - Test results & reporting templates
+  - Comprehensive troubleshooting section with 5 categories covering 15+ common issues
+  - Success criteria checklist with validation steps
+- Enhanced implementation status document with:
+  - Detailed step-by-step testing readiness checklist (expanded from 20 to 80+ items)
+  - Explicit blockers and dependencies for each roadmap item
+  - Prerequisites section for items requiring API endpoint research
+  - Cross-references to related limitations and known issues
+
+### Developer Experience
+- Testing: Single command E2E test execution: `./test/run_e2e_test.sh`
+- Testing: Automatic prerequisite validation (Python, Terraform, credentials, dependencies)
+- Testing: Automatic workspace cleanup with backups of existing exports
+- Testing: Automatic test summary generation in Markdown format
+- Testing: Color-coded console output (info/success/warning/error) for better readability
+- Testing: Built-in safety checks for destructive operations (10-second delay before apply)
+
+### Notes
+- Phase 5 testing infrastructure is complete and ready for execution
+- End-to-end testing requires configuration of test account credentials in `test/e2e_test/.env`
+- Automated test script supports both plan-only mode (default) and apply mode (`--apply` flag)
+- All documentation improvements support Phase 5 execution and future migration guide creation
+
 ## [0.4.0-dev] - 2025-01-27
 
 ### Added
