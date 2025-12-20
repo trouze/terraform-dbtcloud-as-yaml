@@ -474,7 +474,7 @@ Before starting end-to-end testing with a real account, verify:
 
 ### Known Issues
 1. **Module Variable Recognition**: When root module is used as a child module from test fixtures, Terraform doesn't recognize variables. See `dev_support/known_issues.md` for details and workarounds.
-2. **Databricks Credential Deprecation**: `adapter_type` field generates deprecation warning but is still required by provider.
+2. **Databricks Credential Deprecation**: `adapter_type` field generates deprecation warning but is still required by provider when `semantic_layer_credential` is false. The warning can be safely ignored until the provider removes the requirement.
 
 ---
 
