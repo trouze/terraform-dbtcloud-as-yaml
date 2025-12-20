@@ -1,7 +1,7 @@
 # Importer Implementation Status & Tracking
 
 **Last Updated:** 2025-12-19  
-**Current Importer Version:** 0.4.0-dev  
+**Current Importer Version:** 0.4.1  
 **Status:** Phase 3 Complete + Interactive Mode
 
 > **⚠️ IMPORTANT: Keep This Document Updated**
@@ -235,7 +235,7 @@
 - `InquirerPy>=0.3.0,<0.4` - Interactive terminal UI library
 
 #### Version
-- **Importer Version:** 0.4.0-dev
+- **Importer Version:** 0.4.1
 - See `importer/VERSION` and `CHANGELOG.md` for details
 
 ---
@@ -311,7 +311,7 @@ Before starting end-to-end testing with a real account, verify:
 **Pre-Flight Validation**
 - [ ] **Importer version verified**
   - [ ] Run: `python -m importer --version`
-  - [ ] Expected output: `0.4.0-dev`
+  - [ ] Expected output: `0.4.1`
 - [ ] **API connectivity test**
   - [ ] Interactive mode: `python -m importer fetch --interactive`
   - [ ] OR: Non-interactive with env vars: `python -m importer fetch --dry-run` (if available)
@@ -419,9 +419,9 @@ Before starting end-to-end testing with a real account, verify:
 ## Version Tracking
 
 ### Importer Version
-- **Current:** 0.4.0-dev
+- **Current:** 0.4.1
 - **File:** `importer/VERSION`
-- **Last Updated:** 2025-12-10
+- **Last Updated:** 2025-12-19
 
 ### Terraform Module Version
 - **Current:** Supports v1 and v2 schemas
@@ -657,7 +657,36 @@ The following items require API endpoint research before implementation can begi
 
 ## Change Log
 
-### 2025-12-19
+### 2025-12-19 (v0.4.1)
+- **Version bump:** 0.4.0-dev → 0.4.1
+- Created complete Phase 5 E2E testing infrastructure:
+  - Phase 5 E2E Testing Guide (677 lines, 6-phase workflow)
+  - Automated test script with prerequisite checking and summary generation
+  - Test fixture directory structure
+- Enhanced documentation:
+  - Significantly expanded End-to-End Testing Readiness Checklist (20 → 80+ items)
+  - Added "Prerequisites for API Research" section
+  - Added explicit blockers/dependencies to all roadmap items
+  - Linked Known Issues to roadmap items
+  - Aligned Semantic Layer timeline across documents
+- Fixed critical bugs:
+  - Infinite recursive module loading in test_module_call.tf
+  - Provider version conflict (e2e test vs root)
+  - Python3 detection in test script
+- Updated CHANGELOG.md with comprehensive 0.4.1 release notes
+
+### 2025-12-19 (v0.4.0-dev)
+- Enhanced Next Steps & Roadmap section with explicit blockers, dependencies, and related limitations
+- Added "Prerequisites for API Research" section for items requiring endpoint discovery
+- Aligned Semantic Layer timeline across documents (Medium-Term / Next Quarter)
+- Linked Known Issues to relevant roadmap items
+- Significantly expanded End-to-End Testing Readiness Checklist with:
+  - Detailed step-by-step instructions for each testing phase
+  - Specific commands and expected outputs
+  - Success criteria with clear verification steps
+  - Enhanced known risks and mitigations
+
+### 2025-12-10
 - Enhanced Next Steps & Roadmap section with explicit blockers, dependencies, and related limitations
 - Added "Prerequisites for API Research" section for items requiring endpoint discovery
 - Aligned Semantic Layer timeline across documents (Medium-Term / Next Quarter)
