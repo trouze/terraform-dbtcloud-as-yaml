@@ -7,16 +7,27 @@
 
 locals {
   # Helper function to resolve repository reference
-  # Returns repository object whether it's a key reference or inline object
+  # Returns repository object whether it's a key reference, inline object, LOOKUP placeholder, or null
   resolve_repository = {
     for project in var.projects :
     project.key => (
+      # Handle null repository
+      project.repository == null ? null :
+      # Handle LOOKUP placeholder (will need manual resolution)
+      can(regex("^LOOKUP:", tostring(project.repository))) ? null :
       # If repository is a string (key reference), look it up in globals
       can(regex("^[a-zA-Z0-9_.-]+$", tostring(project.repository))) ?
-      local.repositories_map[project.repository] :
+      try(local.repositories_map[project.repository], null) :
       # Otherwise, it's an inline object, use it directly
       project.repository
     )
+  }
+  
+  # Filter projects that have valid repositories (not null, not LOOKUP)
+  projects_with_repositories = {
+    for project in var.projects :
+    project.key => project
+    if local.resolve_repository[project.key] != null
   }
 }
 
@@ -32,11 +43,9 @@ resource "dbtcloud_project" "projects" {
 
 # Create repositories for each project
 # Repositories are project-scoped, so we create one per project
+# Skip projects with null or LOOKUP repositories
 resource "dbtcloud_repository" "repositories" {
-  for_each = {
-    for project in var.projects :
-    project.key => project
-  }
+  for_each = local.projects_with_repositories
 
   project_id = dbtcloud_project.projects[each.key].id
   remote_url = local.resolve_repository[each.key].remote_url
@@ -96,11 +105,9 @@ resource "dbtcloud_repository" "repositories" {
 }
 
 # Link repositories to projects
+# Only link projects that have repositories created
 resource "dbtcloud_project_repository" "project_repositories" {
-  for_each = {
-    for project in var.projects :
-    project.key => project
-  }
+  for_each = local.projects_with_repositories
 
   project_id    = dbtcloud_project.projects[each.key].id
   repository_id = dbtcloud_repository.repositories[each.key].id
