@@ -1,0 +1,1205 @@
+# dbt Cloud Configuration (v2 Schema)
+# Generated: 2025-12-10 22:30:10 UTC
+# Normalization Run: 004
+# Source Account: 86165
+version: 2
+account:
+  name: dbt Labs - Sargent Sandbox
+  host_url: https://cloud.getdbt.com
+globals:
+  connections:
+  - key: databricks_dev_uc_enabled
+    name: Databricks dev (UC-enabled)
+    type: unknown
+    details:
+      adapter_version: databricks_v0
+  - key: snowflake_fka50167
+    name: Snowflake fka50167
+    type: unknown
+    details:
+      adapter_version: snowflake_v0
+  - key: snowflake_ska67070_sandbox
+    name: Snowflake SKA67070 Sandbox
+    type: unknown
+    details:
+      adapter_version: snowflake_v0
+  repositories:
+  - key: airflow_dbt_elt
+    remote_url: git://github.com/will-sargent-dbtlabs/airflow-dbt-elt.git
+    git_clone_strategy: github_app
+    github_installation_id: 27617826
+  - key: cluster_validation_dbt_project
+    remote_url: git://github.com/dbt-labs/cluster-validation-dbt-project.git
+    git_clone_strategy: github_app
+    github_installation_id: 267820
+  - key: dbt_cloud_86165_dbt_wsargent_managed_repo_test
+    remote_url: git@github.com:dbt-cloud-managed-repositories/dbt-cloud-86165-dbt-wsargent-managed-repo-test.git
+    git_clone_strategy: deploy_key
+    github_installation_id: 6171772
+  - key: dbt_cloud_86165_wsargent_notallwhowanderarelost
+    remote_url: git@github.com:dbt-cloud-managed-repositories/dbt-cloud-86165-wsargent-notallwhowanderarelost.git
+    git_clone_strategy: deploy_key
+    github_installation_id: 6171772
+  - key: dbt_cloud_admin_demo
+    remote_url: ws-demo-group/dbt-cloud-admin-demo
+    git_clone_strategy: deploy_token
+  - key: dbx_sandbox
+    remote_url: git://github.com/will-sargent-dbtlabs/dbx-sandbox.git
+    git_clone_strategy: github_app
+    github_installation_id: 27617826
+  - key: field_engineering_fusion_upgrade_repo
+    remote_url: git://github.com/dbt-labs/field-engineering-fusion-upgrade-repo.git
+    git_clone_strategy: github_app
+    github_installation_id: 267820
+  - key: getting_to_ok_demo
+    remote_url: git://github.com/dbt-labs/getting-to-ok-demo.git
+    git_clone_strategy: github_app
+    github_installation_id: 267820
+  - key: gitignore_demo
+    remote_url: git://github.com/will-sargent-dbtlabs/gitignore-demo.git
+    git_clone_strategy: github_app
+    github_installation_id: 27617826
+  - key: ia_performance_testing
+    remote_url: git://github.com/dbt-labs/ia-performance-testing.git
+    git_clone_strategy: github_app
+    github_installation_id: 267820
+  - key: jaffle_shop
+    remote_url: git@github.com:will-sargent-dbtlabs/jaffle_shop.git
+    git_clone_strategy: deploy_key
+  - key: ps_scd2_mat
+    remote_url: git://github.com/dbt-labs/ps-scd2-mat.git
+    git_clone_strategy: github_app
+    github_installation_id: 267820
+  - key: ps_shared_services
+    remote_url: git://github.com/dbt-labs/ps-shared-services.git
+    git_clone_strategy: github_app
+    github_installation_id: 267820
+  - key: ps_tf_promotion_demo
+    remote_url: git://github.com/will-sargent-dbtlabs/ps-tf-promotion-demo.git
+    git_clone_strategy: github_app
+    github_installation_id: 27617826
+  - key: terraform_code
+    remote_url: git@bitbucket.org:dbt-labs-sandbox/terraform-code.git
+    git_clone_strategy: deploy_key
+  privatelink_endpoints:
+  - key: demo_privatelink_for_snowflake
+    cloud: snowflake
+    region: unknown
+    endpoint_id: ple_2et2hyjZrhu0UaVX5urvM4uNiMy
+  - key: demo_privatelink_for_vcs
+    cloud: git_url
+    region: unknown
+    endpoint_id: ple_2et2udwFWja0zhjjhwx7y7LLcvg
+  service_tokens:
+  - key: account_admin
+    name: account_admin
+    state: 1
+    service_token_permissions:
+    - permission_set: account_admin
+      all_projects: true
+  - key: another_account_admin
+    name: another_account_admin
+    state: 1
+    service_token_permissions:
+    - permission_set: account_admin
+      all_projects: true
+  - key: discoveryapi
+    name: discoveryAPI
+    state: 1
+    service_token_permissions:
+    - permission_set: readonly
+      all_projects: true
+    - permission_set: metadata_only
+      all_projects: true
+  - key: getting_to_ok_account_admin
+    name: getting_to_ok_account_admin
+    state: 1
+    service_token_permissions:
+    - permission_set: account_admin
+      all_projects: true
+  - key: gtok_admin
+    name: gtok_admin
+    state: 1
+    service_token_permissions:
+    - permission_set: account_admin
+      all_projects: true
+  - key: gtok_sl
+    name: gtok_sl
+    state: 1
+    service_token_permissions:
+    - permission_set: semantic_layer_only
+      all_projects: false
+      project_id: 346697
+    - permission_set: metadata_only
+      all_projects: false
+      project_id: 346697
+  - key: job_runner
+    name: job_runner
+    state: 1
+    service_token_permissions:
+    - permission_set: job_runner
+      all_projects: true
+  - key: postman_20250416
+    name: postman_20250416
+    state: 1
+    service_token_permissions:
+    - permission_set: account_admin
+      all_projects: true
+  - key: team_dev
+    name: team_dev
+    state: 1
+    service_token_permissions:
+    - permission_set: account_viewer
+      all_projects: true
+    - permission_set: team_admin
+      all_projects: false
+      project_id: 346697
+      writable_environment_categories:
+      - staging
+  - key: team_general
+    name: team_general
+    state: 1
+    service_token_permissions:
+    - permission_set: account_viewer
+      all_projects: true
+    - permission_set: team_admin
+      all_projects: false
+      project_id: 346697
+      writable_environment_categories:
+      - other
+  - key: team_prod
+    name: team_prod
+    state: 1
+    service_token_permissions:
+    - permission_set: account_viewer
+      all_projects: true
+    - permission_set: team_admin
+      all_projects: false
+      project_id: 346697
+      writable_environment_categories:
+      - production
+  - key: terraforming_admin
+    name: terraforming_admin
+    state: 1
+    service_token_permissions:
+    - permission_set: account_admin
+      all_projects: true
+  - key: test
+    name: test
+    state: 2
+  - key: test_analysit
+    name: test_analysit
+    state: 1
+    service_token_permissions:
+    - permission_set: analyst
+      all_projects: true
+  - key: tf_dev
+    name: tf_dev
+    state: 2
+  - key: tf_dev_team_admin
+    name: tf_dev_team_admin
+    state: 1
+    service_token_permissions:
+    - permission_set: account_viewer
+      all_projects: true
+    - permission_set: team_admin
+      all_projects: false
+      project_id: 346697
+      writable_environment_categories:
+      - staging
+  - key: tf_migrator
+    name: tf-migrator
+    state: 1
+    service_token_permissions:
+    - permission_set: account_admin
+      all_projects: true
+  groups:
+  - key: everyone
+    name: Everyone
+    assign_by_default: true
+  - key: hackathon
+    name: hackathon
+    assign_by_default: true
+    group_permissions:
+    - permission_set: admin
+      all_projects: false
+      project_id: 346697
+  - key: member
+    name: Member
+    assign_by_default: false
+    group_permissions:
+    - permission_set: member
+      all_projects: true
+    - permission_set: account_admin
+      all_projects: true
+    - permission_set: developer
+      all_projects: false
+      project_id: 364033
+      writable_environment_categories:
+      - all
+    - permission_set: developer
+      all_projects: false
+      project_id: 346697
+      writable_environment_categories:
+      - all
+    - permission_set: developer
+      all_projects: false
+      project_id: 195750
+      writable_environment_categories:
+      - all
+    - permission_set: developer
+      all_projects: false
+      project_id: 133611
+      writable_environment_categories:
+      - all
+  - key: owner
+    name: Owner
+    assign_by_default: false
+    group_permissions:
+    - permission_set: owner
+      all_projects: true
+    - permission_set: account_admin
+      all_projects: true
+  - key: terraform_project_grou
+    name: terraform_project_grou
+    assign_by_default: false
+    group_permissions:
+    - permission_set: analyst
+      all_projects: false
+      project_id: 306274
+  notifications:
+  - key: email_will_sargent_test_email2_dbtlabs_com_17902
+    user_id: 103835
+    notification_type: 4
+    state: 1
+    on_success:
+    - 542963
+    external_email: will.sargent+test-email2@dbtlabs.com
+  - key: email_will_sargent_test_email_dbtlabs_com_17901
+    user_id: 103835
+    notification_type: 4
+    state: 1
+    on_success:
+    - 542963
+    external_email: will.sargent+test-email@dbtlabs.com
+  - key: email_will_sargent_test_notify_dbtlabs_com_26283
+    user_id: 103835
+    notification_type: 4
+    state: 1
+    on_success:
+    - 526578
+    - 679404
+    on_warning:
+    - 526578
+    - 679404
+    external_email: will.sargent+test+notify@dbtlabs.com
+  - key: slack_04_2023_sdr_new_hire_17898
+    user_id: 103835
+    notification_type: 2
+    state: 1
+    on_success:
+    - 441389
+    slack_channel_id: C05144Q8AET
+    slack_channel_name: '#04-2023-sdr-new-hire'
+  - key: slack_admin_product_newsletter_17900
+    user_id: 103835
+    notification_type: 2
+    state: 1
+    slack_channel_id: C03G292GR09
+    slack_channel_name: '#admin-product-newsletter'
+  - key: slack_ask_support_18181
+    user_id: 103835
+    notification_type: 2
+    state: 1
+    slack_channel_id: CH1AWA9ST
+    slack_channel_name: '#ask-support'
+  - key: slack_ask_support_18588
+    user_id: 103835
+    notification_type: 2
+    state: 1
+    slack_channel_id: C123456789
+    slack_channel_name: '#ask-support'
+  - key: slack_proj_admin_course_17906
+    user_id: 103835
+    notification_type: 2
+    state: 1
+    slack_channel_id: C04EDS3A290
+    slack_channel_name: '#proj-admin-course'
+  - key: slack_semantic_layer_alerts_17903
+    user_id: 103835
+    notification_type: 2
+    state: 1
+    slack_channel_id: C05D1MF1N4Q
+    slack_channel_name: '#semantic-layer-alerts'
+  - key: slack_sse_ch0_incidents_alerts_14791
+    user_id: 103835
+    notification_type: 2
+    state: 1
+    on_success:
+    - 108688
+    on_failure:
+    - 108688
+    on_cancel:
+    - 108688
+    slack_channel_id: C03QEHK4WJ0
+    slack_channel_name: '#sse-ch0-incidents-alerts'
+  - key: slack_tmp_incident_io_status_pages_discussion_18590
+    user_id: 115902
+    notification_type: 2
+    state: 1
+    slack_channel_id: C05MZ1F53MJ
+    slack_channel_name: '#tmp-incident-io-status-pages-discussion'
+  - key: slack_tmp_slack_notify_test_21_18591
+    user_id: 115902
+    notification_type: 2
+    state: 1
+    slack_channel_id: C06T1V8QDKL
+    slack_channel_name: '#tmp-slack-notify-test-21'
+  - key: slack_wg_dbt_use_cases_17904
+    user_id: 103835
+    notification_type: 2
+    state: 1
+    slack_channel_id: C06A10MUM9R
+    slack_channel_name: '#wg-dbt-use-cases'
+  - key: unknown_17899
+    user_id: 103835
+    notification_type: 1
+    state: 1
+    on_success:
+    - 542963
+    on_failure:
+    - 542963
+    - 575342
+    - 577949
+    - 526578
+    - 879560
+projects:
+- key: analytics
+  name: Analytics
+  repository: LOOKUP:jaffle_shop
+  environments:
+  - key: new_environment
+    name: New Environment
+    type: deployment
+    connection: LOOKUP:connection_unknown
+    credential:
+      token_name: ''
+      schema: ''
+    dbt_version: latest
+  jobs: []
+  environment_variables: []
+- key: dbt_fundamentals
+  name: dbt Fundamentals
+  repository: LOOKUP:dbt_cloud_86165_wsargent_notallwhowanderarelost
+  environments:
+  - key: development
+    name: Development
+    type: development
+    connection: LOOKUP:snowflake_fka50167
+    credential:
+      token_name: ''
+      schema: ''
+    dbt_version: latest
+  - key: wsargent_learning_deployment
+    name: Wsargent Learning Deployment
+    type: deployment
+    connection: LOOKUP:snowflake_fka50167
+    credential:
+      token_name: ''
+      schema: ''
+    dbt_version: latest
+  jobs:
+  - key: wsargent_learning_job
+    name: Wsargent Learning Job
+    environment_key: wsargent_learning_deployment
+    execute_steps:
+    - dbt seed
+    - dbt run
+    triggers:
+      git_provider_webhook: false
+      github_webhook: false
+      on_merge: false
+      schedule: false
+    generate_docs: true
+    run_lint: false
+    run_generate_sources: true
+    run_compare_changes: false
+  environment_variables: []
+- key: gitignore_testing
+  name: Gitignore Testing
+  repository: LOOKUP:gitignore_demo
+  environments:
+  - key: development
+    name: Development
+    type: development
+    connection: LOOKUP:snowflake_ska67070_sandbox
+    credential:
+      token_name: ''
+      schema: ''
+    dbt_version: latest
+  jobs: []
+  environment_variables: []
+- key: ia_performance_testing
+  name: IA Performance Testing
+  repository: LOOKUP:ia_performance_testing
+  environments:
+  - key: development
+    name: Development
+    type: development
+    connection: LOOKUP:snowflake_ska67070_sandbox
+    credential:
+      token_name: ''
+      schema: ''
+    dbt_version: 1.6.0-latest
+  - key: deploy
+    name: Deploy
+    type: deployment
+    connection: LOOKUP:snowflake_ska67070_sandbox
+    credential:
+      token_name: ''
+      schema: ''
+    dbt_version: latest
+  jobs:
+  - key: new_job
+    name: New job
+    environment_key: deploy
+    execute_steps:
+    - dbt parse --no-partial-parse
+    triggers:
+      git_provider_webhook: false
+      github_webhook: false
+      on_merge: false
+      schedule: false
+    generate_docs: false
+    run_lint: false
+    run_generate_sources: false
+    run_compare_changes: false
+  environment_variables: []
+- key: tf_bitbucket
+  name: TF-Bitbucket
+  repository: LOOKUP:terraform_code
+  environments:
+  - key: development
+    name: Development
+    type: development
+    connection: LOOKUP:snowflake_ska67070_sandbox
+    credential:
+      token_name: ''
+      schema: ''
+    dbt_version: latest
+  - key: deploy
+    name: Deploy
+    type: deployment
+    connection: LOOKUP:snowflake_ska67070_sandbox
+    credential:
+      token_name: ''
+      schema: ''
+    dbt_version: latest
+  jobs:
+  - key: build_1
+    name: Build 1
+    environment_key: deploy
+    execute_steps:
+    - dbt build
+    triggers:
+      git_provider_webhook: false
+      github_webhook: false
+      on_merge: false
+      schedule: false
+    generate_docs: false
+    run_lint: false
+    run_generate_sources: false
+    run_compare_changes: false
+  environment_variables:
+  - name: DBT_TEST_LOG_VAR
+    environment_values:
+      Deploy: this is deploy 2
+      Development: this is dev2
+  - name: DBT_MATERIALIZATION
+    environment_values:
+      Deploy: view
+      Development: view2
+- key: getting_to_ok_clone_and_defer
+  name: Getting to OK - Clone and Defer
+  repository: LOOKUP:getting_to_ok_demo
+  environments:
+  - key: 5_ide
+    name: 5 - IDE
+    type: development
+    connection: LOOKUP:snowflake_ska67070_sandbox
+    credential:
+      token_name: ''
+      schema: ''
+    dbt_version: latest
+    custom_branch: dev
+  - key: 1_prod
+    name: 1 - Prod
+    type: deployment
+    connection: LOOKUP:snowflake_ska67070_sandbox
+    credential:
+      token_name: ''
+      schema: ''
+    dbt_version: latest
+    custom_branch: main
+  - key: 2_staging
+    name: 2 - Staging
+    type: deployment
+    connection: LOOKUP:snowflake_ska67070_sandbox
+    credential:
+      token_name: ''
+      schema: ''
+    dbt_version: latest-fusion
+    custom_branch: staging
+  - key: 4_dev_build
+    name: ' 4 - Dev Build'
+    type: deployment
+    connection: LOOKUP:snowflake_ska67070_sandbox
+    credential:
+      token_name: ''
+      schema: ''
+    dbt_version: latest
+    custom_branch: dev
+  - key: 3_test
+    name: 3 - Test
+    type: deployment
+    connection: LOOKUP:snowflake_ska67070_sandbox
+    credential:
+      token_name: ''
+      schema: ''
+    dbt_version: latest
+    custom_branch: test
+  - key: 1_2_prod_databricks
+    name: 1.2 PROD - Databricks
+    type: deployment
+    connection: LOOKUP:databricks_dev_uc_enabled
+    credential:
+      token_name: ''
+      schema: ''
+    dbt_version: latest-fusion
+  jobs:
+  - key: 1_prod_ci_job
+    name: '1 - Prod: CI Job'
+    environment_key: 1_prod
+    execute_steps:
+    - dbt ls --select state:modified+1
+    - dbt ls --select state:modified
+    triggers:
+      git_provider_webhook: false
+      github_webhook: true
+      on_merge: false
+      schedule: false
+    generate_docs: false
+    run_lint: false
+    run_generate_sources: false
+    run_compare_changes: false
+  - key: 1_prod_scheduled_deploy_build_the_dag
+    name: '1 - Prod: Scheduled Deploy - Build the DAG'
+    environment_key: 1_prod
+    execute_steps:
+    - dbt parse --no-partial-parse
+    - dbt build
+    triggers:
+      git_provider_webhook: false
+      github_webhook: false
+      on_merge: false
+      schedule: true
+    generate_docs: true
+    run_lint: false
+    run_generate_sources: true
+    run_compare_changes: false
+  - key: 2_staging_ci
+    name: '2 - Staging: CI'
+    environment_key: 2_staging
+    execute_steps:
+    - dbt build --select state:modified+
+    triggers:
+      git_provider_webhook: false
+      github_webhook: true
+      on_merge: false
+      schedule: false
+    generate_docs: false
+    run_lint: false
+    run_generate_sources: false
+    run_compare_changes: false
+  - key: 4_build_feature_ci
+    name: '4 - Build: Feature CI'
+    environment_key: 4_dev_build
+    execute_steps:
+    - dbt build --select state:modified
+    triggers:
+      git_provider_webhook: false
+      github_webhook: true
+      on_merge: false
+      schedule: false
+    generate_docs: false
+    run_lint: false
+    run_generate_sources: false
+    run_compare_changes: false
+  - key: 1_prod_state_refresh_compile_job
+    name: '1 - Prod: State Refresh Compile Job'
+    environment_key: 1_prod
+    execute_steps:
+    - dbt compile
+    triggers:
+      git_provider_webhook: false
+      github_webhook: false
+      on_merge: false
+      schedule: true
+    generate_docs: true
+    run_lint: false
+    run_generate_sources: true
+    run_compare_changes: false
+  - key: 2_staging_deploy_on_merge
+    name: '2 - Staging: Deploy on Merge'
+    environment_key: 2_staging
+    execute_steps:
+    - dbt clone
+    - dbt build --select state:modified+
+    triggers:
+      git_provider_webhook: false
+      github_webhook: false
+      on_merge: true
+      schedule: false
+    generate_docs: false
+    run_lint: false
+    run_generate_sources: false
+    run_compare_changes: false
+  - key: 2_staging_state_refresh_compile_job
+    name: '2 - Staging: State Refresh Compile Job'
+    environment_key: 2_staging
+    execute_steps:
+    - dbt compile
+    triggers:
+      git_provider_webhook: false
+      github_webhook: false
+      on_merge: false
+      schedule: true
+    generate_docs: true
+    run_lint: false
+    run_generate_sources: true
+    run_compare_changes: false
+  - key: 4_build_state_refresh_compile_job
+    name: '4 - Build: State Refresh Compile Job'
+    environment_key: 4_dev_build
+    execute_steps:
+    - dbt compile
+    triggers:
+      git_provider_webhook: false
+      github_webhook: false
+      on_merge: false
+      schedule: true
+    generate_docs: true
+    run_lint: false
+    run_generate_sources: true
+    run_compare_changes: false
+  - key: 1_prod_deploy_on_merge
+    name: '1 - PROD: Deploy On Merge'
+    environment_key: 1_prod
+    execute_steps:
+    - dbt ls --select state:modified+
+    - dbt build --select state:modified+ --full-refresh
+    - dbt docs generate
+    triggers:
+      git_provider_webhook: false
+      github_webhook: false
+      on_merge: true
+      schedule: false
+    generate_docs: false
+    run_lint: false
+    run_generate_sources: false
+    run_compare_changes: false
+  - key: 4_dev_daily_build
+    name: 4 - [DEV] Daily Build
+    environment_key: 4_dev_build
+    execute_steps:
+    - dbt build
+    triggers:
+      git_provider_webhook: false
+      github_webhook: false
+      on_merge: false
+      schedule: false
+    generate_docs: true
+    run_lint: false
+    run_generate_sources: true
+    run_compare_changes: false
+  - key: production_job
+    name: Production Job
+    environment_key: 1_prod
+    execute_steps:
+    - dbt run
+    triggers:
+      github_webhook: false
+      schedule: true
+    generate_docs: true
+    run_lint: false
+    run_generate_sources: true
+    run_compare_changes: false
+  - key: twice_daily_docs_generate
+    name: '[Twice Daily] Docs Generate'
+    environment_key: 1_prod
+    execute_steps:
+    - dbt docs generate
+    triggers:
+      git_provider_webhook: false
+      github_webhook: false
+      on_merge: false
+      schedule: true
+    generate_docs: false
+    run_lint: false
+    run_generate_sources: true
+    run_compare_changes: false
+  - key: adhoc
+    name: '[Adhoc]'
+    environment_key: 1_prod
+    execute_steps:
+    - dbt ls
+    triggers:
+      git_provider_webhook: false
+      github_webhook: false
+      on_merge: false
+      schedule: false
+    generate_docs: false
+    run_lint: false
+    run_generate_sources: false
+    run_compare_changes: false
+  - key: new_job
+    name: New job
+    environment_key: 1_prod
+    execute_steps:
+    - dbt build
+    triggers:
+      git_provider_webhook: false
+      github_webhook: false
+      on_merge: false
+      schedule: false
+    generate_docs: false
+    run_lint: false
+    run_generate_sources: false
+    run_compare_changes: false
+  - key: prod_dbt_terraform_testing_job
+    name: '[PROD] dbt Terraform Testing Job'
+    environment_key: 1_prod
+    execute_steps:
+    - dbt debug
+    triggers:
+      git_provider_webhook: false
+      github_webhook: false
+      on_merge: false
+      schedule: false
+    generate_docs: false
+    run_lint: false
+    run_generate_sources: false
+    run_compare_changes: false
+  - key: test_dbt_terraform_testing_job_2
+    name: '[TEST] dbt Terraform Testing Job 2'
+    environment_key: 3_test
+    execute_steps:
+    - dbt debug
+    triggers:
+      git_provider_webhook: false
+      github_webhook: false
+      on_merge: false
+      schedule: false
+    generate_docs: false
+    run_lint: false
+    run_generate_sources: false
+    run_compare_changes: false
+  - key: test_daily_full_build
+    name: '[TEST] Daily Full Build'
+    environment_key: 3_test
+    execute_steps:
+    - dbt build
+    triggers:
+      git_provider_webhook: false
+      github_webhook: false
+      on_merge: false
+      schedule: true
+    generate_docs: false
+    run_lint: false
+    run_generate_sources: false
+    run_compare_changes: false
+  - key: test_daily_compile
+    name: '[TEST] Daily Compile'
+    environment_key: 3_test
+    execute_steps:
+    - dbt compile
+    triggers:
+      git_provider_webhook: false
+      github_webhook: false
+      on_merge: false
+      schedule: true
+    generate_docs: false
+    run_lint: false
+    run_generate_sources: false
+    run_compare_changes: false
+  - key: test_dbt_terraform_testing_job_4
+    name: '[TEST] dbt Terraform Testing Job 4'
+    environment_key: 3_test
+    execute_steps:
+    - dbt debug
+    triggers:
+      git_provider_webhook: false
+      github_webhook: false
+      on_merge: false
+      schedule: false
+    generate_docs: false
+    run_lint: false
+    run_generate_sources: false
+    run_compare_changes: false
+  environment_variables:
+  - name: DBT_COOL_VARIABLE
+    environment_values:
+      1 - Prod: ProdValue
+      5 - IDE: DevValue
+  - name: DBT_ENV_SECRET_GITHUB_TOKEN
+    environment_values: {}
+  - name: DBT_SHARED_SVCS_REV
+    environment_values: {}
+  - name: DBT_MODEL_VOLUMES
+    environment_values:
+      1 - Prod: '{"iceberg_exotic_append__inc": "s3_iceberg_snow", "my_other_model": "my_volume_name"}'
+  - name: DBT_TARGET_ENVIRONMENT
+    environment_values:
+      ' 4 - Dev Build': dev
+      1 - Prod: prod
+      2 - Staging: stage
+      3 - Test: test
+      5 - IDE: dev
+  - name: DBT_STORE_FAILURES_IN_ENV
+    environment_values:
+      5 - IDE: maybe
+  - name: DBT_GSN_LOG_LEVEL
+    environment_values:
+      5 - IDE: DEBUG
+- key: managed_repo_tester
+  name: Managed Repo Tester
+  repository: LOOKUP:dbt_cloud_86165_dbt_wsargent_managed_repo_test
+  environments:
+  - key: development
+    name: Development
+    type: development
+    connection: LOOKUP:snowflake_ska67070_sandbox
+    credential:
+      token_name: ''
+      schema: ''
+    dbt_version: latest
+  jobs: []
+  environment_variables: []
+- key: dbx_sandbox
+  name: dbx Sandbox
+  repository: LOOKUP:dbx_sandbox
+  environments:
+  - key: development
+    name: Development
+    type: development
+    connection: LOOKUP:databricks_dev_uc_enabled
+    credential:
+      token_name: ''
+      schema: ''
+    dbt_version: latest
+  jobs: []
+  environment_variables: []
+- key: test_admin_project
+  name: Test Admin Project
+  repository: LOOKUP:dbt_cloud_admin_demo
+  environments:
+  - key: development
+    name: Development
+    type: development
+    connection: LOOKUP:snowflake_ska67070_sandbox
+    credential:
+      token_name: ''
+      schema: ''
+    dbt_version: latest
+  - key: staging
+    name: Staging
+    type: deployment
+    connection: LOOKUP:snowflake_ska67070_sandbox
+    credential:
+      token_name: ''
+      schema: ''
+    dbt_version: latest
+    custom_branch: staging
+  jobs:
+  - key: new_job
+    name: New job
+    environment_key: staging
+    execute_steps:
+    - dbt build
+    triggers:
+      git_provider_webhook: false
+      github_webhook: false
+      on_merge: false
+      schedule: true
+    generate_docs: false
+    run_lint: false
+    run_generate_sources: true
+    run_compare_changes: false
+  environment_variables:
+  - name: DBT_DATABASE
+    environment_values:
+      Development: Dev
+      Staging: Staging
+  - name: DBT_SECRET_PASSWORD
+    environment_values: {}
+  - name: DBT_ENV_SECRET_PASSWORD
+    environment_values: {}
+- key: cluster_validation_setup
+  name: Cluster Validation Setup
+  repository: LOOKUP:cluster_validation_dbt_project
+  environments:
+  - key: development
+    name: Development
+    type: development
+    connection: LOOKUP:snowflake_ska67070_sandbox
+    credential:
+      token_name: ''
+      schema: ''
+    dbt_version: latest
+  jobs: []
+  environment_variables: []
+- key: teet
+  name: teet
+  repository: LOOKUP:airflow_dbt_elt
+  environments: []
+  jobs: []
+  environment_variables: []
+- key: dbt_shared_services
+  name: dbt Shared Services
+  repository: LOOKUP:ps_shared_services
+  environments:
+  - key: development
+    name: Development
+    type: development
+    connection: LOOKUP:snowflake_ska67070_sandbox
+    credential:
+      token_name: ''
+      schema: ''
+    dbt_version: latest
+  jobs: []
+  environment_variables: []
+- key: test
+  name: test
+  environments: []
+  jobs: []
+  environment_variables: []
+- key: analytics_test
+  name: Analytics Test
+  environments: []
+  jobs: []
+  environment_variables: []
+- key: tf_promotion_demo
+  name: TF Promotion Demo
+  repository: LOOKUP:ps_tf_promotion_demo
+  environments:
+  - key: 1_ide_feature
+    name: 1 - IDE / Feature
+    type: development
+    connection: LOOKUP:snowflake_ska67070_sandbox
+    credential:
+      token_name: ''
+      schema: ''
+    dbt_version: latest
+    custom_branch: dev
+  - key: 2_dev_build
+    name: 2 - DEV Build
+    type: deployment
+    connection: LOOKUP:snowflake_ska67070_sandbox
+    credential:
+      token_name: ''
+      schema: ''
+    dbt_version: latest
+    custom_branch: dev
+  - key: 3_test
+    name: 3 - TEST
+    type: deployment
+    connection: LOOKUP:snowflake_ska67070_sandbox
+    credential:
+      token_name: ''
+      schema: ''
+    dbt_version: latest
+    custom_branch: test
+  - key: 4_prod
+    name: 4 - PROD
+    type: deployment
+    connection: LOOKUP:snowflake_ska67070_sandbox
+    credential:
+      token_name: ''
+      schema: ''
+    dbt_version: latest
+    custom_branch: main
+  jobs: []
+  environment_variables: []
+- key: will_sargent_fusion_migration_sandbox
+  name: Will Sargent Fusion Migration Sandbox
+  repository: LOOKUP:field_engineering_fusion_upgrade_repo
+  environments:
+  - key: development
+    name: Development
+    type: development
+    connection: LOOKUP:snowflake_ska67070_sandbox
+    credential:
+      token_name: ''
+      schema: ''
+    dbt_version: latest-fusion
+  - key: fusion_prod
+    name: Fusion Prod
+    type: deployment
+    connection: LOOKUP:snowflake_ska67070_sandbox
+    credential:
+      token_name: ''
+      schema: ''
+    dbt_version: latest-fusion
+    custom_branch: will_sargent_fusion_migration_studio
+  jobs:
+  - key: ws_fusion_sao_main
+    name: WS Fusion SAO Main
+    environment_key: fusion_prod
+    execute_steps:
+    - dbt source freshness
+    - dbt seed
+    - dbt build
+    triggers:
+      git_provider_webhook: false
+      github_webhook: false
+      on_merge: false
+      schedule: false
+    generate_docs: true
+    run_lint: false
+    run_generate_sources: false
+    run_compare_changes: false
+  environment_variables: []
+- key: fusion_scd2_workspace
+  name: Fusion-SCD2 Workspace
+  repository: LOOKUP:ps_scd2_mat
+  environments:
+  - key: development
+    name: Development
+    type: development
+    connection: LOOKUP:databricks_dev_uc_enabled
+    credential:
+      token_name: ''
+      schema: ''
+    dbt_version: latest-fusion
+  - key: 1_2_prod_databricks
+    name: 1.2- PROD Databricks
+    type: deployment
+    connection: LOOKUP:databricks_dev_uc_enabled
+    credential:
+      token_name: ''
+      schema: ''
+    dbt_version: latest-fusion
+  - key: 1_1_prod_snowflake
+    name: 1.1 - PROD Snowflake
+    type: deployment
+    connection: LOOKUP:snowflake_ska67070_sandbox
+    credential:
+      token_name: ''
+      schema: ''
+    dbt_version: latest-fusion
+  jobs:
+  - key: dbx_prod
+    name: dbx PROD
+    environment_key: 1_2_prod_databricks
+    execute_steps:
+    - dbt build
+    triggers:
+      git_provider_webhook: false
+      github_webhook: false
+      on_merge: false
+      schedule: false
+    generate_docs: true
+    run_lint: false
+    run_generate_sources: false
+    run_compare_changes: false
+  environment_variables: []
+metadata:
+  placeholders:
+  - id: LOOKUP:jaffle_shop
+    description: Repository for project Analytics
+  - id: LOOKUP:connection_unknown
+    description: Connection for environment New Environment
+  - id: LOOKUP:dbt_cloud_86165_wsargent_notallwhowanderarelost
+    description: Repository for project dbt Fundamentals
+  - id: LOOKUP:snowflake_fka50167
+    description: Connection for environment Development
+  - id: LOOKUP:snowflake_fka50167
+    description: Connection for environment Wsargent Learning Deployment
+  - id: LOOKUP:gitignore_demo
+    description: Repository for project Gitignore Testing
+  - id: LOOKUP:snowflake_ska67070_sandbox
+    description: Connection for environment Development
+  - id: LOOKUP:ia_performance_testing
+    description: Repository for project IA Performance Testing
+  - id: LOOKUP:snowflake_ska67070_sandbox
+    description: Connection for environment Development
+  - id: LOOKUP:snowflake_ska67070_sandbox
+    description: Connection for environment Deploy
+  - id: LOOKUP:terraform_code
+    description: Repository for project TF-Bitbucket
+  - id: LOOKUP:snowflake_ska67070_sandbox
+    description: Connection for environment Development
+  - id: LOOKUP:snowflake_ska67070_sandbox
+    description: Connection for environment Deploy
+  - id: LOOKUP:getting_to_ok_demo
+    description: Repository for project Getting to OK - Clone and Defer
+  - id: LOOKUP:snowflake_ska67070_sandbox
+    description: Connection for environment 5 - IDE
+  - id: LOOKUP:snowflake_ska67070_sandbox
+    description: Connection for environment 1 - Prod
+  - id: LOOKUP:snowflake_ska67070_sandbox
+    description: Connection for environment 2 - Staging
+  - id: LOOKUP:snowflake_ska67070_sandbox
+    description: Connection for environment  4 - Dev Build
+  - id: LOOKUP:snowflake_ska67070_sandbox
+    description: Connection for environment 3 - Test
+  - id: LOOKUP:databricks_dev_uc_enabled
+    description: Connection for environment 1.2 PROD - Databricks
+  - id: LOOKUP:dbt_cloud_86165_dbt_wsargent_managed_repo_test
+    description: Repository for project Managed Repo Tester
+  - id: LOOKUP:snowflake_ska67070_sandbox
+    description: Connection for environment Development
+  - id: LOOKUP:dbx_sandbox
+    description: Repository for project dbx Sandbox
+  - id: LOOKUP:databricks_dev_uc_enabled
+    description: Connection for environment Development
+  - id: LOOKUP:dbt_cloud_admin_demo
+    description: Repository for project Test Admin Project
+  - id: LOOKUP:snowflake_ska67070_sandbox
+    description: Connection for environment Development
+  - id: LOOKUP:snowflake_ska67070_sandbox
+    description: Connection for environment Staging
+  - id: LOOKUP:cluster_validation_dbt_project
+    description: Repository for project Cluster Validation Setup
+  - id: LOOKUP:snowflake_ska67070_sandbox
+    description: Connection for environment Development
+  - id: LOOKUP:airflow_dbt_elt
+    description: Repository for project teet
+  - id: LOOKUP:ps_shared_services
+    description: Repository for project dbt Shared Services
+  - id: LOOKUP:snowflake_ska67070_sandbox
+    description: Connection for environment Development
+  - id: LOOKUP:ps_tf_promotion_demo
+    description: Repository for project TF Promotion Demo
+  - id: LOOKUP:snowflake_ska67070_sandbox
+    description: Connection for environment 1 - IDE / Feature
+  - id: LOOKUP:snowflake_ska67070_sandbox
+    description: Connection for environment 2 - DEV Build
+  - id: LOOKUP:snowflake_ska67070_sandbox
+    description: Connection for environment 3 - TEST
+  - id: LOOKUP:snowflake_ska67070_sandbox
+    description: Connection for environment 4 - PROD
+  - id: LOOKUP:field_engineering_fusion_upgrade_repo
+    description: Repository for project Will Sargent Fusion Migration Sandbox
+  - id: LOOKUP:snowflake_ska67070_sandbox
+    description: Connection for environment Development
+  - id: LOOKUP:snowflake_ska67070_sandbox
+    description: Connection for environment Fusion Prod
+  - id: LOOKUP:ps_scd2_mat
+    description: Repository for project Fusion-SCD2 Workspace
+  - id: LOOKUP:databricks_dev_uc_enabled
+    description: Connection for environment Development
+  - id: LOOKUP:databricks_dev_uc_enabled
+    description: Connection for environment 1.2- PROD Databricks
+  - id: LOOKUP:snowflake_ska67070_sandbox
+    description: Connection for environment 1.1 - PROD Snowflake

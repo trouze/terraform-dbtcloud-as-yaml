@@ -1,0 +1,187 @@
+{
+  "_metadata": {
+    "account_id": 86165,
+    "generated_at": "2025-12-10T22:30:10Z",
+    "run_id": 4,
+    "total_placeholders": 44
+  },
+  "instructions": "This file lists all LOOKUP: placeholders in the generated YAML. Each placeholder represents a resource that must exist in the target account. To resolve: 1) Create the resource in target if it doesn't exist, 2) Note its ID or key, 3) Update the YAML to reference it.",
+  "placeholders": [
+    {
+      "description": "Repository for project Analytics",
+      "id": "LOOKUP:jaffle_shop"
+    },
+    {
+      "description": "Connection for environment New Environment",
+      "id": "LOOKUP:connection_unknown"
+    },
+    {
+      "description": "Repository for project dbt Fundamentals",
+      "id": "LOOKUP:dbt_cloud_86165_wsargent_notallwhowanderarelost"
+    },
+    {
+      "description": "Connection for environment Development",
+      "id": "LOOKUP:snowflake_fka50167"
+    },
+    {
+      "description": "Connection for environment Wsargent Learning Deployment",
+      "id": "LOOKUP:snowflake_fka50167"
+    },
+    {
+      "description": "Repository for project Gitignore Testing",
+      "id": "LOOKUP:gitignore_demo"
+    },
+    {
+      "description": "Connection for environment Development",
+      "id": "LOOKUP:snowflake_ska67070_sandbox"
+    },
+    {
+      "description": "Repository for project IA Performance Testing",
+      "id": "LOOKUP:ia_performance_testing"
+    },
+    {
+      "description": "Connection for environment Development",
+      "id": "LOOKUP:snowflake_ska67070_sandbox"
+    },
+    {
+      "description": "Connection for environment Deploy",
+      "id": "LOOKUP:snowflake_ska67070_sandbox"
+    },
+    {
+      "description": "Repository for project TF-Bitbucket",
+      "id": "LOOKUP:terraform_code"
+    },
+    {
+      "description": "Connection for environment Development",
+      "id": "LOOKUP:snowflake_ska67070_sandbox"
+    },
+    {
+      "description": "Connection for environment Deploy",
+      "id": "LOOKUP:snowflake_ska67070_sandbox"
+    },
+    {
+      "description": "Repository for project Getting to OK - Clone and Defer",
+      "id": "LOOKUP:getting_to_ok_demo"
+    },
+    {
+      "description": "Connection for environment 5 - IDE",
+      "id": "LOOKUP:snowflake_ska67070_sandbox"
+    },
+    {
+      "description": "Connection for environment 1 - Prod",
+      "id": "LOOKUP:snowflake_ska67070_sandbox"
+    },
+    {
+      "description": "Connection for environment 2 - Staging",
+      "id": "LOOKUP:snowflake_ska67070_sandbox"
+    },
+    {
+      "description": "Connection for environment  4 - Dev Build",
+      "id": "LOOKUP:snowflake_ska67070_sandbox"
+    },
+    {
+      "description": "Connection for environment 3 - Test",
+      "id": "LOOKUP:snowflake_ska67070_sandbox"
+    },
+    {
+      "description": "Connection for environment 1.2 PROD - Databricks",
+      "id": "LOOKUP:databricks_dev_uc_enabled"
+    },
+    {
+      "description": "Repository for project Managed Repo Tester",
+      "id": "LOOKUP:dbt_cloud_86165_dbt_wsargent_managed_repo_test"
+    },
+    {
+      "description": "Connection for environment Development",
+      "id": "LOOKUP:snowflake_ska67070_sandbox"
+    },
+    {
+      "description": "Repository for project dbx Sandbox",
+      "id": "LOOKUP:dbx_sandbox"
+    },
+    {
+      "description": "Connection for environment Development",
+      "id": "LOOKUP:databricks_dev_uc_enabled"
+    },
+    {
+      "description": "Repository for project Test Admin Project",
+      "id": "LOOKUP:dbt_cloud_admin_demo"
+    },
+    {
+      "description": "Connection for environment Development",
+      "id": "LOOKUP:snowflake_ska67070_sandbox"
+    },
+    {
+      "description": "Connection for environment Staging",
+      "id": "LOOKUP:snowflake_ska67070_sandbox"
+    },
+    {
+      "description": "Repository for project Cluster Validation Setup",
+      "id": "LOOKUP:cluster_validation_dbt_project"
+    },
+    {
+      "description": "Connection for environment Development",
+      "id": "LOOKUP:snowflake_ska67070_sandbox"
+    },
+    {
+      "description": "Repository for project teet",
+      "id": "LOOKUP:airflow_dbt_elt"
+    },
+    {
+      "description": "Repository for project dbt Shared Services",
+      "id": "LOOKUP:ps_shared_services"
+    },
+    {
+      "description": "Connection for environment Development",
+      "id": "LOOKUP:snowflake_ska67070_sandbox"
+    },
+    {
+      "description": "Repository for project TF Promotion Demo",
+      "id": "LOOKUP:ps_tf_promotion_demo"
+    },
+    {
+      "description": "Connection for environment 1 - IDE / Feature",
+      "id": "LOOKUP:snowflake_ska67070_sandbox"
+    },
+    {
+      "description": "Connection for environment 2 - DEV Build",
+      "id": "LOOKUP:snowflake_ska67070_sandbox"
+    },
+    {
+      "description": "Connection for environment 3 - TEST",
+      "id": "LOOKUP:snowflake_ska67070_sandbox"
+    },
+    {
+      "description": "Connection for environment 4 - PROD",
+      "id": "LOOKUP:snowflake_ska67070_sandbox"
+    },
+    {
+      "description": "Repository for project Will Sargent Fusion Migration Sandbox",
+      "id": "LOOKUP:field_engineering_fusion_upgrade_repo"
+    },
+    {
+      "description": "Connection for environment Development",
+      "id": "LOOKUP:snowflake_ska67070_sandbox"
+    },
+    {
+      "description": "Connection for environment Fusion Prod",
+      "id": "LOOKUP:snowflake_ska67070_sandbox"
+    },
+    {
+      "description": "Repository for project Fusion-SCD2 Workspace",
+      "id": "LOOKUP:ps_scd2_mat"
+    },
+    {
+      "description": "Connection for environment Development",
+      "id": "LOOKUP:databricks_dev_uc_enabled"
+    },
+    {
+      "description": "Connection for environment 1.2- PROD Databricks",
+      "id": "LOOKUP:databricks_dev_uc_enabled"
+    },
+    {
+      "description": "Connection for environment 1.1 - PROD Snowflake",
+      "id": "LOOKUP:snowflake_ska67070_sandbox"
+    }
+  ]
+}

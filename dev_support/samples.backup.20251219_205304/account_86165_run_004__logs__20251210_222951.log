@@ -1,0 +1,804 @@
+2025-12-10 15:29:51 - importer.cli - INFO - Starting dbt Cloud importer v0.4.0-dev
+2025-12-10 15:29:51 - importer.cli - INFO - Run ID: 004, Timestamp: 20251210_222951
+2025-12-10 15:29:51 - importer.cli - INFO - Target account: 86165 at https://iq919.us1.dbt.com
+2025-12-10 15:29:51 - httpx - DEBUG - load_ssl_context verify=True cert=None trust_env=True http2=False
+2025-12-10 15:29:51 - httpx - DEBUG - load_verify_locations cafile='/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.venv/lib/python3.9/site-packages/certifi/cacert.pem'
+2025-12-10 15:29:51 - httpx - DEBUG - load_ssl_context verify=True cert=None trust_env=True http2=False
+2025-12-10 15:29:51 - httpx - DEBUG - load_verify_locations cafile='/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.venv/lib/python3.9/site-packages/certifi/cacert.pem'
+2025-12-10 15:29:51 - importer.fetcher - INFO - Fetching dbt Cloud account snapshot ...
+2025-12-10 15:29:51 - importer.fetcher - INFO - Fetching account details (v2)
+2025-12-10 15:29:51 - httpcore.connection - DEBUG - connect_tcp.started host='iq919.us1.dbt.com' port=443 local_address=None timeout=30.0 socket_options=None
+2025-12-10 15:29:51 - httpcore.connection - DEBUG - connect_tcp.complete return_value=<httpcore._backends.sync.SyncStream object at 0x1099fd580>
+2025-12-10 15:29:51 - httpcore.connection - DEBUG - start_tls.started ssl_context=<ssl.SSLContext object at 0x109480c10> server_hostname='iq919.us1.dbt.com' timeout=30.0
+2025-12-10 15:29:51 - httpcore.connection - DEBUG - start_tls.complete return_value=<httpcore._backends.sync.SyncStream object at 0x1099fd760>
+2025-12-10 15:29:51 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:51 - httpcore.http11 - DEBUG - send_request_headers.complete
+2025-12-10 15:29:51 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2025-12-10 15:29:51 - httpcore.http11 - DEBUG - send_request_body.complete
+2025-12-10 15:29:51 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:52 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Date', b'Wed, 10 Dec 2025 22:29:52 GMT'), (b'Content-Type', b'application/json'), (b'Content-Length', b'896'), (b'Connection', b'keep-alive'), (b'Server', b'nginx'), (b'Allow', b'GET, POST, PATCH, HEAD, OPTIONS'), (b'Vary', b'Accept-Encoding, Cookie'), (b'Content-Encoding', b'gzip'), (b'X-Frame-Options', b'DENY'), (b'X-Content-Type-Options', b'nosniff'), (b'Referrer-Policy', b'same-origin'), (b'Cross-Origin-Opener-Policy', b'same-origin'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Methods', b'GET, POST, PATCH, DELETE, OPTIONS'), (b'Access-Control-Allow-Headers', b'Authorization, Content-Type'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains; preload'), (b'X-Request-Id', b'71b17350b83061986c34780a53e0e47d'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Robots-Tag', b'noindex'), (b'X-Frame-Options', b'DENY')])
+2025-12-10 15:29:52 - httpx - INFO - HTTP Request: GET https://iq919.us1.dbt.com/api/v2/accounts/86165/ "HTTP/1.1 200 OK"
+2025-12-10 15:29:52 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2025-12-10 15:29:52 - httpcore.http11 - DEBUG - receive_response_body.complete
+2025-12-10 15:29:52 - httpcore.http11 - DEBUG - response_closed.started
+2025-12-10 15:29:52 - httpcore.http11 - DEBUG - response_closed.complete
+2025-12-10 15:29:52 - importer.fetcher - INFO - Fetching connections (v3)
+2025-12-10 15:29:52 - httpcore.connection - DEBUG - connect_tcp.started host='iq919.us1.dbt.com' port=443 local_address=None timeout=30.0 socket_options=None
+2025-12-10 15:29:52 - httpcore.connection - DEBUG - connect_tcp.complete return_value=<httpcore._backends.sync.SyncStream object at 0x109a7ce80>
+2025-12-10 15:29:52 - httpcore.connection - DEBUG - start_tls.started ssl_context=<ssl.SSLContext object at 0x109480660> server_hostname='iq919.us1.dbt.com' timeout=30.0
+2025-12-10 15:29:52 - httpcore.connection - DEBUG - start_tls.complete return_value=<httpcore._backends.sync.SyncStream object at 0x109a7ce50>
+2025-12-10 15:29:52 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:52 - httpcore.http11 - DEBUG - send_request_headers.complete
+2025-12-10 15:29:52 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2025-12-10 15:29:52 - httpcore.http11 - DEBUG - send_request_body.complete
+2025-12-10 15:29:52 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:52 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Date', b'Wed, 10 Dec 2025 22:29:52 GMT'), (b'Content-Type', b'application/json'), (b'Content-Length', b'571'), (b'Connection', b'keep-alive'), (b'Server', b'nginx'), (b'Allow', b'GET, POST, HEAD, OPTIONS'), (b'Vary', b'Accept-Encoding, Cookie'), (b'Content-Encoding', b'gzip'), (b'X-Frame-Options', b'DENY'), (b'X-Content-Type-Options', b'nosniff'), (b'Referrer-Policy', b'same-origin'), (b'Cross-Origin-Opener-Policy', b'same-origin'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Methods', b'GET, POST, PATCH, DELETE, OPTIONS'), (b'Access-Control-Allow-Headers', b'Authorization, Content-Type'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains; preload'), (b'X-Request-Id', b'f03e04e0871b49af27165692d0eb3e3c'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Robots-Tag', b'noindex'), (b'X-Frame-Options', b'DENY')])
+2025-12-10 15:29:52 - httpx - INFO - HTTP Request: GET https://iq919.us1.dbt.com/api/v3/accounts/86165/connections/?limit=100&offset=0 "HTTP/1.1 200 OK"
+2025-12-10 15:29:52 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2025-12-10 15:29:52 - httpcore.http11 - DEBUG - receive_response_body.complete
+2025-12-10 15:29:52 - httpcore.http11 - DEBUG - response_closed.started
+2025-12-10 15:29:52 - httpcore.http11 - DEBUG - response_closed.complete
+2025-12-10 15:29:52 - importer.fetcher - INFO - Fetching repositories (v2)
+2025-12-10 15:29:52 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:52 - httpcore.http11 - DEBUG - send_request_headers.complete
+2025-12-10 15:29:52 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2025-12-10 15:29:52 - httpcore.http11 - DEBUG - send_request_body.complete
+2025-12-10 15:29:52 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:52 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Date', b'Wed, 10 Dec 2025 22:29:52 GMT'), (b'Content-Type', b'application/json'), (b'Content-Length', b'9511'), (b'Connection', b'keep-alive'), (b'Server', b'nginx'), (b'Allow', b'GET, POST, DELETE, HEAD, OPTIONS'), (b'Vary', b'Accept-Encoding, Cookie'), (b'Content-Encoding', b'gzip'), (b'X-Frame-Options', b'DENY'), (b'X-Content-Type-Options', b'nosniff'), (b'Referrer-Policy', b'same-origin'), (b'Cross-Origin-Opener-Policy', b'same-origin'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Methods', b'GET, POST, PATCH, DELETE, OPTIONS'), (b'Access-Control-Allow-Headers', b'Authorization, Content-Type'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains; preload'), (b'X-Request-Id', b'5db7d6bd2c08271dc50370d6dd40ec69'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Robots-Tag', b'noindex'), (b'X-Frame-Options', b'DENY')])
+2025-12-10 15:29:52 - httpx - INFO - HTTP Request: GET https://iq919.us1.dbt.com/api/v2/accounts/86165/repositories/?limit=100&offset=0 "HTTP/1.1 200 OK"
+2025-12-10 15:29:52 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2025-12-10 15:29:52 - httpcore.http11 - DEBUG - receive_response_body.complete
+2025-12-10 15:29:52 - httpcore.http11 - DEBUG - response_closed.started
+2025-12-10 15:29:52 - httpcore.http11 - DEBUG - response_closed.complete
+2025-12-10 15:29:52 - importer.fetcher - INFO - Fetching service tokens (v3)
+2025-12-10 15:29:52 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:52 - httpcore.http11 - DEBUG - send_request_headers.complete
+2025-12-10 15:29:52 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2025-12-10 15:29:52 - httpcore.http11 - DEBUG - send_request_body.complete
+2025-12-10 15:29:52 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:52 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Date', b'Wed, 10 Dec 2025 22:29:52 GMT'), (b'Content-Type', b'application/json'), (b'Content-Length', b'1536'), (b'Connection', b'keep-alive'), (b'Server', b'nginx'), (b'Allow', b'GET, POST, HEAD, OPTIONS'), (b'Vary', b'Accept-Encoding, Cookie'), (b'Content-Encoding', b'gzip'), (b'X-Frame-Options', b'DENY'), (b'X-Content-Type-Options', b'nosniff'), (b'Referrer-Policy', b'same-origin'), (b'Cross-Origin-Opener-Policy', b'same-origin'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Methods', b'GET, POST, PATCH, DELETE, OPTIONS'), (b'Access-Control-Allow-Headers', b'Authorization, Content-Type'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains; preload'), (b'X-Request-Id', b'e1d2282c900da1b9aa53e5ef5e3aa79d'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Robots-Tag', b'noindex'), (b'X-Frame-Options', b'DENY')])
+2025-12-10 15:29:52 - httpx - INFO - HTTP Request: GET https://iq919.us1.dbt.com/api/v3/accounts/86165/service-tokens/ "HTTP/1.1 200 OK"
+2025-12-10 15:29:52 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2025-12-10 15:29:52 - httpcore.http11 - DEBUG - receive_response_body.complete
+2025-12-10 15:29:52 - httpcore.http11 - DEBUG - response_closed.started
+2025-12-10 15:29:52 - httpcore.http11 - DEBUG - response_closed.complete
+2025-12-10 15:29:52 - importer.fetcher - INFO - Fetching groups (v3)
+2025-12-10 15:29:52 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:52 - httpcore.http11 - DEBUG - send_request_headers.complete
+2025-12-10 15:29:52 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2025-12-10 15:29:52 - httpcore.http11 - DEBUG - send_request_body.complete
+2025-12-10 15:29:52 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:52 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Date', b'Wed, 10 Dec 2025 22:29:52 GMT'), (b'Content-Type', b'application/json'), (b'Content-Length', b'920'), (b'Connection', b'keep-alive'), (b'Server', b'nginx'), (b'Allow', b'GET, POST, PATCH, DELETE, HEAD, OPTIONS'), (b'Vary', b'Accept-Encoding, Cookie'), (b'Content-Encoding', b'gzip'), (b'X-Frame-Options', b'DENY'), (b'X-Content-Type-Options', b'nosniff'), (b'Referrer-Policy', b'same-origin'), (b'Cross-Origin-Opener-Policy', b'same-origin'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Methods', b'GET, POST, PATCH, DELETE, OPTIONS'), (b'Access-Control-Allow-Headers', b'Authorization, Content-Type'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains; preload'), (b'X-Request-Id', b'15cede994ef1b16f47239afa6a782c47'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Robots-Tag', b'noindex'), (b'X-Frame-Options', b'DENY')])
+2025-12-10 15:29:52 - httpx - INFO - HTTP Request: GET https://iq919.us1.dbt.com/api/v3/accounts/86165/groups/?limit=100&offset=0 "HTTP/1.1 200 OK"
+2025-12-10 15:29:52 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2025-12-10 15:29:52 - httpcore.http11 - DEBUG - receive_response_body.complete
+2025-12-10 15:29:52 - httpcore.http11 - DEBUG - response_closed.started
+2025-12-10 15:29:52 - httpcore.http11 - DEBUG - response_closed.complete
+2025-12-10 15:29:52 - importer.fetcher - INFO - Fetching notifications (v2)
+2025-12-10 15:29:52 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:52 - httpcore.http11 - DEBUG - send_request_headers.complete
+2025-12-10 15:29:52 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2025-12-10 15:29:52 - httpcore.http11 - DEBUG - send_request_body.complete
+2025-12-10 15:29:52 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:53 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Date', b'Wed, 10 Dec 2025 22:29:53 GMT'), (b'Content-Type', b'application/json'), (b'Content-Length', b'1161'), (b'Connection', b'keep-alive'), (b'Server', b'nginx'), (b'Allow', b'GET, POST, DELETE, HEAD, OPTIONS'), (b'Vary', b'Accept-Encoding, Cookie'), (b'Content-Encoding', b'gzip'), (b'X-Frame-Options', b'DENY'), (b'X-Content-Type-Options', b'nosniff'), (b'Referrer-Policy', b'same-origin'), (b'Cross-Origin-Opener-Policy', b'same-origin'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Methods', b'GET, POST, PATCH, DELETE, OPTIONS'), (b'Access-Control-Allow-Headers', b'Authorization, Content-Type'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains; preload'), (b'X-Request-Id', b'3bb205edb54ee229806a4420062b5fba'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Robots-Tag', b'noindex'), (b'X-Frame-Options', b'DENY')])
+2025-12-10 15:29:53 - httpx - INFO - HTTP Request: GET https://iq919.us1.dbt.com/api/v2/accounts/86165/notifications/?limit=100&offset=0 "HTTP/1.1 200 OK"
+2025-12-10 15:29:53 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2025-12-10 15:29:53 - httpcore.http11 - DEBUG - receive_response_body.complete
+2025-12-10 15:29:53 - httpcore.http11 - DEBUG - response_closed.started
+2025-12-10 15:29:53 - httpcore.http11 - DEBUG - response_closed.complete
+2025-12-10 15:29:53 - importer.fetcher - INFO - Fetching webhook subscriptions (v3)
+2025-12-10 15:29:53 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:53 - httpcore.http11 - DEBUG - send_request_headers.complete
+2025-12-10 15:29:53 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2025-12-10 15:29:53 - httpcore.http11 - DEBUG - send_request_body.complete
+2025-12-10 15:29:53 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:53 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Date', b'Wed, 10 Dec 2025 22:29:53 GMT'), (b'Content-Type', b'application/json'), (b'Content-Length', b'563'), (b'Connection', b'keep-alive'), (b'Server', b'nginx'), (b'Allow', b'GET, POST, HEAD, OPTIONS'), (b'Vary', b'Accept-Encoding, Cookie'), (b'Content-Encoding', b'gzip'), (b'X-Frame-Options', b'DENY'), (b'X-Content-Type-Options', b'nosniff'), (b'Referrer-Policy', b'same-origin'), (b'Cross-Origin-Opener-Policy', b'same-origin'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Methods', b'GET, POST, PATCH, DELETE, OPTIONS'), (b'Access-Control-Allow-Headers', b'Authorization, Content-Type'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains; preload'), (b'X-Request-Id', b'98ae27923e0abeccc9fb26f3f021b578'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Robots-Tag', b'noindex'), (b'X-Frame-Options', b'DENY')])
+2025-12-10 15:29:53 - httpx - INFO - HTTP Request: GET https://iq919.us1.dbt.com/api/v3/accounts/86165/webhooks/subscriptions?limit=100&offset=0 "HTTP/1.1 200 OK"
+2025-12-10 15:29:53 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2025-12-10 15:29:53 - httpcore.http11 - DEBUG - receive_response_body.complete
+2025-12-10 15:29:53 - httpcore.http11 - DEBUG - response_closed.started
+2025-12-10 15:29:53 - httpcore.http11 - DEBUG - response_closed.complete
+2025-12-10 15:29:53 - importer.fetcher - INFO - Fetching PrivateLink endpoints (v3)
+2025-12-10 15:29:53 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:53 - httpcore.http11 - DEBUG - send_request_headers.complete
+2025-12-10 15:29:53 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2025-12-10 15:29:53 - httpcore.http11 - DEBUG - send_request_body.complete
+2025-12-10 15:29:53 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:53 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Date', b'Wed, 10 Dec 2025 22:29:53 GMT'), (b'Content-Type', b'application/json'), (b'Content-Length', b'500'), (b'Connection', b'keep-alive'), (b'Server', b'nginx'), (b'Allow', b'GET, HEAD, OPTIONS'), (b'Vary', b'Accept-Encoding, Cookie'), (b'Content-Encoding', b'gzip'), (b'X-Frame-Options', b'DENY'), (b'X-Content-Type-Options', b'nosniff'), (b'Referrer-Policy', b'same-origin'), (b'Cross-Origin-Opener-Policy', b'same-origin'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Methods', b'GET, POST, PATCH, DELETE, OPTIONS'), (b'Access-Control-Allow-Headers', b'Authorization, Content-Type'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains; preload'), (b'X-Request-Id', b'a1b9be7829e2810f1a2c87cd49b3b9d1'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Robots-Tag', b'noindex'), (b'X-Frame-Options', b'DENY')])
+2025-12-10 15:29:53 - httpx - INFO - HTTP Request: GET https://iq919.us1.dbt.com/api/v3/accounts/86165/private-link-endpoints/?limit=100&offset=0 "HTTP/1.1 200 OK"
+2025-12-10 15:29:53 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2025-12-10 15:29:53 - httpcore.http11 - DEBUG - receive_response_body.complete
+2025-12-10 15:29:53 - httpcore.http11 - DEBUG - response_closed.started
+2025-12-10 15:29:53 - httpcore.http11 - DEBUG - response_closed.complete
+2025-12-10 15:29:53 - importer.fetcher - INFO - Fetching projects (v2)
+2025-12-10 15:29:53 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:53 - httpcore.http11 - DEBUG - send_request_headers.complete
+2025-12-10 15:29:53 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2025-12-10 15:29:53 - httpcore.http11 - DEBUG - send_request_body.complete
+2025-12-10 15:29:53 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:53 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Date', b'Wed, 10 Dec 2025 22:29:53 GMT'), (b'Content-Type', b'application/json'), (b'Content-Length', b'12323'), (b'Connection', b'keep-alive'), (b'Server', b'nginx'), (b'Allow', b'GET, POST, DELETE, HEAD, OPTIONS'), (b'Vary', b'Accept-Encoding, Cookie'), (b'Content-Encoding', b'gzip'), (b'X-Frame-Options', b'DENY'), (b'X-Content-Type-Options', b'nosniff'), (b'Referrer-Policy', b'same-origin'), (b'Cross-Origin-Opener-Policy', b'same-origin'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Methods', b'GET, POST, PATCH, DELETE, OPTIONS'), (b'Access-Control-Allow-Headers', b'Authorization, Content-Type'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains; preload'), (b'X-Request-Id', b'efa94c688293193a51270395701c22ee'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Robots-Tag', b'noindex'), (b'X-Frame-Options', b'DENY')])
+2025-12-10 15:29:53 - httpx - INFO - HTTP Request: GET https://iq919.us1.dbt.com/api/v2/accounts/86165/projects/?limit=100&offset=0 "HTTP/1.1 200 OK"
+2025-12-10 15:29:53 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2025-12-10 15:29:53 - httpcore.http11 - DEBUG - receive_response_body.complete
+2025-12-10 15:29:53 - httpcore.http11 - DEBUG - response_closed.started
+2025-12-10 15:29:53 - httpcore.http11 - DEBUG - response_closed.complete
+2025-12-10 15:29:53 - importer.fetcher - INFO - Fetching environments for project 132124
+2025-12-10 15:29:53 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:53 - httpcore.http11 - DEBUG - send_request_headers.complete
+2025-12-10 15:29:53 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2025-12-10 15:29:53 - httpcore.http11 - DEBUG - send_request_body.complete
+2025-12-10 15:29:53 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:53 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Date', b'Wed, 10 Dec 2025 22:29:53 GMT'), (b'Content-Type', b'application/json'), (b'Content-Length', b'1411'), (b'Connection', b'keep-alive'), (b'Server', b'nginx'), (b'Allow', b'GET, POST, DELETE, HEAD, OPTIONS'), (b'Vary', b'Accept-Encoding, Cookie'), (b'Content-Encoding', b'gzip'), (b'X-Frame-Options', b'DENY'), (b'X-Content-Type-Options', b'nosniff'), (b'Referrer-Policy', b'same-origin'), (b'Cross-Origin-Opener-Policy', b'same-origin'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Methods', b'GET, POST, PATCH, DELETE, OPTIONS'), (b'Access-Control-Allow-Headers', b'Authorization, Content-Type'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains; preload'), (b'X-Request-Id', b'6b648ec7fd2b641eb5797d6e08b53c57'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Robots-Tag', b'noindex'), (b'X-Frame-Options', b'DENY')])
+2025-12-10 15:29:53 - httpx - INFO - HTTP Request: GET https://iq919.us1.dbt.com/api/v2/accounts/86165/environments/?project_id=132124&limit=100&offset=0 "HTTP/1.1 200 OK"
+2025-12-10 15:29:53 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2025-12-10 15:29:53 - httpcore.http11 - DEBUG - receive_response_body.complete
+2025-12-10 15:29:53 - httpcore.http11 - DEBUG - response_closed.started
+2025-12-10 15:29:53 - httpcore.http11 - DEBUG - response_closed.complete
+2025-12-10 15:29:53 - importer.fetcher - INFO - Fetching jobs for project 132124
+2025-12-10 15:29:53 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:53 - httpcore.http11 - DEBUG - send_request_headers.complete
+2025-12-10 15:29:53 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2025-12-10 15:29:53 - httpcore.http11 - DEBUG - send_request_body.complete
+2025-12-10 15:29:53 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:54 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Date', b'Wed, 10 Dec 2025 22:29:54 GMT'), (b'Content-Type', b'application/json'), (b'Content-Length', b'257'), (b'Connection', b'keep-alive'), (b'Server', b'nginx'), (b'Allow', b'GET, POST, DELETE, HEAD, OPTIONS'), (b'Vary', b'Accept-Encoding, Cookie'), (b'Content-Encoding', b'gzip'), (b'X-Frame-Options', b'DENY'), (b'X-Content-Type-Options', b'nosniff'), (b'Referrer-Policy', b'same-origin'), (b'Cross-Origin-Opener-Policy', b'same-origin'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Methods', b'GET, POST, PATCH, DELETE, OPTIONS'), (b'Access-Control-Allow-Headers', b'Authorization, Content-Type'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains; preload'), (b'X-Request-Id', b'82fe25b1967f15fb9b8a0d584f6bb790'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Robots-Tag', b'noindex'), (b'X-Frame-Options', b'DENY')])
+2025-12-10 15:29:54 - httpx - INFO - HTTP Request: GET https://iq919.us1.dbt.com/api/v2/accounts/86165/jobs/?project_id=132124&order_by=id&limit=100&offset=0 "HTTP/1.1 200 OK"
+2025-12-10 15:29:54 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2025-12-10 15:29:54 - httpcore.http11 - DEBUG - receive_response_body.complete
+2025-12-10 15:29:54 - httpcore.http11 - DEBUG - response_closed.started
+2025-12-10 15:29:54 - httpcore.http11 - DEBUG - response_closed.complete
+2025-12-10 15:29:54 - importer.fetcher - INFO - Fetching environment variables for project 132124 (v3)
+2025-12-10 15:29:54 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:54 - httpcore.http11 - DEBUG - send_request_headers.complete
+2025-12-10 15:29:54 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2025-12-10 15:29:54 - httpcore.http11 - DEBUG - send_request_body.complete
+2025-12-10 15:29:54 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:54 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Date', b'Wed, 10 Dec 2025 22:29:54 GMT'), (b'Content-Type', b'application/json'), (b'Content-Length', b'178'), (b'Connection', b'keep-alive'), (b'Server', b'nginx'), (b'Allow', b'GET, POST, PATCH, DELETE, HEAD, OPTIONS'), (b'X-Frame-Options', b'DENY'), (b'Vary', b'Cookie'), (b'X-Content-Type-Options', b'nosniff'), (b'Referrer-Policy', b'same-origin'), (b'Cross-Origin-Opener-Policy', b'same-origin'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Methods', b'GET, POST, PATCH, DELETE, OPTIONS'), (b'Access-Control-Allow-Headers', b'Authorization, Content-Type'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains; preload'), (b'X-Request-Id', b'bccee9fe78b57cf57c90e5e054faccda'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Robots-Tag', b'noindex'), (b'X-Frame-Options', b'DENY')])
+2025-12-10 15:29:54 - httpx - INFO - HTTP Request: GET https://iq919.us1.dbt.com/api/v3/accounts/86165/projects/132124/environment-variables/environment/ "HTTP/1.1 200 OK"
+2025-12-10 15:29:54 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2025-12-10 15:29:54 - httpcore.http11 - DEBUG - receive_response_body.complete
+2025-12-10 15:29:54 - httpcore.http11 - DEBUG - response_closed.started
+2025-12-10 15:29:54 - httpcore.http11 - DEBUG - response_closed.complete
+2025-12-10 15:29:54 - importer.fetcher - INFO - Fetching environments for project 133611
+2025-12-10 15:29:54 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:54 - httpcore.http11 - DEBUG - send_request_headers.complete
+2025-12-10 15:29:54 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2025-12-10 15:29:54 - httpcore.http11 - DEBUG - send_request_body.complete
+2025-12-10 15:29:54 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:54 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Date', b'Wed, 10 Dec 2025 22:29:54 GMT'), (b'Content-Type', b'application/json'), (b'Content-Length', b'1573'), (b'Connection', b'keep-alive'), (b'Server', b'nginx'), (b'Allow', b'GET, POST, DELETE, HEAD, OPTIONS'), (b'Vary', b'Accept-Encoding, Cookie'), (b'Content-Encoding', b'gzip'), (b'X-Frame-Options', b'DENY'), (b'X-Content-Type-Options', b'nosniff'), (b'Referrer-Policy', b'same-origin'), (b'Cross-Origin-Opener-Policy', b'same-origin'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Methods', b'GET, POST, PATCH, DELETE, OPTIONS'), (b'Access-Control-Allow-Headers', b'Authorization, Content-Type'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains; preload'), (b'X-Request-Id', b'089b621cb47305dc5f32b3cec39f55a0'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Robots-Tag', b'noindex'), (b'X-Frame-Options', b'DENY')])
+2025-12-10 15:29:54 - httpx - INFO - HTTP Request: GET https://iq919.us1.dbt.com/api/v2/accounts/86165/environments/?project_id=133611&limit=100&offset=0 "HTTP/1.1 200 OK"
+2025-12-10 15:29:54 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2025-12-10 15:29:54 - httpcore.http11 - DEBUG - receive_response_body.complete
+2025-12-10 15:29:54 - httpcore.http11 - DEBUG - response_closed.started
+2025-12-10 15:29:54 - httpcore.http11 - DEBUG - response_closed.complete
+2025-12-10 15:29:54 - importer.fetcher - INFO - Fetching jobs for project 133611
+2025-12-10 15:29:54 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:54 - httpcore.http11 - DEBUG - send_request_headers.complete
+2025-12-10 15:29:54 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2025-12-10 15:29:54 - httpcore.http11 - DEBUG - send_request_body.complete
+2025-12-10 15:29:54 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:54 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Date', b'Wed, 10 Dec 2025 22:29:54 GMT'), (b'Content-Type', b'application/json'), (b'Content-Length', b'859'), (b'Connection', b'keep-alive'), (b'Server', b'nginx'), (b'Allow', b'GET, POST, DELETE, HEAD, OPTIONS'), (b'Vary', b'Accept-Encoding, Cookie'), (b'Content-Encoding', b'gzip'), (b'X-Frame-Options', b'DENY'), (b'X-Content-Type-Options', b'nosniff'), (b'Referrer-Policy', b'same-origin'), (b'Cross-Origin-Opener-Policy', b'same-origin'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Methods', b'GET, POST, PATCH, DELETE, OPTIONS'), (b'Access-Control-Allow-Headers', b'Authorization, Content-Type'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains; preload'), (b'X-Request-Id', b'088f1a8c1d0aad8a5f8e27cb1d9a045e'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Robots-Tag', b'noindex'), (b'X-Frame-Options', b'DENY')])
+2025-12-10 15:29:54 - httpx - INFO - HTTP Request: GET https://iq919.us1.dbt.com/api/v2/accounts/86165/jobs/?project_id=133611&order_by=id&limit=100&offset=0 "HTTP/1.1 200 OK"
+2025-12-10 15:29:54 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2025-12-10 15:29:54 - httpcore.http11 - DEBUG - receive_response_body.complete
+2025-12-10 15:29:54 - httpcore.http11 - DEBUG - response_closed.started
+2025-12-10 15:29:54 - httpcore.http11 - DEBUG - response_closed.complete
+2025-12-10 15:29:54 - importer.fetcher - INFO - Fetching environment variables for project 133611 (v3)
+2025-12-10 15:29:54 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:54 - httpcore.http11 - DEBUG - send_request_headers.complete
+2025-12-10 15:29:54 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2025-12-10 15:29:54 - httpcore.http11 - DEBUG - send_request_body.complete
+2025-12-10 15:29:54 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:54 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Date', b'Wed, 10 Dec 2025 22:29:54 GMT'), (b'Content-Type', b'application/json'), (b'Content-Length', b'205'), (b'Connection', b'keep-alive'), (b'Server', b'nginx'), (b'Allow', b'GET, POST, PATCH, DELETE, HEAD, OPTIONS'), (b'Vary', b'Accept-Encoding, Cookie'), (b'X-Frame-Options', b'DENY'), (b'X-Content-Type-Options', b'nosniff'), (b'Referrer-Policy', b'same-origin'), (b'Cross-Origin-Opener-Policy', b'same-origin'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Methods', b'GET, POST, PATCH, DELETE, OPTIONS'), (b'Access-Control-Allow-Headers', b'Authorization, Content-Type'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains; preload'), (b'X-Request-Id', b'8cd9fea4be223c53cb8708bccc41c7d5'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Robots-Tag', b'noindex'), (b'X-Frame-Options', b'DENY')])
+2025-12-10 15:29:54 - httpx - INFO - HTTP Request: GET https://iq919.us1.dbt.com/api/v3/accounts/86165/projects/133611/environment-variables/environment/ "HTTP/1.1 200 OK"
+2025-12-10 15:29:54 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2025-12-10 15:29:54 - httpcore.http11 - DEBUG - receive_response_body.complete
+2025-12-10 15:29:54 - httpcore.http11 - DEBUG - response_closed.started
+2025-12-10 15:29:54 - httpcore.http11 - DEBUG - response_closed.complete
+2025-12-10 15:29:54 - importer.fetcher - INFO - Fetching environments for project 195750
+2025-12-10 15:29:54 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:54 - httpcore.http11 - DEBUG - send_request_headers.complete
+2025-12-10 15:29:54 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2025-12-10 15:29:54 - httpcore.http11 - DEBUG - send_request_body.complete
+2025-12-10 15:29:54 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:54 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Date', b'Wed, 10 Dec 2025 22:29:54 GMT'), (b'Content-Type', b'application/json'), (b'Content-Length', b'1570'), (b'Connection', b'keep-alive'), (b'Server', b'nginx'), (b'Allow', b'GET, POST, DELETE, HEAD, OPTIONS'), (b'Vary', b'Accept-Encoding, Cookie'), (b'Content-Encoding', b'gzip'), (b'X-Frame-Options', b'DENY'), (b'X-Content-Type-Options', b'nosniff'), (b'Referrer-Policy', b'same-origin'), (b'Cross-Origin-Opener-Policy', b'same-origin'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Methods', b'GET, POST, PATCH, DELETE, OPTIONS'), (b'Access-Control-Allow-Headers', b'Authorization, Content-Type'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains; preload'), (b'X-Request-Id', b'283bc719e746a13457fd99b333fa207e'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Robots-Tag', b'noindex'), (b'X-Frame-Options', b'DENY')])
+2025-12-10 15:29:54 - httpx - INFO - HTTP Request: GET https://iq919.us1.dbt.com/api/v2/accounts/86165/environments/?project_id=195750&limit=100&offset=0 "HTTP/1.1 200 OK"
+2025-12-10 15:29:54 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2025-12-10 15:29:54 - httpcore.http11 - DEBUG - receive_response_body.complete
+2025-12-10 15:29:54 - httpcore.http11 - DEBUG - response_closed.started
+2025-12-10 15:29:54 - httpcore.http11 - DEBUG - response_closed.complete
+2025-12-10 15:29:54 - importer.fetcher - INFO - Fetching jobs for project 195750
+2025-12-10 15:29:54 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:54 - httpcore.http11 - DEBUG - send_request_headers.complete
+2025-12-10 15:29:54 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2025-12-10 15:29:54 - httpcore.http11 - DEBUG - send_request_body.complete
+2025-12-10 15:29:54 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:55 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Date', b'Wed, 10 Dec 2025 22:29:55 GMT'), (b'Content-Type', b'application/json'), (b'Content-Length', b'244'), (b'Connection', b'keep-alive'), (b'Server', b'nginx'), (b'Allow', b'GET, POST, DELETE, HEAD, OPTIONS'), (b'Vary', b'Accept-Encoding, Cookie'), (b'Content-Encoding', b'gzip'), (b'X-Frame-Options', b'DENY'), (b'X-Content-Type-Options', b'nosniff'), (b'Referrer-Policy', b'same-origin'), (b'Cross-Origin-Opener-Policy', b'same-origin'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Methods', b'GET, POST, PATCH, DELETE, OPTIONS'), (b'Access-Control-Allow-Headers', b'Authorization, Content-Type'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains; preload'), (b'X-Request-Id', b'58a506ec76011f99d0034ec3c75a0c4e'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Robots-Tag', b'noindex'), (b'X-Frame-Options', b'DENY')])
+2025-12-10 15:29:55 - httpx - INFO - HTTP Request: GET https://iq919.us1.dbt.com/api/v2/accounts/86165/jobs/?project_id=195750&order_by=id&limit=100&offset=0 "HTTP/1.1 200 OK"
+2025-12-10 15:29:55 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2025-12-10 15:29:55 - httpcore.http11 - DEBUG - receive_response_body.complete
+2025-12-10 15:29:55 - httpcore.http11 - DEBUG - response_closed.started
+2025-12-10 15:29:55 - httpcore.http11 - DEBUG - response_closed.complete
+2025-12-10 15:29:55 - importer.fetcher - INFO - Fetching environment variables for project 195750 (v3)
+2025-12-10 15:29:55 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:55 - httpcore.http11 - DEBUG - send_request_headers.complete
+2025-12-10 15:29:55 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2025-12-10 15:29:55 - httpcore.http11 - DEBUG - send_request_body.complete
+2025-12-10 15:29:55 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:55 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Date', b'Wed, 10 Dec 2025 22:29:55 GMT'), (b'Content-Type', b'application/json'), (b'Content-Length', b'174'), (b'Connection', b'keep-alive'), (b'Server', b'nginx'), (b'Allow', b'GET, POST, PATCH, DELETE, HEAD, OPTIONS'), (b'X-Frame-Options', b'DENY'), (b'Vary', b'Cookie'), (b'X-Content-Type-Options', b'nosniff'), (b'Referrer-Policy', b'same-origin'), (b'Cross-Origin-Opener-Policy', b'same-origin'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Methods', b'GET, POST, PATCH, DELETE, OPTIONS'), (b'Access-Control-Allow-Headers', b'Authorization, Content-Type'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains; preload'), (b'X-Request-Id', b'5026995a4debd7f95d98444a1dec9d9b'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Robots-Tag', b'noindex'), (b'X-Frame-Options', b'DENY')])
+2025-12-10 15:29:55 - httpx - INFO - HTTP Request: GET https://iq919.us1.dbt.com/api/v3/accounts/86165/projects/195750/environment-variables/environment/ "HTTP/1.1 200 OK"
+2025-12-10 15:29:55 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2025-12-10 15:29:55 - httpcore.http11 - DEBUG - receive_response_body.complete
+2025-12-10 15:29:55 - httpcore.http11 - DEBUG - response_closed.started
+2025-12-10 15:29:55 - httpcore.http11 - DEBUG - response_closed.complete
+2025-12-10 15:29:55 - importer.fetcher - INFO - Fetching environments for project 306117
+2025-12-10 15:29:55 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:55 - httpcore.http11 - DEBUG - send_request_headers.complete
+2025-12-10 15:29:55 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2025-12-10 15:29:55 - httpcore.http11 - DEBUG - send_request_body.complete
+2025-12-10 15:29:55 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:55 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Date', b'Wed, 10 Dec 2025 22:29:55 GMT'), (b'Content-Type', b'application/json'), (b'Content-Length', b'1615'), (b'Connection', b'keep-alive'), (b'Server', b'nginx'), (b'Allow', b'GET, POST, DELETE, HEAD, OPTIONS'), (b'Vary', b'Accept-Encoding, Cookie'), (b'Content-Encoding', b'gzip'), (b'X-Frame-Options', b'DENY'), (b'X-Content-Type-Options', b'nosniff'), (b'Referrer-Policy', b'same-origin'), (b'Cross-Origin-Opener-Policy', b'same-origin'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Methods', b'GET, POST, PATCH, DELETE, OPTIONS'), (b'Access-Control-Allow-Headers', b'Authorization, Content-Type'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains; preload'), (b'X-Request-Id', b'b7d26ef41d80fb399e301407931a45f1'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Robots-Tag', b'noindex'), (b'X-Frame-Options', b'DENY')])
+2025-12-10 15:29:55 - httpx - INFO - HTTP Request: GET https://iq919.us1.dbt.com/api/v2/accounts/86165/environments/?project_id=306117&limit=100&offset=0 "HTTP/1.1 200 OK"
+2025-12-10 15:29:55 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2025-12-10 15:29:55 - httpcore.http11 - DEBUG - receive_response_body.complete
+2025-12-10 15:29:55 - httpcore.http11 - DEBUG - response_closed.started
+2025-12-10 15:29:55 - httpcore.http11 - DEBUG - response_closed.complete
+2025-12-10 15:29:55 - importer.fetcher - INFO - Fetching jobs for project 306117
+2025-12-10 15:29:55 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:55 - httpcore.http11 - DEBUG - send_request_headers.complete
+2025-12-10 15:29:55 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2025-12-10 15:29:55 - httpcore.http11 - DEBUG - send_request_body.complete
+2025-12-10 15:29:55 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:55 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Date', b'Wed, 10 Dec 2025 22:29:55 GMT'), (b'Content-Type', b'application/json'), (b'Content-Length', b'900'), (b'Connection', b'keep-alive'), (b'Server', b'nginx'), (b'Allow', b'GET, POST, DELETE, HEAD, OPTIONS'), (b'Vary', b'Accept-Encoding, Cookie'), (b'Content-Encoding', b'gzip'), (b'X-Frame-Options', b'DENY'), (b'X-Content-Type-Options', b'nosniff'), (b'Referrer-Policy', b'same-origin'), (b'Cross-Origin-Opener-Policy', b'same-origin'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Methods', b'GET, POST, PATCH, DELETE, OPTIONS'), (b'Access-Control-Allow-Headers', b'Authorization, Content-Type'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains; preload'), (b'X-Request-Id', b'2ab3cd3f2e76d40ce04f66e8a71aee02'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Robots-Tag', b'noindex'), (b'X-Frame-Options', b'DENY')])
+2025-12-10 15:29:55 - httpx - INFO - HTTP Request: GET https://iq919.us1.dbt.com/api/v2/accounts/86165/jobs/?project_id=306117&order_by=id&limit=100&offset=0 "HTTP/1.1 200 OK"
+2025-12-10 15:29:55 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2025-12-10 15:29:55 - httpcore.http11 - DEBUG - receive_response_body.complete
+2025-12-10 15:29:55 - httpcore.http11 - DEBUG - response_closed.started
+2025-12-10 15:29:55 - httpcore.http11 - DEBUG - response_closed.complete
+2025-12-10 15:29:55 - importer.fetcher - INFO - Fetching environment variables for project 306117 (v3)
+2025-12-10 15:29:55 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:55 - httpcore.http11 - DEBUG - send_request_headers.complete
+2025-12-10 15:29:55 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2025-12-10 15:29:55 - httpcore.http11 - DEBUG - send_request_body.complete
+2025-12-10 15:29:55 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:55 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Date', b'Wed, 10 Dec 2025 22:29:55 GMT'), (b'Content-Type', b'application/json'), (b'Content-Length', b'183'), (b'Connection', b'keep-alive'), (b'Server', b'nginx'), (b'Allow', b'GET, POST, PATCH, DELETE, HEAD, OPTIONS'), (b'X-Frame-Options', b'DENY'), (b'Vary', b'Cookie'), (b'X-Content-Type-Options', b'nosniff'), (b'Referrer-Policy', b'same-origin'), (b'Cross-Origin-Opener-Policy', b'same-origin'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Methods', b'GET, POST, PATCH, DELETE, OPTIONS'), (b'Access-Control-Allow-Headers', b'Authorization, Content-Type'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains; preload'), (b'X-Request-Id', b'd14819063acaf509378545574609a23c'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Robots-Tag', b'noindex'), (b'X-Frame-Options', b'DENY')])
+2025-12-10 15:29:55 - httpx - INFO - HTTP Request: GET https://iq919.us1.dbt.com/api/v3/accounts/86165/projects/306117/environment-variables/environment/ "HTTP/1.1 200 OK"
+2025-12-10 15:29:55 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2025-12-10 15:29:55 - httpcore.http11 - DEBUG - receive_response_body.complete
+2025-12-10 15:29:55 - httpcore.http11 - DEBUG - response_closed.started
+2025-12-10 15:29:55 - httpcore.http11 - DEBUG - response_closed.complete
+2025-12-10 15:29:55 - importer.fetcher - INFO - Fetching environments for project 306274
+2025-12-10 15:29:55 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:55 - httpcore.http11 - DEBUG - send_request_headers.complete
+2025-12-10 15:29:55 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2025-12-10 15:29:55 - httpcore.http11 - DEBUG - send_request_body.complete
+2025-12-10 15:29:55 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:55 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Date', b'Wed, 10 Dec 2025 22:29:55 GMT'), (b'Content-Type', b'application/json'), (b'Content-Length', b'1677'), (b'Connection', b'keep-alive'), (b'Server', b'nginx'), (b'Allow', b'GET, POST, DELETE, HEAD, OPTIONS'), (b'Vary', b'Accept-Encoding, Cookie'), (b'Content-Encoding', b'gzip'), (b'X-Frame-Options', b'DENY'), (b'X-Content-Type-Options', b'nosniff'), (b'Referrer-Policy', b'same-origin'), (b'Cross-Origin-Opener-Policy', b'same-origin'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Methods', b'GET, POST, PATCH, DELETE, OPTIONS'), (b'Access-Control-Allow-Headers', b'Authorization, Content-Type'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains; preload'), (b'X-Request-Id', b'5c1efdfffcfaf2d41b129ae493765c13'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Robots-Tag', b'noindex'), (b'X-Frame-Options', b'DENY')])
+2025-12-10 15:29:55 - httpx - INFO - HTTP Request: GET https://iq919.us1.dbt.com/api/v2/accounts/86165/environments/?project_id=306274&limit=100&offset=0 "HTTP/1.1 200 OK"
+2025-12-10 15:29:55 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2025-12-10 15:29:55 - httpcore.http11 - DEBUG - receive_response_body.complete
+2025-12-10 15:29:55 - httpcore.http11 - DEBUG - response_closed.started
+2025-12-10 15:29:55 - httpcore.http11 - DEBUG - response_closed.complete
+2025-12-10 15:29:55 - importer.fetcher - INFO - Fetching jobs for project 306274
+2025-12-10 15:29:55 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:55 - httpcore.http11 - DEBUG - send_request_headers.complete
+2025-12-10 15:29:55 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2025-12-10 15:29:55 - httpcore.http11 - DEBUG - send_request_body.complete
+2025-12-10 15:29:55 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:56 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Date', b'Wed, 10 Dec 2025 22:29:56 GMT'), (b'Content-Type', b'application/json'), (b'Content-Length', b'858'), (b'Connection', b'keep-alive'), (b'Server', b'nginx'), (b'Allow', b'GET, POST, DELETE, HEAD, OPTIONS'), (b'Vary', b'Accept-Encoding, Cookie'), (b'Content-Encoding', b'gzip'), (b'X-Frame-Options', b'DENY'), (b'X-Content-Type-Options', b'nosniff'), (b'Referrer-Policy', b'same-origin'), (b'Cross-Origin-Opener-Policy', b'same-origin'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Methods', b'GET, POST, PATCH, DELETE, OPTIONS'), (b'Access-Control-Allow-Headers', b'Authorization, Content-Type'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains; preload'), (b'X-Request-Id', b'9110b80b27f4882020add338e2d26fd1'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Robots-Tag', b'noindex'), (b'X-Frame-Options', b'DENY')])
+2025-12-10 15:29:56 - httpx - INFO - HTTP Request: GET https://iq919.us1.dbt.com/api/v2/accounts/86165/jobs/?project_id=306274&order_by=id&limit=100&offset=0 "HTTP/1.1 200 OK"
+2025-12-10 15:29:56 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2025-12-10 15:29:56 - httpcore.http11 - DEBUG - receive_response_body.complete
+2025-12-10 15:29:56 - httpcore.http11 - DEBUG - response_closed.started
+2025-12-10 15:29:56 - httpcore.http11 - DEBUG - response_closed.complete
+2025-12-10 15:29:56 - importer.fetcher - INFO - Fetching environment variables for project 306274 (v3)
+2025-12-10 15:29:56 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:56 - httpcore.http11 - DEBUG - send_request_headers.complete
+2025-12-10 15:29:56 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2025-12-10 15:29:56 - httpcore.http11 - DEBUG - send_request_body.complete
+2025-12-10 15:29:56 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:56 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Date', b'Wed, 10 Dec 2025 22:29:56 GMT'), (b'Content-Type', b'application/json'), (b'Content-Length', b'295'), (b'Connection', b'keep-alive'), (b'Server', b'nginx'), (b'Allow', b'GET, POST, PATCH, DELETE, HEAD, OPTIONS'), (b'Vary', b'Accept-Encoding, Cookie'), (b'Content-Encoding', b'gzip'), (b'X-Frame-Options', b'DENY'), (b'X-Content-Type-Options', b'nosniff'), (b'Referrer-Policy', b'same-origin'), (b'Cross-Origin-Opener-Policy', b'same-origin'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Methods', b'GET, POST, PATCH, DELETE, OPTIONS'), (b'Access-Control-Allow-Headers', b'Authorization, Content-Type'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains; preload'), (b'X-Request-Id', b'38c361d560a8c2caced38a673a98ee2f'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Robots-Tag', b'noindex'), (b'X-Frame-Options', b'DENY')])
+2025-12-10 15:29:56 - httpx - INFO - HTTP Request: GET https://iq919.us1.dbt.com/api/v3/accounts/86165/projects/306274/environment-variables/environment/ "HTTP/1.1 200 OK"
+2025-12-10 15:29:56 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2025-12-10 15:29:56 - httpcore.http11 - DEBUG - receive_response_body.complete
+2025-12-10 15:29:56 - httpcore.http11 - DEBUG - response_closed.started
+2025-12-10 15:29:56 - httpcore.http11 - DEBUG - response_closed.complete
+2025-12-10 15:29:56 - importer.fetcher - INFO - Fetching environments for project 346697
+2025-12-10 15:29:56 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:56 - httpcore.http11 - DEBUG - send_request_headers.complete
+2025-12-10 15:29:56 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2025-12-10 15:29:56 - httpcore.http11 - DEBUG - send_request_body.complete
+2025-12-10 15:29:56 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:56 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Date', b'Wed, 10 Dec 2025 22:29:56 GMT'), (b'Content-Type', b'application/json'), (b'Content-Length', b'2467'), (b'Connection', b'keep-alive'), (b'Server', b'nginx'), (b'Allow', b'GET, POST, DELETE, HEAD, OPTIONS'), (b'Vary', b'Accept-Encoding, Cookie'), (b'Content-Encoding', b'gzip'), (b'X-Frame-Options', b'DENY'), (b'X-Content-Type-Options', b'nosniff'), (b'Referrer-Policy', b'same-origin'), (b'Cross-Origin-Opener-Policy', b'same-origin'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Methods', b'GET, POST, PATCH, DELETE, OPTIONS'), (b'Access-Control-Allow-Headers', b'Authorization, Content-Type'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains; preload'), (b'X-Request-Id', b'10972eda70c4caa8fef20d0a6d1c9370'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Robots-Tag', b'noindex'), (b'X-Frame-Options', b'DENY')])
+2025-12-10 15:29:56 - httpx - INFO - HTTP Request: GET https://iq919.us1.dbt.com/api/v2/accounts/86165/environments/?project_id=346697&limit=100&offset=0 "HTTP/1.1 200 OK"
+2025-12-10 15:29:56 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2025-12-10 15:29:56 - httpcore.http11 - DEBUG - receive_response_body.complete
+2025-12-10 15:29:56 - httpcore.http11 - DEBUG - response_closed.started
+2025-12-10 15:29:56 - httpcore.http11 - DEBUG - response_closed.complete
+2025-12-10 15:29:56 - importer.fetcher - INFO - Fetching jobs for project 346697
+2025-12-10 15:29:56 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:56 - httpcore.http11 - DEBUG - send_request_headers.complete
+2025-12-10 15:29:56 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2025-12-10 15:29:56 - httpcore.http11 - DEBUG - send_request_body.complete
+2025-12-10 15:29:56 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:56 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Date', b'Wed, 10 Dec 2025 22:29:56 GMT'), (b'Content-Type', b'application/json'), (b'Content-Length', b'2629'), (b'Connection', b'keep-alive'), (b'Server', b'nginx'), (b'Allow', b'GET, POST, DELETE, HEAD, OPTIONS'), (b'Vary', b'Accept-Encoding, Cookie'), (b'Content-Encoding', b'gzip'), (b'X-Frame-Options', b'DENY'), (b'X-Content-Type-Options', b'nosniff'), (b'Referrer-Policy', b'same-origin'), (b'Cross-Origin-Opener-Policy', b'same-origin'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Methods', b'GET, POST, PATCH, DELETE, OPTIONS'), (b'Access-Control-Allow-Headers', b'Authorization, Content-Type'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains; preload'), (b'X-Request-Id', b'12cc4fa8c090d2606d65a2d5eaf7c56b'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Robots-Tag', b'noindex'), (b'X-Frame-Options', b'DENY')])
+2025-12-10 15:29:56 - httpx - INFO - HTTP Request: GET https://iq919.us1.dbt.com/api/v2/accounts/86165/jobs/?project_id=346697&order_by=id&limit=100&offset=0 "HTTP/1.1 200 OK"
+2025-12-10 15:29:56 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2025-12-10 15:29:56 - httpcore.http11 - DEBUG - receive_response_body.complete
+2025-12-10 15:29:56 - httpcore.http11 - DEBUG - response_closed.started
+2025-12-10 15:29:56 - httpcore.http11 - DEBUG - response_closed.complete
+2025-12-10 15:29:56 - importer.fetcher - INFO - Fetching environment variables for project 346697 (v3)
+2025-12-10 15:29:56 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:56 - httpcore.http11 - DEBUG - send_request_headers.complete
+2025-12-10 15:29:56 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2025-12-10 15:29:56 - httpcore.http11 - DEBUG - send_request_body.complete
+2025-12-10 15:29:56 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:57 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Date', b'Wed, 10 Dec 2025 22:29:57 GMT'), (b'Content-Type', b'application/json'), (b'Content-Length', b'579'), (b'Connection', b'keep-alive'), (b'Server', b'nginx'), (b'Allow', b'GET, POST, PATCH, DELETE, HEAD, OPTIONS'), (b'Vary', b'Accept-Encoding, Cookie'), (b'Content-Encoding', b'gzip'), (b'X-Frame-Options', b'DENY'), (b'X-Content-Type-Options', b'nosniff'), (b'Referrer-Policy', b'same-origin'), (b'Cross-Origin-Opener-Policy', b'same-origin'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Methods', b'GET, POST, PATCH, DELETE, OPTIONS'), (b'Access-Control-Allow-Headers', b'Authorization, Content-Type'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains; preload'), (b'X-Request-Id', b'1073c71e09d58a0ef057f5542db5d51f'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Robots-Tag', b'noindex'), (b'X-Frame-Options', b'DENY')])
+2025-12-10 15:29:57 - httpx - INFO - HTTP Request: GET https://iq919.us1.dbt.com/api/v3/accounts/86165/projects/346697/environment-variables/environment/ "HTTP/1.1 200 OK"
+2025-12-10 15:29:57 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2025-12-10 15:29:57 - httpcore.http11 - DEBUG - receive_response_body.complete
+2025-12-10 15:29:57 - httpcore.http11 - DEBUG - response_closed.started
+2025-12-10 15:29:57 - httpcore.http11 - DEBUG - response_closed.complete
+2025-12-10 15:29:57 - importer.fetcher - INFO - Fetching environments for project 354356
+2025-12-10 15:29:57 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:57 - httpcore.http11 - DEBUG - send_request_headers.complete
+2025-12-10 15:29:57 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2025-12-10 15:29:57 - httpcore.http11 - DEBUG - send_request_body.complete
+2025-12-10 15:29:57 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:57 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Date', b'Wed, 10 Dec 2025 22:29:57 GMT'), (b'Content-Type', b'application/json'), (b'Content-Length', b'1542'), (b'Connection', b'keep-alive'), (b'Server', b'nginx'), (b'Allow', b'GET, POST, DELETE, HEAD, OPTIONS'), (b'Vary', b'Accept-Encoding, Cookie'), (b'Content-Encoding', b'gzip'), (b'X-Frame-Options', b'DENY'), (b'X-Content-Type-Options', b'nosniff'), (b'Referrer-Policy', b'same-origin'), (b'Cross-Origin-Opener-Policy', b'same-origin'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Methods', b'GET, POST, PATCH, DELETE, OPTIONS'), (b'Access-Control-Allow-Headers', b'Authorization, Content-Type'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains; preload'), (b'X-Request-Id', b'6dfc1d7e2edfa6d1681bd77cd1d2805c'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Robots-Tag', b'noindex'), (b'X-Frame-Options', b'DENY')])
+2025-12-10 15:29:57 - httpx - INFO - HTTP Request: GET https://iq919.us1.dbt.com/api/v2/accounts/86165/environments/?project_id=354356&limit=100&offset=0 "HTTP/1.1 200 OK"
+2025-12-10 15:29:57 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2025-12-10 15:29:57 - httpcore.http11 - DEBUG - receive_response_body.complete
+2025-12-10 15:29:57 - httpcore.http11 - DEBUG - response_closed.started
+2025-12-10 15:29:57 - httpcore.http11 - DEBUG - response_closed.complete
+2025-12-10 15:29:57 - importer.fetcher - INFO - Fetching jobs for project 354356
+2025-12-10 15:29:57 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:57 - httpcore.http11 - DEBUG - send_request_headers.complete
+2025-12-10 15:29:57 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2025-12-10 15:29:57 - httpcore.http11 - DEBUG - send_request_body.complete
+2025-12-10 15:29:57 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:57 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Date', b'Wed, 10 Dec 2025 22:29:57 GMT'), (b'Content-Type', b'application/json'), (b'Content-Length', b'266'), (b'Connection', b'keep-alive'), (b'Server', b'nginx'), (b'Allow', b'GET, POST, DELETE, HEAD, OPTIONS'), (b'Vary', b'Accept-Encoding, Cookie'), (b'Content-Encoding', b'gzip'), (b'X-Frame-Options', b'DENY'), (b'X-Content-Type-Options', b'nosniff'), (b'Referrer-Policy', b'same-origin'), (b'Cross-Origin-Opener-Policy', b'same-origin'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Methods', b'GET, POST, PATCH, DELETE, OPTIONS'), (b'Access-Control-Allow-Headers', b'Authorization, Content-Type'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains; preload'), (b'X-Request-Id', b'ef52992acb608c337a8ec4c55478ff07'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Robots-Tag', b'noindex'), (b'X-Frame-Options', b'DENY')])
+2025-12-10 15:29:57 - httpx - INFO - HTTP Request: GET https://iq919.us1.dbt.com/api/v2/accounts/86165/jobs/?project_id=354356&order_by=id&limit=100&offset=0 "HTTP/1.1 200 OK"
+2025-12-10 15:29:57 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2025-12-10 15:29:57 - httpcore.http11 - DEBUG - receive_response_body.complete
+2025-12-10 15:29:57 - httpcore.http11 - DEBUG - response_closed.started
+2025-12-10 15:29:57 - httpcore.http11 - DEBUG - response_closed.complete
+2025-12-10 15:29:57 - importer.fetcher - INFO - Fetching environment variables for project 354356 (v3)
+2025-12-10 15:29:57 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:57 - httpcore.http11 - DEBUG - send_request_headers.complete
+2025-12-10 15:29:57 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2025-12-10 15:29:57 - httpcore.http11 - DEBUG - send_request_body.complete
+2025-12-10 15:29:57 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:57 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Date', b'Wed, 10 Dec 2025 22:29:57 GMT'), (b'Content-Type', b'application/json'), (b'Content-Length', b'174'), (b'Connection', b'keep-alive'), (b'Server', b'nginx'), (b'Allow', b'GET, POST, PATCH, DELETE, HEAD, OPTIONS'), (b'X-Frame-Options', b'DENY'), (b'Vary', b'Cookie'), (b'X-Content-Type-Options', b'nosniff'), (b'Referrer-Policy', b'same-origin'), (b'Cross-Origin-Opener-Policy', b'same-origin'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Methods', b'GET, POST, PATCH, DELETE, OPTIONS'), (b'Access-Control-Allow-Headers', b'Authorization, Content-Type'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains; preload'), (b'X-Request-Id', b'9a2d435ad160ea05bc55e52c7fa9dcba'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Robots-Tag', b'noindex'), (b'X-Frame-Options', b'DENY')])
+2025-12-10 15:29:57 - httpx - INFO - HTTP Request: GET https://iq919.us1.dbt.com/api/v3/accounts/86165/projects/354356/environment-variables/environment/ "HTTP/1.1 200 OK"
+2025-12-10 15:29:57 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2025-12-10 15:29:57 - httpcore.http11 - DEBUG - receive_response_body.complete
+2025-12-10 15:29:57 - httpcore.http11 - DEBUG - response_closed.started
+2025-12-10 15:29:57 - httpcore.http11 - DEBUG - response_closed.complete
+2025-12-10 15:29:57 - importer.fetcher - INFO - Fetching environments for project 364033
+2025-12-10 15:29:57 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:57 - httpcore.http11 - DEBUG - send_request_headers.complete
+2025-12-10 15:29:57 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2025-12-10 15:29:57 - httpcore.http11 - DEBUG - send_request_body.complete
+2025-12-10 15:29:57 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:57 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Date', b'Wed, 10 Dec 2025 22:29:57 GMT'), (b'Content-Type', b'application/json'), (b'Content-Length', b'1901'), (b'Connection', b'keep-alive'), (b'Server', b'nginx'), (b'Allow', b'GET, POST, DELETE, HEAD, OPTIONS'), (b'Vary', b'Accept-Encoding, Cookie'), (b'Content-Encoding', b'gzip'), (b'X-Frame-Options', b'DENY'), (b'X-Content-Type-Options', b'nosniff'), (b'Referrer-Policy', b'same-origin'), (b'Cross-Origin-Opener-Policy', b'same-origin'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Methods', b'GET, POST, PATCH, DELETE, OPTIONS'), (b'Access-Control-Allow-Headers', b'Authorization, Content-Type'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains; preload'), (b'X-Request-Id', b'9d0c6f16c31c11c0fbc8cc15bc30398e'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Robots-Tag', b'noindex'), (b'X-Frame-Options', b'DENY')])
+2025-12-10 15:29:57 - httpx - INFO - HTTP Request: GET https://iq919.us1.dbt.com/api/v2/accounts/86165/environments/?project_id=364033&limit=100&offset=0 "HTTP/1.1 200 OK"
+2025-12-10 15:29:57 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2025-12-10 15:29:57 - httpcore.http11 - DEBUG - receive_response_body.complete
+2025-12-10 15:29:57 - httpcore.http11 - DEBUG - response_closed.started
+2025-12-10 15:29:57 - httpcore.http11 - DEBUG - response_closed.complete
+2025-12-10 15:29:57 - importer.fetcher - INFO - Fetching jobs for project 364033
+2025-12-10 15:29:57 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:57 - httpcore.http11 - DEBUG - send_request_headers.complete
+2025-12-10 15:29:57 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2025-12-10 15:29:57 - httpcore.http11 - DEBUG - send_request_body.complete
+2025-12-10 15:29:57 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:57 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Date', b'Wed, 10 Dec 2025 22:29:57 GMT'), (b'Content-Type', b'application/json'), (b'Content-Length', b'233'), (b'Connection', b'keep-alive'), (b'Server', b'nginx'), (b'Allow', b'GET, POST, DELETE, HEAD, OPTIONS'), (b'Vary', b'Accept-Encoding, Cookie'), (b'Content-Encoding', b'gzip'), (b'X-Frame-Options', b'DENY'), (b'X-Content-Type-Options', b'nosniff'), (b'Referrer-Policy', b'same-origin'), (b'Cross-Origin-Opener-Policy', b'same-origin'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Methods', b'GET, POST, PATCH, DELETE, OPTIONS'), (b'Access-Control-Allow-Headers', b'Authorization, Content-Type'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains; preload'), (b'X-Request-Id', b'18fe1e5f2b1c9265f328ecfbec65289b'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Robots-Tag', b'noindex'), (b'X-Frame-Options', b'DENY')])
+2025-12-10 15:29:57 - httpx - INFO - HTTP Request: GET https://iq919.us1.dbt.com/api/v2/accounts/86165/jobs/?project_id=364033&order_by=id&limit=100&offset=0 "HTTP/1.1 200 OK"
+2025-12-10 15:29:57 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2025-12-10 15:29:57 - httpcore.http11 - DEBUG - receive_response_body.complete
+2025-12-10 15:29:57 - httpcore.http11 - DEBUG - response_closed.started
+2025-12-10 15:29:57 - httpcore.http11 - DEBUG - response_closed.complete
+2025-12-10 15:29:57 - importer.fetcher - INFO - Fetching environment variables for project 364033 (v3)
+2025-12-10 15:29:57 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:57 - httpcore.http11 - DEBUG - send_request_headers.complete
+2025-12-10 15:29:57 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2025-12-10 15:29:57 - httpcore.http11 - DEBUG - send_request_body.complete
+2025-12-10 15:29:57 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:58 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Date', b'Wed, 10 Dec 2025 22:29:58 GMT'), (b'Content-Type', b'application/json'), (b'Content-Length', b'174'), (b'Connection', b'keep-alive'), (b'Server', b'nginx'), (b'Allow', b'GET, POST, PATCH, DELETE, HEAD, OPTIONS'), (b'X-Frame-Options', b'DENY'), (b'Vary', b'Cookie'), (b'X-Content-Type-Options', b'nosniff'), (b'Referrer-Policy', b'same-origin'), (b'Cross-Origin-Opener-Policy', b'same-origin'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Methods', b'GET, POST, PATCH, DELETE, OPTIONS'), (b'Access-Control-Allow-Headers', b'Authorization, Content-Type'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains; preload'), (b'X-Request-Id', b'6687001042be37177d5045e92c863d6f'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Robots-Tag', b'noindex'), (b'X-Frame-Options', b'DENY')])
+2025-12-10 15:29:58 - httpx - INFO - HTTP Request: GET https://iq919.us1.dbt.com/api/v3/accounts/86165/projects/364033/environment-variables/environment/ "HTTP/1.1 200 OK"
+2025-12-10 15:29:58 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2025-12-10 15:29:58 - httpcore.http11 - DEBUG - receive_response_body.complete
+2025-12-10 15:29:58 - httpcore.http11 - DEBUG - response_closed.started
+2025-12-10 15:29:58 - httpcore.http11 - DEBUG - response_closed.complete
+2025-12-10 15:29:58 - importer.fetcher - INFO - Fetching environments for project 365800
+2025-12-10 15:29:58 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:58 - httpcore.http11 - DEBUG - send_request_headers.complete
+2025-12-10 15:29:58 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2025-12-10 15:29:58 - httpcore.http11 - DEBUG - send_request_body.complete
+2025-12-10 15:29:58 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:58 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Date', b'Wed, 10 Dec 2025 22:29:58 GMT'), (b'Content-Type', b'application/json'), (b'Content-Length', b'997'), (b'Connection', b'keep-alive'), (b'Server', b'nginx'), (b'Allow', b'GET, POST, DELETE, HEAD, OPTIONS'), (b'Vary', b'Accept-Encoding, Cookie'), (b'Content-Encoding', b'gzip'), (b'X-Frame-Options', b'DENY'), (b'X-Content-Type-Options', b'nosniff'), (b'Referrer-Policy', b'same-origin'), (b'Cross-Origin-Opener-Policy', b'same-origin'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Methods', b'GET, POST, PATCH, DELETE, OPTIONS'), (b'Access-Control-Allow-Headers', b'Authorization, Content-Type'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains; preload'), (b'X-Request-Id', b'dfa28824558a567f4225ca14354aa566'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Robots-Tag', b'noindex'), (b'X-Frame-Options', b'DENY')])
+2025-12-10 15:29:58 - httpx - INFO - HTTP Request: GET https://iq919.us1.dbt.com/api/v2/accounts/86165/environments/?project_id=365800&limit=100&offset=0 "HTTP/1.1 200 OK"
+2025-12-10 15:29:58 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2025-12-10 15:29:58 - httpcore.http11 - DEBUG - receive_response_body.complete
+2025-12-10 15:29:58 - httpcore.http11 - DEBUG - response_closed.started
+2025-12-10 15:29:58 - httpcore.http11 - DEBUG - response_closed.complete
+2025-12-10 15:29:58 - importer.fetcher - INFO - Fetching jobs for project 365800
+2025-12-10 15:29:58 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:58 - httpcore.http11 - DEBUG - send_request_headers.complete
+2025-12-10 15:29:58 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2025-12-10 15:29:58 - httpcore.http11 - DEBUG - send_request_body.complete
+2025-12-10 15:29:58 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:58 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Date', b'Wed, 10 Dec 2025 22:29:58 GMT'), (b'Content-Type', b'application/json'), (b'Content-Length', b'1003'), (b'Connection', b'keep-alive'), (b'Server', b'nginx'), (b'Allow', b'GET, POST, DELETE, HEAD, OPTIONS'), (b'Vary', b'Accept-Encoding, Cookie'), (b'Content-Encoding', b'gzip'), (b'X-Frame-Options', b'DENY'), (b'X-Content-Type-Options', b'nosniff'), (b'Referrer-Policy', b'same-origin'), (b'Cross-Origin-Opener-Policy', b'same-origin'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Methods', b'GET, POST, PATCH, DELETE, OPTIONS'), (b'Access-Control-Allow-Headers', b'Authorization, Content-Type'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains; preload'), (b'X-Request-Id', b'3c1879e7d188cdb8331b60fa2a972b3d'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Robots-Tag', b'noindex'), (b'X-Frame-Options', b'DENY')])
+2025-12-10 15:29:58 - httpx - INFO - HTTP Request: GET https://iq919.us1.dbt.com/api/v2/accounts/86165/jobs/?project_id=365800&order_by=id&limit=100&offset=0 "HTTP/1.1 200 OK"
+2025-12-10 15:29:58 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2025-12-10 15:29:58 - httpcore.http11 - DEBUG - receive_response_body.complete
+2025-12-10 15:29:58 - httpcore.http11 - DEBUG - response_closed.started
+2025-12-10 15:29:58 - httpcore.http11 - DEBUG - response_closed.complete
+2025-12-10 15:29:58 - importer.fetcher - INFO - Fetching environment variables for project 365800 (v3)
+2025-12-10 15:29:58 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:58 - httpcore.http11 - DEBUG - send_request_headers.complete
+2025-12-10 15:29:58 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2025-12-10 15:29:58 - httpcore.http11 - DEBUG - send_request_body.complete
+2025-12-10 15:29:58 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:58 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Date', b'Wed, 10 Dec 2025 22:29:58 GMT'), (b'Content-Type', b'application/json'), (b'Content-Length', b'343'), (b'Connection', b'keep-alive'), (b'Server', b'nginx'), (b'Allow', b'GET, POST, PATCH, DELETE, HEAD, OPTIONS'), (b'Vary', b'Accept-Encoding, Cookie'), (b'Content-Encoding', b'gzip'), (b'X-Frame-Options', b'DENY'), (b'X-Content-Type-Options', b'nosniff'), (b'Referrer-Policy', b'same-origin'), (b'Cross-Origin-Opener-Policy', b'same-origin'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Methods', b'GET, POST, PATCH, DELETE, OPTIONS'), (b'Access-Control-Allow-Headers', b'Authorization, Content-Type'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains; preload'), (b'X-Request-Id', b'3af1affec01ce6ac27ebef7c0a3ba45f'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Robots-Tag', b'noindex'), (b'X-Frame-Options', b'DENY')])
+2025-12-10 15:29:58 - httpx - INFO - HTTP Request: GET https://iq919.us1.dbt.com/api/v3/accounts/86165/projects/365800/environment-variables/environment/ "HTTP/1.1 200 OK"
+2025-12-10 15:29:58 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2025-12-10 15:29:58 - httpcore.http11 - DEBUG - receive_response_body.complete
+2025-12-10 15:29:58 - httpcore.http11 - DEBUG - response_closed.started
+2025-12-10 15:29:58 - httpcore.http11 - DEBUG - response_closed.complete
+2025-12-10 15:29:58 - importer.fetcher - INFO - Fetching environments for project 367123
+2025-12-10 15:29:58 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:58 - httpcore.http11 - DEBUG - send_request_headers.complete
+2025-12-10 15:29:58 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2025-12-10 15:29:58 - httpcore.http11 - DEBUG - send_request_body.complete
+2025-12-10 15:29:58 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:58 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Date', b'Wed, 10 Dec 2025 22:29:58 GMT'), (b'Content-Type', b'application/json'), (b'Content-Length', b'1544'), (b'Connection', b'keep-alive'), (b'Server', b'nginx'), (b'Allow', b'GET, POST, DELETE, HEAD, OPTIONS'), (b'Vary', b'Accept-Encoding, Cookie'), (b'Content-Encoding', b'gzip'), (b'X-Frame-Options', b'DENY'), (b'X-Content-Type-Options', b'nosniff'), (b'Referrer-Policy', b'same-origin'), (b'Cross-Origin-Opener-Policy', b'same-origin'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Methods', b'GET, POST, PATCH, DELETE, OPTIONS'), (b'Access-Control-Allow-Headers', b'Authorization, Content-Type'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains; preload'), (b'X-Request-Id', b'a2285b96dad64850081342cf4898f3d3'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Robots-Tag', b'noindex'), (b'X-Frame-Options', b'DENY')])
+2025-12-10 15:29:58 - httpx - INFO - HTTP Request: GET https://iq919.us1.dbt.com/api/v2/accounts/86165/environments/?project_id=367123&limit=100&offset=0 "HTTP/1.1 200 OK"
+2025-12-10 15:29:58 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2025-12-10 15:29:58 - httpcore.http11 - DEBUG - receive_response_body.complete
+2025-12-10 15:29:58 - httpcore.http11 - DEBUG - response_closed.started
+2025-12-10 15:29:58 - httpcore.http11 - DEBUG - response_closed.complete
+2025-12-10 15:29:58 - importer.fetcher - INFO - Fetching jobs for project 367123
+2025-12-10 15:29:58 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:58 - httpcore.http11 - DEBUG - send_request_headers.complete
+2025-12-10 15:29:58 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2025-12-10 15:29:58 - httpcore.http11 - DEBUG - send_request_body.complete
+2025-12-10 15:29:58 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:58 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Date', b'Wed, 10 Dec 2025 22:29:58 GMT'), (b'Content-Type', b'application/json'), (b'Content-Length', b'273'), (b'Connection', b'keep-alive'), (b'Server', b'nginx'), (b'Allow', b'GET, POST, DELETE, HEAD, OPTIONS'), (b'Vary', b'Accept-Encoding, Cookie'), (b'Content-Encoding', b'gzip'), (b'X-Frame-Options', b'DENY'), (b'X-Content-Type-Options', b'nosniff'), (b'Referrer-Policy', b'same-origin'), (b'Cross-Origin-Opener-Policy', b'same-origin'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Methods', b'GET, POST, PATCH, DELETE, OPTIONS'), (b'Access-Control-Allow-Headers', b'Authorization, Content-Type'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains; preload'), (b'X-Request-Id', b'bd67e7c703c44ec96d529c7798552fc3'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Robots-Tag', b'noindex'), (b'X-Frame-Options', b'DENY')])
+2025-12-10 15:29:58 - httpx - INFO - HTTP Request: GET https://iq919.us1.dbt.com/api/v2/accounts/86165/jobs/?project_id=367123&order_by=id&limit=100&offset=0 "HTTP/1.1 200 OK"
+2025-12-10 15:29:58 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2025-12-10 15:29:58 - httpcore.http11 - DEBUG - receive_response_body.complete
+2025-12-10 15:29:58 - httpcore.http11 - DEBUG - response_closed.started
+2025-12-10 15:29:58 - httpcore.http11 - DEBUG - response_closed.complete
+2025-12-10 15:29:58 - importer.fetcher - INFO - Fetching environment variables for project 367123 (v3)
+2025-12-10 15:29:58 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:58 - httpcore.http11 - DEBUG - send_request_headers.complete
+2025-12-10 15:29:58 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2025-12-10 15:29:58 - httpcore.http11 - DEBUG - send_request_body.complete
+2025-12-10 15:29:58 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Date', b'Wed, 10 Dec 2025 22:29:58 GMT'), (b'Content-Type', b'application/json'), (b'Content-Length', b'174'), (b'Connection', b'keep-alive'), (b'Server', b'nginx'), (b'Allow', b'GET, POST, PATCH, DELETE, HEAD, OPTIONS'), (b'X-Frame-Options', b'DENY'), (b'Vary', b'Cookie'), (b'X-Content-Type-Options', b'nosniff'), (b'Referrer-Policy', b'same-origin'), (b'Cross-Origin-Opener-Policy', b'same-origin'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Methods', b'GET, POST, PATCH, DELETE, OPTIONS'), (b'Access-Control-Allow-Headers', b'Authorization, Content-Type'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains; preload'), (b'X-Request-Id', b'cd8d1a187663e416ffc3facf4abf64cd'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Robots-Tag', b'noindex'), (b'X-Frame-Options', b'DENY')])
+2025-12-10 15:29:59 - httpx - INFO - HTTP Request: GET https://iq919.us1.dbt.com/api/v3/accounts/86165/projects/367123/environment-variables/environment/ "HTTP/1.1 200 OK"
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - receive_response_body.complete
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - response_closed.started
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - response_closed.complete
+2025-12-10 15:29:59 - importer.fetcher - INFO - Fetching environments for project 368622
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - send_request_headers.complete
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - send_request_body.complete
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Date', b'Wed, 10 Dec 2025 22:29:59 GMT'), (b'Content-Type', b'application/json'), (b'Content-Length', b'223'), (b'Connection', b'keep-alive'), (b'Server', b'nginx'), (b'Allow', b'GET, POST, DELETE, HEAD, OPTIONS'), (b'Vary', b'Accept-Encoding, Cookie'), (b'Content-Encoding', b'gzip'), (b'X-Frame-Options', b'DENY'), (b'X-Content-Type-Options', b'nosniff'), (b'Referrer-Policy', b'same-origin'), (b'Cross-Origin-Opener-Policy', b'same-origin'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Methods', b'GET, POST, PATCH, DELETE, OPTIONS'), (b'Access-Control-Allow-Headers', b'Authorization, Content-Type'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains; preload'), (b'X-Request-Id', b'dfe35c50baf3721bf1101d7640e49bf3'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Robots-Tag', b'noindex'), (b'X-Frame-Options', b'DENY')])
+2025-12-10 15:29:59 - httpx - INFO - HTTP Request: GET https://iq919.us1.dbt.com/api/v2/accounts/86165/environments/?project_id=368622&limit=100&offset=0 "HTTP/1.1 200 OK"
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - receive_response_body.complete
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - response_closed.started
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - response_closed.complete
+2025-12-10 15:29:59 - importer.fetcher - INFO - Fetching jobs for project 368622
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - send_request_headers.complete
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - send_request_body.complete
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Date', b'Wed, 10 Dec 2025 22:29:59 GMT'), (b'Content-Type', b'application/json'), (b'Content-Length', b'264'), (b'Connection', b'keep-alive'), (b'Server', b'nginx'), (b'Allow', b'GET, POST, DELETE, HEAD, OPTIONS'), (b'Vary', b'Accept-Encoding, Cookie'), (b'Content-Encoding', b'gzip'), (b'X-Frame-Options', b'DENY'), (b'X-Content-Type-Options', b'nosniff'), (b'Referrer-Policy', b'same-origin'), (b'Cross-Origin-Opener-Policy', b'same-origin'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Methods', b'GET, POST, PATCH, DELETE, OPTIONS'), (b'Access-Control-Allow-Headers', b'Authorization, Content-Type'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains; preload'), (b'X-Request-Id', b'94e016988ebcbc60415d5fbc4cc5d239'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Robots-Tag', b'noindex'), (b'X-Frame-Options', b'DENY')])
+2025-12-10 15:29:59 - httpx - INFO - HTTP Request: GET https://iq919.us1.dbt.com/api/v2/accounts/86165/jobs/?project_id=368622&order_by=id&limit=100&offset=0 "HTTP/1.1 200 OK"
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - receive_response_body.complete
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - response_closed.started
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - response_closed.complete
+2025-12-10 15:29:59 - importer.fetcher - INFO - Fetching environment variables for project 368622 (v3)
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - send_request_headers.complete
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - send_request_body.complete
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Date', b'Wed, 10 Dec 2025 22:29:59 GMT'), (b'Content-Type', b'application/json'), (b'Content-Length', b'161'), (b'Connection', b'keep-alive'), (b'Server', b'nginx'), (b'Allow', b'GET, POST, PATCH, DELETE, HEAD, OPTIONS'), (b'X-Frame-Options', b'DENY'), (b'Vary', b'Cookie'), (b'X-Content-Type-Options', b'nosniff'), (b'Referrer-Policy', b'same-origin'), (b'Cross-Origin-Opener-Policy', b'same-origin'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Methods', b'GET, POST, PATCH, DELETE, OPTIONS'), (b'Access-Control-Allow-Headers', b'Authorization, Content-Type'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains; preload'), (b'X-Request-Id', b'58aeb38848eb74cdafe6c565340dda68'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Robots-Tag', b'noindex'), (b'X-Frame-Options', b'DENY')])
+2025-12-10 15:29:59 - httpx - INFO - HTTP Request: GET https://iq919.us1.dbt.com/api/v3/accounts/86165/projects/368622/environment-variables/environment/ "HTTP/1.1 200 OK"
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - receive_response_body.complete
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - response_closed.started
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - response_closed.complete
+2025-12-10 15:29:59 - importer.fetcher - INFO - Fetching environments for project 381164
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - send_request_headers.complete
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - send_request_body.complete
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Date', b'Wed, 10 Dec 2025 22:29:59 GMT'), (b'Content-Type', b'application/json'), (b'Content-Length', b'1511'), (b'Connection', b'keep-alive'), (b'Server', b'nginx'), (b'Allow', b'GET, POST, DELETE, HEAD, OPTIONS'), (b'Vary', b'Accept-Encoding, Cookie'), (b'Content-Encoding', b'gzip'), (b'X-Frame-Options', b'DENY'), (b'X-Content-Type-Options', b'nosniff'), (b'Referrer-Policy', b'same-origin'), (b'Cross-Origin-Opener-Policy', b'same-origin'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Methods', b'GET, POST, PATCH, DELETE, OPTIONS'), (b'Access-Control-Allow-Headers', b'Authorization, Content-Type'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains; preload'), (b'X-Request-Id', b'92d9ffc681c083e46179e4f238a3e498'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Robots-Tag', b'noindex'), (b'X-Frame-Options', b'DENY')])
+2025-12-10 15:29:59 - httpx - INFO - HTTP Request: GET https://iq919.us1.dbt.com/api/v2/accounts/86165/environments/?project_id=381164&limit=100&offset=0 "HTTP/1.1 200 OK"
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - receive_response_body.complete
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - response_closed.started
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - response_closed.complete
+2025-12-10 15:29:59 - importer.fetcher - INFO - Fetching jobs for project 381164
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - send_request_headers.complete
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - send_request_body.complete
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Date', b'Wed, 10 Dec 2025 22:29:59 GMT'), (b'Content-Type', b'application/json'), (b'Content-Length', b'216'), (b'Connection', b'keep-alive'), (b'Server', b'nginx'), (b'Allow', b'GET, POST, DELETE, HEAD, OPTIONS'), (b'Vary', b'Accept-Encoding, Cookie'), (b'Content-Encoding', b'gzip'), (b'X-Frame-Options', b'DENY'), (b'X-Content-Type-Options', b'nosniff'), (b'Referrer-Policy', b'same-origin'), (b'Cross-Origin-Opener-Policy', b'same-origin'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Methods', b'GET, POST, PATCH, DELETE, OPTIONS'), (b'Access-Control-Allow-Headers', b'Authorization, Content-Type'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains; preload'), (b'X-Request-Id', b'05a5f7e9f449b5f8f544fd168347a76e'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Robots-Tag', b'noindex'), (b'X-Frame-Options', b'DENY')])
+2025-12-10 15:29:59 - httpx - INFO - HTTP Request: GET https://iq919.us1.dbt.com/api/v2/accounts/86165/jobs/?project_id=381164&order_by=id&limit=100&offset=0 "HTTP/1.1 200 OK"
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - receive_response_body.complete
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - response_closed.started
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - response_closed.complete
+2025-12-10 15:29:59 - importer.fetcher - INFO - Fetching environment variables for project 381164 (v3)
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - send_request_headers.complete
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - send_request_body.complete
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Date', b'Wed, 10 Dec 2025 22:29:59 GMT'), (b'Content-Type', b'application/json'), (b'Content-Length', b'174'), (b'Connection', b'keep-alive'), (b'Server', b'nginx'), (b'Allow', b'GET, POST, PATCH, DELETE, HEAD, OPTIONS'), (b'X-Frame-Options', b'DENY'), (b'Vary', b'Cookie'), (b'X-Content-Type-Options', b'nosniff'), (b'Referrer-Policy', b'same-origin'), (b'Cross-Origin-Opener-Policy', b'same-origin'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Methods', b'GET, POST, PATCH, DELETE, OPTIONS'), (b'Access-Control-Allow-Headers', b'Authorization, Content-Type'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains; preload'), (b'X-Request-Id', b'1eacbefff62fa8b99a19e2e2a8091c40'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Robots-Tag', b'noindex'), (b'X-Frame-Options', b'DENY')])
+2025-12-10 15:29:59 - httpx - INFO - HTTP Request: GET https://iq919.us1.dbt.com/api/v3/accounts/86165/projects/381164/environment-variables/environment/ "HTTP/1.1 200 OK"
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - receive_response_body.complete
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - response_closed.started
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - response_closed.complete
+2025-12-10 15:29:59 - importer.fetcher - INFO - Fetching environments for project 381291
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - send_request_headers.complete
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - send_request_body.complete
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Date', b'Wed, 10 Dec 2025 22:29:59 GMT'), (b'Content-Type', b'application/json'), (b'Content-Length', b'276'), (b'Connection', b'keep-alive'), (b'Server', b'nginx'), (b'Allow', b'GET, POST, DELETE, HEAD, OPTIONS'), (b'Vary', b'Accept-Encoding, Cookie'), (b'X-Frame-Options', b'DENY'), (b'X-Content-Type-Options', b'nosniff'), (b'Referrer-Policy', b'same-origin'), (b'Cross-Origin-Opener-Policy', b'same-origin'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Methods', b'GET, POST, PATCH, DELETE, OPTIONS'), (b'Access-Control-Allow-Headers', b'Authorization, Content-Type'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains; preload'), (b'X-Request-Id', b'566887df885405660c3c99e3189fec5b'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Robots-Tag', b'noindex'), (b'X-Frame-Options', b'DENY')])
+2025-12-10 15:29:59 - httpx - INFO - HTTP Request: GET https://iq919.us1.dbt.com/api/v2/accounts/86165/environments/?project_id=381291&limit=100&offset=0 "HTTP/1.1 200 OK"
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - receive_response_body.complete
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - response_closed.started
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - response_closed.complete
+2025-12-10 15:29:59 - importer.fetcher - INFO - Fetching jobs for project 381291
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - send_request_headers.complete
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - send_request_body.complete
+2025-12-10 15:29:59 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2025-12-10 15:30:00 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Date', b'Wed, 10 Dec 2025 22:30:00 GMT'), (b'Content-Type', b'application/json'), (b'Content-Length', b'293'), (b'Connection', b'keep-alive'), (b'Server', b'nginx'), (b'Allow', b'GET, POST, DELETE, HEAD, OPTIONS'), (b'Vary', b'Accept-Encoding, Cookie'), (b'Content-Encoding', b'gzip'), (b'X-Frame-Options', b'DENY'), (b'X-Content-Type-Options', b'nosniff'), (b'Referrer-Policy', b'same-origin'), (b'Cross-Origin-Opener-Policy', b'same-origin'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Methods', b'GET, POST, PATCH, DELETE, OPTIONS'), (b'Access-Control-Allow-Headers', b'Authorization, Content-Type'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains; preload'), (b'X-Request-Id', b'8ecee3e7417e147f4a2b560dc6695d80'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Robots-Tag', b'noindex'), (b'X-Frame-Options', b'DENY')])
+2025-12-10 15:30:00 - httpx - INFO - HTTP Request: GET https://iq919.us1.dbt.com/api/v2/accounts/86165/jobs/?project_id=381291&order_by=id&limit=100&offset=0 "HTTP/1.1 200 OK"
+2025-12-10 15:30:00 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2025-12-10 15:30:00 - httpcore.http11 - DEBUG - receive_response_body.complete
+2025-12-10 15:30:00 - httpcore.http11 - DEBUG - response_closed.started
+2025-12-10 15:30:00 - httpcore.http11 - DEBUG - response_closed.complete
+2025-12-10 15:30:00 - importer.fetcher - INFO - Fetching environment variables for project 381291 (v3)
+2025-12-10 15:30:00 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2025-12-10 15:30:00 - httpcore.http11 - DEBUG - send_request_headers.complete
+2025-12-10 15:30:00 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2025-12-10 15:30:00 - httpcore.http11 - DEBUG - send_request_body.complete
+2025-12-10 15:30:00 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2025-12-10 15:30:00 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Date', b'Wed, 10 Dec 2025 22:30:00 GMT'), (b'Content-Type', b'application/json'), (b'Content-Length', b'161'), (b'Connection', b'keep-alive'), (b'Server', b'nginx'), (b'Allow', b'GET, POST, PATCH, DELETE, HEAD, OPTIONS'), (b'X-Frame-Options', b'DENY'), (b'Vary', b'Cookie'), (b'X-Content-Type-Options', b'nosniff'), (b'Referrer-Policy', b'same-origin'), (b'Cross-Origin-Opener-Policy', b'same-origin'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Methods', b'GET, POST, PATCH, DELETE, OPTIONS'), (b'Access-Control-Allow-Headers', b'Authorization, Content-Type'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains; preload'), (b'X-Request-Id', b'fffb4058223835dd58f6f4d981c8e3d8'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Robots-Tag', b'noindex'), (b'X-Frame-Options', b'DENY')])
+2025-12-10 15:30:00 - httpx - INFO - HTTP Request: GET https://iq919.us1.dbt.com/api/v3/accounts/86165/projects/381291/environment-variables/environment/ "HTTP/1.1 200 OK"
+2025-12-10 15:30:00 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2025-12-10 15:30:00 - httpcore.http11 - DEBUG - receive_response_body.complete
+2025-12-10 15:30:00 - httpcore.http11 - DEBUG - response_closed.started
+2025-12-10 15:30:00 - httpcore.http11 - DEBUG - response_closed.complete
+2025-12-10 15:30:00 - importer.fetcher - INFO - Fetching environments for project 435735
+2025-12-10 15:30:00 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2025-12-10 15:30:00 - httpcore.http11 - DEBUG - send_request_headers.complete
+2025-12-10 15:30:00 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2025-12-10 15:30:00 - httpcore.http11 - DEBUG - send_request_body.complete
+2025-12-10 15:30:00 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2025-12-10 15:30:00 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Date', b'Wed, 10 Dec 2025 22:30:00 GMT'), (b'Content-Type', b'application/json'), (b'Content-Length', b'276'), (b'Connection', b'keep-alive'), (b'Server', b'nginx'), (b'Allow', b'GET, POST, DELETE, HEAD, OPTIONS'), (b'Vary', b'Accept-Encoding, Cookie'), (b'X-Frame-Options', b'DENY'), (b'X-Content-Type-Options', b'nosniff'), (b'Referrer-Policy', b'same-origin'), (b'Cross-Origin-Opener-Policy', b'same-origin'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Methods', b'GET, POST, PATCH, DELETE, OPTIONS'), (b'Access-Control-Allow-Headers', b'Authorization, Content-Type'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains; preload'), (b'X-Request-Id', b'2799cc329242e78e30c6fba727262320'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Robots-Tag', b'noindex'), (b'X-Frame-Options', b'DENY')])
+2025-12-10 15:30:00 - httpx - INFO - HTTP Request: GET https://iq919.us1.dbt.com/api/v2/accounts/86165/environments/?project_id=435735&limit=100&offset=0 "HTTP/1.1 200 OK"
+2025-12-10 15:30:00 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2025-12-10 15:30:00 - httpcore.http11 - DEBUG - receive_response_body.complete
+2025-12-10 15:30:00 - httpcore.http11 - DEBUG - response_closed.started
+2025-12-10 15:30:00 - httpcore.http11 - DEBUG - response_closed.complete
+2025-12-10 15:30:00 - importer.fetcher - INFO - Fetching jobs for project 435735
+2025-12-10 15:30:00 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2025-12-10 15:30:00 - httpcore.http11 - DEBUG - send_request_headers.complete
+2025-12-10 15:30:00 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2025-12-10 15:30:00 - httpcore.http11 - DEBUG - send_request_body.complete
+2025-12-10 15:30:00 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2025-12-10 15:30:00 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Date', b'Wed, 10 Dec 2025 22:30:00 GMT'), (b'Content-Type', b'application/json'), (b'Content-Length', b'273'), (b'Connection', b'keep-alive'), (b'Server', b'nginx'), (b'Allow', b'GET, POST, DELETE, HEAD, OPTIONS'), (b'Vary', b'Accept-Encoding, Cookie'), (b'Content-Encoding', b'gzip'), (b'X-Frame-Options', b'DENY'), (b'X-Content-Type-Options', b'nosniff'), (b'Referrer-Policy', b'same-origin'), (b'Cross-Origin-Opener-Policy', b'same-origin'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Methods', b'GET, POST, PATCH, DELETE, OPTIONS'), (b'Access-Control-Allow-Headers', b'Authorization, Content-Type'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains; preload'), (b'X-Request-Id', b'3c38be94cae5eb8d3f1deaa3b591662e'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Robots-Tag', b'noindex'), (b'X-Frame-Options', b'DENY')])
+2025-12-10 15:30:00 - httpx - INFO - HTTP Request: GET https://iq919.us1.dbt.com/api/v2/accounts/86165/jobs/?project_id=435735&order_by=id&limit=100&offset=0 "HTTP/1.1 200 OK"
+2025-12-10 15:30:00 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2025-12-10 15:30:00 - httpcore.http11 - DEBUG - receive_response_body.complete
+2025-12-10 15:30:00 - httpcore.http11 - DEBUG - response_closed.started
+2025-12-10 15:30:00 - httpcore.http11 - DEBUG - response_closed.complete
+2025-12-10 15:30:00 - importer.fetcher - INFO - Fetching environment variables for project 435735 (v3)
+2025-12-10 15:30:00 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2025-12-10 15:30:00 - httpcore.http11 - DEBUG - send_request_headers.complete
+2025-12-10 15:30:00 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2025-12-10 15:30:00 - httpcore.http11 - DEBUG - send_request_body.complete
+2025-12-10 15:30:00 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2025-12-10 15:30:00 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Date', b'Wed, 10 Dec 2025 22:30:00 GMT'), (b'Content-Type', b'application/json'), (b'Content-Length', b'161'), (b'Connection', b'keep-alive'), (b'Server', b'nginx'), (b'Allow', b'GET, POST, PATCH, DELETE, HEAD, OPTIONS'), (b'X-Frame-Options', b'DENY'), (b'Vary', b'Cookie'), (b'X-Content-Type-Options', b'nosniff'), (b'Referrer-Policy', b'same-origin'), (b'Cross-Origin-Opener-Policy', b'same-origin'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Methods', b'GET, POST, PATCH, DELETE, OPTIONS'), (b'Access-Control-Allow-Headers', b'Authorization, Content-Type'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains; preload'), (b'X-Request-Id', b'0f4cca8faea74f40da8106aa63d071e1'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Robots-Tag', b'noindex'), (b'X-Frame-Options', b'DENY')])
+2025-12-10 15:30:00 - httpx - INFO - HTTP Request: GET https://iq919.us1.dbt.com/api/v3/accounts/86165/projects/435735/environment-variables/environment/ "HTTP/1.1 200 OK"
+2025-12-10 15:30:00 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2025-12-10 15:30:00 - httpcore.http11 - DEBUG - receive_response_body.complete
+2025-12-10 15:30:00 - httpcore.http11 - DEBUG - response_closed.started
+2025-12-10 15:30:00 - httpcore.http11 - DEBUG - response_closed.complete
+2025-12-10 15:30:00 - importer.fetcher - INFO - Fetching environments for project 447271
+2025-12-10 15:30:00 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2025-12-10 15:30:00 - httpcore.http11 - DEBUG - send_request_headers.complete
+2025-12-10 15:30:00 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2025-12-10 15:30:00 - httpcore.http11 - DEBUG - send_request_body.complete
+2025-12-10 15:30:00 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2025-12-10 15:30:00 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Date', b'Wed, 10 Dec 2025 22:30:00 GMT'), (b'Content-Type', b'application/json'), (b'Content-Length', b'1811'), (b'Connection', b'keep-alive'), (b'Server', b'nginx'), (b'Allow', b'GET, POST, DELETE, HEAD, OPTIONS'), (b'Vary', b'Accept-Encoding, Cookie'), (b'Content-Encoding', b'gzip'), (b'X-Frame-Options', b'DENY'), (b'X-Content-Type-Options', b'nosniff'), (b'Referrer-Policy', b'same-origin'), (b'Cross-Origin-Opener-Policy', b'same-origin'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Methods', b'GET, POST, PATCH, DELETE, OPTIONS'), (b'Access-Control-Allow-Headers', b'Authorization, Content-Type'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains; preload'), (b'X-Request-Id', b'1ce6e2a74110dab6bad0352e32f8b925'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Robots-Tag', b'noindex'), (b'X-Frame-Options', b'DENY')])
+2025-12-10 15:30:00 - httpx - INFO - HTTP Request: GET https://iq919.us1.dbt.com/api/v2/accounts/86165/environments/?project_id=447271&limit=100&offset=0 "HTTP/1.1 200 OK"
+2025-12-10 15:30:00 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2025-12-10 15:30:00 - httpcore.http11 - DEBUG - receive_response_body.complete
+2025-12-10 15:30:00 - httpcore.http11 - DEBUG - response_closed.started
+2025-12-10 15:30:00 - httpcore.http11 - DEBUG - response_closed.complete
+2025-12-10 15:30:00 - importer.fetcher - INFO - Fetching jobs for project 447271
+2025-12-10 15:30:00 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2025-12-10 15:30:00 - httpcore.http11 - DEBUG - send_request_headers.complete
+2025-12-10 15:30:00 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2025-12-10 15:30:00 - httpcore.http11 - DEBUG - send_request_body.complete
+2025-12-10 15:30:00 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2025-12-10 15:30:01 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Date', b'Wed, 10 Dec 2025 22:30:00 GMT'), (b'Content-Type', b'application/json'), (b'Content-Length', b'246'), (b'Connection', b'keep-alive'), (b'Server', b'nginx'), (b'Allow', b'GET, POST, DELETE, HEAD, OPTIONS'), (b'Vary', b'Accept-Encoding, Cookie'), (b'Content-Encoding', b'gzip'), (b'X-Frame-Options', b'DENY'), (b'X-Content-Type-Options', b'nosniff'), (b'Referrer-Policy', b'same-origin'), (b'Cross-Origin-Opener-Policy', b'same-origin'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Methods', b'GET, POST, PATCH, DELETE, OPTIONS'), (b'Access-Control-Allow-Headers', b'Authorization, Content-Type'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains; preload'), (b'X-Request-Id', b'57a2c4c5e34d2bdbf1fd4921441326d2'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Robots-Tag', b'noindex'), (b'X-Frame-Options', b'DENY')])
+2025-12-10 15:30:01 - httpx - INFO - HTTP Request: GET https://iq919.us1.dbt.com/api/v2/accounts/86165/jobs/?project_id=447271&order_by=id&limit=100&offset=0 "HTTP/1.1 200 OK"
+2025-12-10 15:30:01 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2025-12-10 15:30:01 - httpcore.http11 - DEBUG - receive_response_body.complete
+2025-12-10 15:30:01 - httpcore.http11 - DEBUG - response_closed.started
+2025-12-10 15:30:01 - httpcore.http11 - DEBUG - response_closed.complete
+2025-12-10 15:30:01 - importer.fetcher - INFO - Fetching environment variables for project 447271 (v3)
+2025-12-10 15:30:01 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2025-12-10 15:30:01 - httpcore.http11 - DEBUG - send_request_headers.complete
+2025-12-10 15:30:01 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2025-12-10 15:30:01 - httpcore.http11 - DEBUG - send_request_body.complete
+2025-12-10 15:30:01 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2025-12-10 15:30:01 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Date', b'Wed, 10 Dec 2025 22:30:01 GMT'), (b'Content-Type', b'application/json'), (b'Content-Length', b'218'), (b'Connection', b'keep-alive'), (b'Server', b'nginx'), (b'Allow', b'GET, POST, PATCH, DELETE, HEAD, OPTIONS'), (b'Vary', b'Accept-Encoding, Cookie'), (b'X-Frame-Options', b'DENY'), (b'X-Content-Type-Options', b'nosniff'), (b'Referrer-Policy', b'same-origin'), (b'Cross-Origin-Opener-Policy', b'same-origin'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Methods', b'GET, POST, PATCH, DELETE, OPTIONS'), (b'Access-Control-Allow-Headers', b'Authorization, Content-Type'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains; preload'), (b'X-Request-Id', b'c3be37849529d2b14a6bc3783f9d1548'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Robots-Tag', b'noindex'), (b'X-Frame-Options', b'DENY')])
+2025-12-10 15:30:01 - httpx - INFO - HTTP Request: GET https://iq919.us1.dbt.com/api/v3/accounts/86165/projects/447271/environment-variables/environment/ "HTTP/1.1 200 OK"
+2025-12-10 15:30:01 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2025-12-10 15:30:01 - httpcore.http11 - DEBUG - receive_response_body.complete
+2025-12-10 15:30:01 - httpcore.http11 - DEBUG - response_closed.started
+2025-12-10 15:30:01 - httpcore.http11 - DEBUG - response_closed.complete
+2025-12-10 15:30:01 - importer.fetcher - INFO - Fetching environments for project 459552
+2025-12-10 15:30:01 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2025-12-10 15:30:01 - httpcore.http11 - DEBUG - send_request_headers.complete
+2025-12-10 15:30:01 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2025-12-10 15:30:01 - httpcore.http11 - DEBUG - send_request_body.complete
+2025-12-10 15:30:01 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2025-12-10 15:30:02 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Date', b'Wed, 10 Dec 2025 22:30:02 GMT'), (b'Content-Type', b'application/json'), (b'Content-Length', b'1717'), (b'Connection', b'keep-alive'), (b'Server', b'nginx'), (b'Allow', b'GET, POST, DELETE, HEAD, OPTIONS'), (b'Vary', b'Accept-Encoding, Cookie'), (b'Content-Encoding', b'gzip'), (b'X-Frame-Options', b'DENY'), (b'X-Content-Type-Options', b'nosniff'), (b'Referrer-Policy', b'same-origin'), (b'Cross-Origin-Opener-Policy', b'same-origin'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Methods', b'GET, POST, PATCH, DELETE, OPTIONS'), (b'Access-Control-Allow-Headers', b'Authorization, Content-Type'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains; preload'), (b'X-Request-Id', b'ac7f406b3740d8753987bd6908d9d010'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Robots-Tag', b'noindex'), (b'X-Frame-Options', b'DENY')])
+2025-12-10 15:30:02 - httpx - INFO - HTTP Request: GET https://iq919.us1.dbt.com/api/v2/accounts/86165/environments/?project_id=459552&limit=100&offset=0 "HTTP/1.1 200 OK"
+2025-12-10 15:30:02 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2025-12-10 15:30:02 - httpcore.http11 - DEBUG - receive_response_body.complete
+2025-12-10 15:30:02 - httpcore.http11 - DEBUG - response_closed.started
+2025-12-10 15:30:02 - httpcore.http11 - DEBUG - response_closed.complete
+2025-12-10 15:30:02 - importer.fetcher - INFO - Fetching jobs for project 459552
+2025-12-10 15:30:02 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2025-12-10 15:30:02 - httpcore.http11 - DEBUG - send_request_headers.complete
+2025-12-10 15:30:02 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2025-12-10 15:30:02 - httpcore.http11 - DEBUG - send_request_body.complete
+2025-12-10 15:30:02 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2025-12-10 15:30:03 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Date', b'Wed, 10 Dec 2025 22:30:03 GMT'), (b'Content-Type', b'application/json'), (b'Content-Length', b'907'), (b'Connection', b'keep-alive'), (b'Server', b'nginx'), (b'Allow', b'GET, POST, DELETE, HEAD, OPTIONS'), (b'Vary', b'Accept-Encoding, Cookie'), (b'Content-Encoding', b'gzip'), (b'X-Frame-Options', b'DENY'), (b'X-Content-Type-Options', b'nosniff'), (b'Referrer-Policy', b'same-origin'), (b'Cross-Origin-Opener-Policy', b'same-origin'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Methods', b'GET, POST, PATCH, DELETE, OPTIONS'), (b'Access-Control-Allow-Headers', b'Authorization, Content-Type'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains; preload'), (b'X-Request-Id', b'4b64ce70f58bf3a661dc2a12d4906790'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Robots-Tag', b'noindex'), (b'X-Frame-Options', b'DENY')])
+2025-12-10 15:30:03 - httpx - INFO - HTTP Request: GET https://iq919.us1.dbt.com/api/v2/accounts/86165/jobs/?project_id=459552&order_by=id&limit=100&offset=0 "HTTP/1.1 200 OK"
+2025-12-10 15:30:03 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2025-12-10 15:30:03 - httpcore.http11 - DEBUG - receive_response_body.complete
+2025-12-10 15:30:03 - httpcore.http11 - DEBUG - response_closed.started
+2025-12-10 15:30:03 - httpcore.http11 - DEBUG - response_closed.complete
+2025-12-10 15:30:03 - importer.fetcher - INFO - Fetching environment variables for project 459552 (v3)
+2025-12-10 15:30:03 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2025-12-10 15:30:03 - httpcore.http11 - DEBUG - send_request_headers.complete
+2025-12-10 15:30:03 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2025-12-10 15:30:03 - httpcore.http11 - DEBUG - send_request_body.complete
+2025-12-10 15:30:03 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2025-12-10 15:30:03 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Date', b'Wed, 10 Dec 2025 22:30:03 GMT'), (b'Content-Type', b'application/json'), (b'Content-Length', b'188'), (b'Connection', b'keep-alive'), (b'Server', b'nginx'), (b'Allow', b'GET, POST, PATCH, DELETE, HEAD, OPTIONS'), (b'X-Frame-Options', b'DENY'), (b'Vary', b'Cookie'), (b'X-Content-Type-Options', b'nosniff'), (b'Referrer-Policy', b'same-origin'), (b'Cross-Origin-Opener-Policy', b'same-origin'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Methods', b'GET, POST, PATCH, DELETE, OPTIONS'), (b'Access-Control-Allow-Headers', b'Authorization, Content-Type'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains; preload'), (b'X-Request-Id', b'13e03e024e51dc74c72768cb096fe1db'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Robots-Tag', b'noindex'), (b'X-Frame-Options', b'DENY')])
+2025-12-10 15:30:03 - httpx - INFO - HTTP Request: GET https://iq919.us1.dbt.com/api/v3/accounts/86165/projects/459552/environment-variables/environment/ "HTTP/1.1 200 OK"
+2025-12-10 15:30:03 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2025-12-10 15:30:03 - httpcore.http11 - DEBUG - receive_response_body.complete
+2025-12-10 15:30:03 - httpcore.http11 - DEBUG - response_closed.started
+2025-12-10 15:30:03 - httpcore.http11 - DEBUG - response_closed.complete
+2025-12-10 15:30:03 - importer.fetcher - INFO - Fetching environments for project 465168
+2025-12-10 15:30:03 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2025-12-10 15:30:03 - httpcore.http11 - DEBUG - send_request_headers.complete
+2025-12-10 15:30:03 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2025-12-10 15:30:03 - httpcore.http11 - DEBUG - send_request_body.complete
+2025-12-10 15:30:03 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2025-12-10 15:30:04 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Date', b'Wed, 10 Dec 2025 22:30:04 GMT'), (b'Content-Type', b'application/json'), (b'Content-Length', b'2303'), (b'Connection', b'keep-alive'), (b'Server', b'nginx'), (b'Allow', b'GET, POST, DELETE, HEAD, OPTIONS'), (b'Vary', b'Accept-Encoding, Cookie'), (b'Content-Encoding', b'gzip'), (b'X-Frame-Options', b'DENY'), (b'X-Content-Type-Options', b'nosniff'), (b'Referrer-Policy', b'same-origin'), (b'Cross-Origin-Opener-Policy', b'same-origin'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Methods', b'GET, POST, PATCH, DELETE, OPTIONS'), (b'Access-Control-Allow-Headers', b'Authorization, Content-Type'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains; preload'), (b'X-Request-Id', b'91f0bd20a21be5aa01562869b50e3873'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Robots-Tag', b'noindex'), (b'X-Frame-Options', b'DENY')])
+2025-12-10 15:30:04 - httpx - INFO - HTTP Request: GET https://iq919.us1.dbt.com/api/v2/accounts/86165/environments/?project_id=465168&limit=100&offset=0 "HTTP/1.1 200 OK"
+2025-12-10 15:30:04 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2025-12-10 15:30:04 - httpcore.http11 - DEBUG - receive_response_body.complete
+2025-12-10 15:30:04 - httpcore.http11 - DEBUG - response_closed.started
+2025-12-10 15:30:04 - httpcore.http11 - DEBUG - response_closed.complete
+2025-12-10 15:30:04 - importer.fetcher - INFO - Fetching jobs for project 465168
+2025-12-10 15:30:04 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2025-12-10 15:30:04 - httpcore.http11 - DEBUG - send_request_headers.complete
+2025-12-10 15:30:04 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2025-12-10 15:30:04 - httpcore.http11 - DEBUG - send_request_body.complete
+2025-12-10 15:30:04 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2025-12-10 15:30:04 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Date', b'Wed, 10 Dec 2025 22:30:04 GMT'), (b'Content-Type', b'application/json'), (b'Content-Length', b'918'), (b'Connection', b'keep-alive'), (b'Server', b'nginx'), (b'Allow', b'GET, POST, DELETE, HEAD, OPTIONS'), (b'Vary', b'Accept-Encoding, Cookie'), (b'Content-Encoding', b'gzip'), (b'X-Frame-Options', b'DENY'), (b'X-Content-Type-Options', b'nosniff'), (b'Referrer-Policy', b'same-origin'), (b'Cross-Origin-Opener-Policy', b'same-origin'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Methods', b'GET, POST, PATCH, DELETE, OPTIONS'), (b'Access-Control-Allow-Headers', b'Authorization, Content-Type'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains; preload'), (b'X-Request-Id', b'773c6a4e2eab3c979ceb5c7e0d1e0df1'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Robots-Tag', b'noindex'), (b'X-Frame-Options', b'DENY')])
+2025-12-10 15:30:04 - httpx - INFO - HTTP Request: GET https://iq919.us1.dbt.com/api/v2/accounts/86165/jobs/?project_id=465168&order_by=id&limit=100&offset=0 "HTTP/1.1 200 OK"
+2025-12-10 15:30:04 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2025-12-10 15:30:04 - httpcore.http11 - DEBUG - receive_response_body.complete
+2025-12-10 15:30:04 - httpcore.http11 - DEBUG - response_closed.started
+2025-12-10 15:30:04 - httpcore.http11 - DEBUG - response_closed.complete
+2025-12-10 15:30:04 - importer.fetcher - INFO - Fetching environment variables for project 465168 (v3)
+2025-12-10 15:30:04 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'GET']>
+2025-12-10 15:30:04 - httpcore.http11 - DEBUG - send_request_headers.complete
+2025-12-10 15:30:04 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'GET']>
+2025-12-10 15:30:04 - httpcore.http11 - DEBUG - send_request_body.complete
+2025-12-10 15:30:04 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'GET']>
+2025-12-10 15:30:05 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Date', b'Wed, 10 Dec 2025 22:30:05 GMT'), (b'Content-Type', b'application/json'), (b'Content-Length', b'203'), (b'Connection', b'keep-alive'), (b'Server', b'nginx'), (b'Allow', b'GET, POST, PATCH, DELETE, HEAD, OPTIONS'), (b'Vary', b'Accept-Encoding, Cookie'), (b'Content-Encoding', b'gzip'), (b'X-Frame-Options', b'DENY'), (b'X-Content-Type-Options', b'nosniff'), (b'Referrer-Policy', b'same-origin'), (b'Cross-Origin-Opener-Policy', b'same-origin'), (b'Access-Control-Allow-Origin', b'*'), (b'Access-Control-Allow-Methods', b'GET, POST, PATCH, DELETE, OPTIONS'), (b'Access-Control-Allow-Headers', b'Authorization, Content-Type'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains; preload'), (b'X-Request-Id', b'00a777d1c1bc30820b1e385a192d8567'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Robots-Tag', b'noindex'), (b'X-Frame-Options', b'DENY')])
+2025-12-10 15:30:05 - httpx - INFO - HTTP Request: GET https://iq919.us1.dbt.com/api/v3/accounts/86165/projects/465168/environment-variables/environment/ "HTTP/1.1 200 OK"
+2025-12-10 15:30:05 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'GET']>
+2025-12-10 15:30:05 - httpcore.http11 - DEBUG - receive_response_body.complete
+2025-12-10 15:30:05 - httpcore.http11 - DEBUG - response_closed.started
+2025-12-10 15:30:05 - httpcore.http11 - DEBUG - response_closed.complete
+2025-12-10 15:30:05 - importer.cli - INFO - Successfully fetched snapshot: 17 projects, 3 connections, 15 repositories
+2025-12-10 15:30:05 - httpcore.connection - DEBUG - close.started
+2025-12-10 15:30:05 - httpcore.connection - DEBUG - close.complete
+2025-12-10 15:30:05 - httpcore.connection - DEBUG - close.started
+2025-12-10 15:30:05 - httpcore.connection - DEBUG - close.complete
+2025-12-10 15:30:05 - importer.cli - INFO - Wrote account JSON export to dev_support/samples/account_86165_run_004__json__20251210_222951.json
+2025-12-10 15:30:05 - importer.cli - INFO - Wrote summary report to dev_support/samples/account_86165_run_004__summary__20251210_222951.md
+2025-12-10 15:30:05 - importer.cli - INFO - Wrote detailed report to dev_support/samples/account_86165_run_004__report__20251210_222951.md
+2025-12-10 15:30:05 - importer.cli - INFO - Wrote report line items to dev_support/samples/account_86165_run_004__report_items__20251210_222951.json
+2025-12-10 15:30:05 - importer.cli - INFO - Log file written to dev_support/samples/account_86165_run_004__logs__20251210_222951.log
+2025-12-10 15:30:05 - asyncio - DEBUG - Using selector: KqueueSelector
+2025-12-10 15:30:10 - importer.cli - INFO - Starting normalization v0.4.0-dev
+2025-12-10 15:30:10 - importer.cli - INFO - Normalization Run ID: 004, Timestamp: 20251210_223010
+2025-12-10 15:30:10 - importer.cli - INFO - Source Fetch Run ID: 004
+2025-12-10 15:30:10 - importer.cli - INFO - Mapping config: importer_mapping.yml
+2025-12-10 15:30:10 - importer.cli - INFO - Scope mode: all_projects
+2025-12-10 15:30:10 - importer.normalizer.core - INFO - Starting normalization of account snapshot
+2025-12-10 15:30:10 - importer.normalizer - INFO - Added placeholder: LOOKUP:jaffle_shop - Repository for project Analytics
+2025-12-10 15:30:10 - importer.normalizer - INFO - Added placeholder: LOOKUP:connection_unknown - Connection for environment New Environment
+2025-12-10 15:30:10 - importer.normalizer - INFO - Added placeholder: LOOKUP:dbt_cloud_86165_wsargent_notallwhowanderarelost - Repository for project dbt Fundamentals
+2025-12-10 15:30:10 - importer.normalizer - INFO - Added placeholder: LOOKUP:snowflake_fka50167 - Connection for environment Development
+2025-12-10 15:30:10 - importer.normalizer - INFO - Added placeholder: LOOKUP:snowflake_fka50167 - Connection for environment Wsargent Learning Deployment
+2025-12-10 15:30:10 - importer.normalizer - INFO - Added placeholder: LOOKUP:gitignore_demo - Repository for project Gitignore Testing
+2025-12-10 15:30:10 - importer.normalizer - INFO - Added placeholder: LOOKUP:snowflake_ska67070_sandbox - Connection for environment Development
+2025-12-10 15:30:10 - importer.normalizer - INFO - Added placeholder: LOOKUP:ia_performance_testing - Repository for project IA Performance Testing
+2025-12-10 15:30:10 - importer.normalizer - INFO - Added placeholder: LOOKUP:snowflake_ska67070_sandbox - Connection for environment Development
+2025-12-10 15:30:10 - importer.normalizer - INFO - Added placeholder: LOOKUP:snowflake_ska67070_sandbox - Connection for environment Deploy
+2025-12-10 15:30:10 - importer.normalizer - INFO - Added placeholder: LOOKUP:terraform_code - Repository for project TF-Bitbucket
+2025-12-10 15:30:10 - importer.normalizer - INFO - Added placeholder: LOOKUP:snowflake_ska67070_sandbox - Connection for environment Development
+2025-12-10 15:30:10 - importer.normalizer - INFO - Added placeholder: LOOKUP:snowflake_ska67070_sandbox - Connection for environment Deploy
+2025-12-10 15:30:10 - importer.normalizer - INFO - Added placeholder: LOOKUP:getting_to_ok_demo - Repository for project Getting to OK - Clone and Defer
+2025-12-10 15:30:10 - importer.normalizer - INFO - Added placeholder: LOOKUP:snowflake_ska67070_sandbox - Connection for environment 5 - IDE
+2025-12-10 15:30:10 - importer.normalizer - INFO - Added placeholder: LOOKUP:snowflake_ska67070_sandbox - Connection for environment 1 - Prod
+2025-12-10 15:30:10 - importer.normalizer - INFO - Added placeholder: LOOKUP:snowflake_ska67070_sandbox - Connection for environment 2 - Staging
+2025-12-10 15:30:10 - importer.normalizer - INFO - Added placeholder: LOOKUP:snowflake_ska67070_sandbox - Connection for environment  4 - Dev Build
+2025-12-10 15:30:10 - importer.normalizer - INFO - Added placeholder: LOOKUP:snowflake_ska67070_sandbox - Connection for environment 3 - Test
+2025-12-10 15:30:10 - importer.normalizer - INFO - Added placeholder: LOOKUP:databricks_dev_uc_enabled - Connection for environment 1.2 PROD - Databricks
+2025-12-10 15:30:10 - importer.normalizer - INFO - Added placeholder: LOOKUP:dbt_cloud_86165_dbt_wsargent_managed_repo_test - Repository for project Managed Repo Tester
+2025-12-10 15:30:10 - importer.normalizer - INFO - Added placeholder: LOOKUP:snowflake_ska67070_sandbox - Connection for environment Development
+2025-12-10 15:30:10 - importer.normalizer - INFO - Added placeholder: LOOKUP:dbx_sandbox - Repository for project dbx Sandbox
+2025-12-10 15:30:10 - importer.normalizer - INFO - Added placeholder: LOOKUP:databricks_dev_uc_enabled - Connection for environment Development
+2025-12-10 15:30:10 - importer.normalizer - INFO - Added placeholder: LOOKUP:dbt_cloud_admin_demo - Repository for project Test Admin Project
+2025-12-10 15:30:10 - importer.normalizer - INFO - Added placeholder: LOOKUP:snowflake_ska67070_sandbox - Connection for environment Development
+2025-12-10 15:30:10 - importer.normalizer - INFO - Added placeholder: LOOKUP:snowflake_ska67070_sandbox - Connection for environment Staging
+2025-12-10 15:30:10 - importer.normalizer - INFO - Added placeholder: LOOKUP:cluster_validation_dbt_project - Repository for project Cluster Validation Setup
+2025-12-10 15:30:10 - importer.normalizer - INFO - Added placeholder: LOOKUP:snowflake_ska67070_sandbox - Connection for environment Development
+2025-12-10 15:30:10 - importer.normalizer - INFO - Added placeholder: LOOKUP:airflow_dbt_elt - Repository for project teet
+2025-12-10 15:30:10 - importer.normalizer - INFO - Added placeholder: LOOKUP:ps_shared_services - Repository for project dbt Shared Services
+2025-12-10 15:30:10 - importer.normalizer - INFO - Added placeholder: LOOKUP:snowflake_ska67070_sandbox - Connection for environment Development
+2025-12-10 15:30:10 - importer.normalizer - INFO - Added placeholder: LOOKUP:ps_tf_promotion_demo - Repository for project TF Promotion Demo
+2025-12-10 15:30:10 - importer.normalizer - INFO - Added placeholder: LOOKUP:snowflake_ska67070_sandbox - Connection for environment 1 - IDE / Feature
+2025-12-10 15:30:10 - importer.normalizer - INFO - Added placeholder: LOOKUP:snowflake_ska67070_sandbox - Connection for environment 2 - DEV Build
+2025-12-10 15:30:10 - importer.normalizer - INFO - Added placeholder: LOOKUP:snowflake_ska67070_sandbox - Connection for environment 3 - TEST
+2025-12-10 15:30:10 - importer.normalizer - INFO - Added placeholder: LOOKUP:snowflake_ska67070_sandbox - Connection for environment 4 - PROD
+2025-12-10 15:30:10 - importer.normalizer - INFO - Added placeholder: LOOKUP:field_engineering_fusion_upgrade_repo - Repository for project Will Sargent Fusion Migration Sandbox
+2025-12-10 15:30:10 - importer.normalizer - INFO - Added placeholder: LOOKUP:snowflake_ska67070_sandbox - Connection for environment Development
+2025-12-10 15:30:10 - importer.normalizer - INFO - Added placeholder: LOOKUP:snowflake_ska67070_sandbox - Connection for environment Fusion Prod
+2025-12-10 15:30:10 - importer.normalizer - INFO - Added placeholder: LOOKUP:ps_scd2_mat - Repository for project Fusion-SCD2 Workspace
+2025-12-10 15:30:10 - importer.normalizer - INFO - Added placeholder: LOOKUP:databricks_dev_uc_enabled - Connection for environment Development
+2025-12-10 15:30:10 - importer.normalizer - INFO - Added placeholder: LOOKUP:databricks_dev_uc_enabled - Connection for environment 1.2- PROD Databricks
+2025-12-10 15:30:10 - importer.normalizer - INFO - Added placeholder: LOOKUP:snowflake_ska67070_sandbox - Connection for environment 1.1 - PROD Snowflake
+2025-12-10 15:30:10 - importer.normalizer.core - INFO - Normalization complete: 17 projects, 44 placeholders, 0 exclusions
+2025-12-10 15:30:10 - importer.cli - INFO - Normalization complete
+2025-12-10 15:30:10 - importer.normalizer.writer - INFO - Wrote YAML to dev_support/samples/normalized/account_86165_norm_004__yaml__20251210_223010.yml
+2025-12-10 15:30:10 - importer.normalizer.writer - INFO - Wrote lookups manifest to dev_support/samples/normalized/account_86165_norm_004__lookups__20251210_223010.json
+2025-12-10 15:30:10 - importer.normalizer.writer - INFO - Wrote exclusions report to dev_support/samples/normalized/account_86165_norm_004__exclusions__20251210_223010.md
+2025-12-10 15:30:10 - importer.normalizer.writer - INFO - Wrote diff JSON to dev_support/samples/normalized/account_86165_norm_004__diff__20251210_223010.json
+2025-12-10 15:30:10 - importer.cli - INFO - All artifacts written successfully
