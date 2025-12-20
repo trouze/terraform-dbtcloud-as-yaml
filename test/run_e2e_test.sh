@@ -27,7 +27,7 @@ NC='\033[0m' # No Color
 # Configuration
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TEST_DIR="$PROJECT_ROOT/test/e2e_test"
-EXPORT_DIR="$PROJECT_ROOT/importer_export"
+EXPORT_DIR="$PROJECT_ROOT/dev_support/samples"
 APPLY_FLAG=false
 
 # Parse arguments
@@ -64,14 +64,49 @@ log_error() {
 check_prerequisites() {
     log_info "Checking prerequisites..."
     
-    # Check Python
-    if ! command -v python &> /dev/null; then
+    # Check Python (prefer python3, fall back to python)
+    if command -v python3 &> /dev/null; then
+        PYTHON_CMD="python3"
+    elif command -v python &> /dev/null; then
+        PYTHON_CMD="python"
+    else
         log_error "Python not found. Please install Python 3.9+"
         exit 1
     fi
     
-    PYTHON_VERSION=$(python --version 2>&1 | awk '{print $2}')
-    log_success "Python $PYTHON_VERSION found"
+    PYTHON_VERSION=$($PYTHON_CMD --version 2>&1 | awk '{print $2}')
+    log_success "Python $PYTHON_VERSION found ($PYTHON_CMD)"
+    
+    # Check if importer dependencies are installed
+    if ! $PYTHON_CMD -c "import typer" 2>/dev/null; then
+        log_warning "Importer dependencies not found in current Python environment"
+        
+        # Check for virtual environment
+        if [ -d "$PROJECT_ROOT/.venv" ]; then
+            log_info "Found .venv directory, activating..."
+            source "$PROJECT_ROOT/.venv/bin/activate"
+            log_success "Virtual environment activated"
+        elif [ -d "$PROJECT_ROOT/venv" ]; then
+            log_info "Found venv directory, activating..."
+            source "$PROJECT_ROOT/venv/bin/activate"
+            log_success "Virtual environment activated"
+        else
+            log_error "No virtual environment found. Please:"
+            log_error "  1. Create venv: python3 -m venv .venv"
+            log_error "  2. Activate it: source .venv/bin/activate"
+            log_error "  3. Install deps: pip install -r importer/requirements.txt"
+            log_error "OR activate your existing venv before running this script"
+            exit 1
+        fi
+        
+        # Verify again after activation
+        if ! $PYTHON_CMD -c "import typer" 2>/dev/null; then
+            log_error "Importer dependencies still not found. Please install:"
+            log_error "  pip install -r importer/requirements.txt"
+            exit 1
+        fi
+    fi
+    log_success "Importer dependencies found"
     
     # Check Terraform
     if ! command -v terraform &> /dev/null; then
@@ -135,10 +170,10 @@ phase1_fetch() {
     cd "$PROJECT_ROOT"
     
     log_info "Running importer fetch..."
-    python -m importer fetch
+    $PYTHON_CMD -m importer fetch
     
     # Find the most recent export
-    EXPORT_FILE=$(ls -t "$EXPORT_DIR"/account_*_run_*.json 2>/dev/null | head -1)
+    EXPORT_FILE=$(ls -t "$EXPORT_DIR"/account_*_run_*__json__*.json 2>/dev/null | head -1)
     
     if [ -z "$EXPORT_FILE" ]; then
         log_error "No export file found after fetch"
@@ -165,10 +200,10 @@ phase2_normalize() {
     cd "$PROJECT_ROOT"
     
     log_info "Running importer normalize..."
-    python -m importer normalize "$export_file"
+    $PYTHON_CMD -m importer normalize "$export_file"
     
     # Find the most recent normalized YAML
-    YAML_FILE=$(ls -t "$EXPORT_DIR"/normalized_*.yml 2>/dev/null | head -1)
+    YAML_FILE=$(ls -t "$EXPORT_DIR"/normalized/account_*_norm_*__yaml__*.yml 2>/dev/null | head -1)
     
     if [ -z "$YAML_FILE" ]; then
         log_error "No YAML file found after normalization"
@@ -178,7 +213,7 @@ phase2_normalize() {
     log_success "Normalize completed: $YAML_FILE"
     
     # Validate YAML syntax
-    if python -c "import yaml; yaml.safe_load(open('$YAML_FILE'))" 2>/dev/null; then
+    if $PYTHON_CMD -c "import yaml; yaml.safe_load(open('$YAML_FILE'))" 2>/dev/null; then
         log_success "YAML syntax is valid"
     else
         log_error "YAML syntax is invalid"
@@ -291,7 +326,7 @@ create_test_summary() {
 # End-to-End Test Summary
 
 **Test Date:** $(date)
-**Importer Version:** $(cd "$PROJECT_ROOT" && python -m importer --version)
+**Importer Version:** $(cd "$PROJECT_ROOT" && $PYTHON_CMD -m importer --version)
 **Terraform Version:** $(terraform version -json | jq -r '.terraform_version')
 
 ## Test Account Details
