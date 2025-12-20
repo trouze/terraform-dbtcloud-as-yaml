@@ -19,6 +19,11 @@ locals {
     ]
   ])
 
+  # Non-sensitive set of token names available in token_map
+  # Use nonsensitive() to extract keys from sensitive map for filtering
+  # Keys themselves are not sensitive, only the values are
+  available_token_names = toset(nonsensitive(keys(var.token_map)))
+
   # Helper to resolve connection ID from reference (key, LOOKUP, or ID)
   resolve_connection_id = {
     for item in local.all_environments :
@@ -51,11 +56,15 @@ locals {
 # Create credentials per environment
 # Note: We create Databricks credentials as a default. For other types,
 # you may need to add additional credential resources (snowflake_credential, etc.)
+# Skip credentials where token is missing or schema is missing (required for non-semantic-layer credentials)
 resource "dbtcloud_databricks_credential" "credentials" {
   for_each = {
     for item in local.all_environments :
     "${item.project_key}_${item.env_key}" => item
-    if try(item.env_data.credential, null) != null
+    if try(item.env_data.credential, null) != null &&
+       try(item.env_data.credential.token_name, null) != null &&
+       contains(local.available_token_names, item.env_data.credential.token_name) &&
+       try(item.env_data.credential.schema, null) != null
   }
 
   project_id   = each.value.project_id

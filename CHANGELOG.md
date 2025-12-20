@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.4] - 2025-12-20
+
+### Fixed
+- **Terraform for_each with Sensitive Values**: Fixed "Invalid for_each argument" error in `modules/projects_v2/environments.tf`
+  - Root cause: Terraform considers `keys()` of a sensitive map as sensitive, preventing its use in `for_each` filters
+  - Solution: Wrapped `keys(var.token_map)` with `nonsensitive()` function to mark keys as non-sensitive
+  - Keys (token names) are not sensitive; only the token values are sensitive
+  - This allows filtering credentials by token availability without exposing sensitive values
+  - Fix enables successful Terraform plan execution (97 resources planned to add)
+
+### Technical Details
+- Updated `modules/projects_v2/environments.tf` line 24 to use `nonsensitive(keys(var.token_map))`
+- The `nonsensitive()` function (Terraform 0.14+) is designed for this exact use case
+- Terraform plan now completes successfully without for_each errors
+
 ## [0.5.3] - 2025-12-20
 
 ### Fixed

@@ -1,4 +1,4 @@
-rm -rf .terraform .terraform.lock.hclterraform {
+terraform {
   required_version = ">= 1.0"
   required_providers {
     dbtcloud = {

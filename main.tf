@@ -49,7 +49,7 @@ module "repository" {
   count  = local.schema_version == 1 ? 1 : 0
   source = "./modules/repository"
   providers = {
-    dbtcloud = dbtcloud.pat_provider
+    dbtcloud = dbtcloud
   }
 
   repository_data = local.project_config_v1.repository

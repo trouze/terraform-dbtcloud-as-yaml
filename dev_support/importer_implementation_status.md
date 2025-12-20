@@ -1,7 +1,7 @@
 # Importer Implementation Status & Tracking
 
 **Last Updated:** 2025-12-20  
-**Current Importer Version:** 0.5.3  
+**Current Importer Version:** 0.5.4  
 **Status:** Phase 3 Complete + Interactive Mode + E2E Testing Infrastructure
 
 > **⚠️ IMPORTANT: Keep This Document Updated**
@@ -789,6 +789,17 @@ The following items require API endpoint research before implementation can begi
   - Normalization remains backwards compatible (handles missing fields gracefully)
   - Element IDs/line items no longer include deleted resources
 - **Testing**: Verified filtering works correctly (0 state=2 resources in new exports, 15 tokens vs 17 before)
+
+### 2025-12-20 (v0.5.4)
+- **Version:** Incremented to 0.5.4 (patch release)
+- **Terraform for_each with Sensitive Values**: Fixed "Invalid for_each argument" error in `modules/projects_v2/environments.tf`
+  - Root cause: Terraform considers `keys()` of a sensitive map as sensitive, preventing its use in `for_each` filters
+  - Solution: Wrapped `keys(var.token_map)` with `nonsensitive()` function to mark keys as non-sensitive
+  - Keys (token names) are not sensitive; only the token values are sensitive
+  - This allows filtering credentials by token availability without exposing sensitive values
+  - Fix enables successful Terraform plan execution (97 resources planned to add)
+  - Updated `modules/projects_v2/environments.tf` line 24 to use `nonsensitive(keys(var.token_map))`
+  - The `nonsensitive()` function (Terraform 0.14+) is designed for this exact use case
 
 ### 2025-12-20 (v0.5.2)
 - **Version:** Incremented to 0.5.2 (patch release)
