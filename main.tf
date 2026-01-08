@@ -25,8 +25,9 @@ locals {
   # Normalizer now guarantees consistent types, so we can pass through directly
   account_config_v2 = try(local.yaml_content.account, null)
   globals_v2        = try(local.yaml_content.globals, {})
-  # Ensure projects is always a list for Terraform type consistency
-  projects_v2       = tolist(try(local.yaml_content.projects, []))
+  # yamldecode returns a tuple for lists, but Terraform can handle tuples directly
+  # The variable type accepts list(any), which works with tuples
+  projects_v2       = try(local.yaml_content.projects, [])
 }
 
 #############################################

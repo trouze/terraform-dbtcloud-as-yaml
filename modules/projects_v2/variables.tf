@@ -44,15 +44,9 @@ variable "globals" {
 
 variable "projects" {
   description = "List of projects to create"
-  type = list(object({
-    key                   = string
-    name                  = string
-    repository            = any # Can be string (key) or object (inline)
-    environments          = list(any)
-    jobs                  = optional(list(any), [])
-    environment_variables = optional(list(any), [])
-    notifications         = optional(list(any), [])
-  }))
+  # Using any type to allow yamldecode() tuples with heterogeneous structures
+  # (empty lists vs populated lists, null vs string values)
+  type = any
 }
 
 variable "token_map" {

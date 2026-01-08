@@ -1,7 +1,7 @@
 # Importer Implementation Status & Tracking
 
 **Last Updated:** 2026-01-08  
-**Current Importer Version:** 0.6.9  
+**Current Importer Version:** 0.6.10  
 **Status:** Phase 3 Complete + Interactive Mode + E2E Testing Infrastructure
 
 > **⚠️ IMPORTANT: Keep This Document Updated**
@@ -420,7 +420,7 @@ Before starting end-to-end testing with a real account, verify:
 ## Version Tracking
 
 ### Importer Version
-- **Current:** 0.6.9
+- **Current:** 0.6.10
 - **File:** `importer/VERSION`
 - **Last Updated:** 2026-01-08
 
@@ -666,6 +666,11 @@ The following items require API endpoint research before implementation can begi
 ---
 
 ## Change Log
+
+### 2026-01-08 (v0.6.10)
+- **Version:** Incremented to 0.6.10 (patch release - job creation apply stability)
+- **Jobs: compare_changes_flags unknown after apply**: Fixed Terraform apply failures where job creation left `compare_changes_flags` unknown, triggering `Provider returned invalid result object after apply`.
+  - Provider now sets `compare_changes_flags` to a known value after create (API value or `null`).
 
 ### 2026-01-08 (v0.6.9)
 - **Version:** Incremented to 0.6.9 (patch release - environment variable environment-specific values)

@@ -6,26 +6,25 @@
 #############################################
 
 locals {
-  # Flatten all jobs across all projects and environments
+  # Flatten all jobs across all projects
+  # Jobs are at the project level with an environment_key field
   all_jobs = flatten([
     for project in var.projects : [
-      for env in project.environments : [
-        for job in try(env.jobs, []) : {
-          project_key     = project.key
-          project_id      = dbtcloud_project.projects[project.key].id
-          environment_key = env.key
-          environment_id  = dbtcloud_environment.environments["${project.key}_${env.key}"].id
-          job_key         = job.key
-          job_data        = job
-        }
-      ] if try(env.jobs, null) != null
-    ]
+      for job in try(project.jobs, []) : {
+        project_key     = project.key
+        project_id      = dbtcloud_project.projects[project.key].id
+        environment_key = job.environment_key
+        environment_id  = dbtcloud_environment.environments["${project.key}_${job.environment_key}"].environment_id
+        job_key         = job.key
+        job_data        = job
+      }
+    ] if try(project.jobs, null) != null
   ])
 
-  # Create map keyed by project_key_environment_key_job_key
+  # Create map keyed by project_key_job_key
   jobs_map = {
     for item in local.all_jobs :
-    "${item.project_key}_${item.environment_key}_${item.job_key}" => item
+    "${item.project_key}_${item.job_key}" => item
   }
 
   # Helper to resolve deferring environment ID by key
@@ -36,7 +35,7 @@ locals {
       lookup(
         {
           for env_item in local.all_environments :
-          "${env_item.project_key}_${env_item.env_key}" => dbtcloud_environment.environments["${env_item.project_key}_${env_item.env_key}"].id
+          "${env_item.project_key}_${env_item.env_key}" => dbtcloud_environment.environments["${env_item.project_key}_${env_item.env_key}"].environment_id
         },
         "${item.project_key}_${item.job_data.deferring_environment_key}",
         null
@@ -54,11 +53,59 @@ locals {
     key => null # Set to null - deferring_job_id requires job to exist first (circular dependency)
   }
 
+  # Validate run_compare_changes compatibility
+  # State-aware orchestration (run_compare_changes) is only available for:
+  # 1. Jobs on staging or production environments (deployment_type must be "staging" or "production")
+  # 2. Jobs that are NOT CI or Merge jobs (no github_webhook, git_provider_webhook, or on_merge triggers)
+  validate_run_compare_changes = {
+    for key, item in local.jobs_map :
+    key => (
+      # Check if run_compare_changes is requested
+      try(item.job_data.run_compare_changes, false) == true ?
+      (
+        # Check if environment is staging or production
+        contains(["staging", "production"], try(
+          dbtcloud_environment.environments["${item.project_key}_${item.environment_key}"].deployment_type,
+          ""
+        )) &&
+        # Check if job is NOT a CI/Merge job
+        !try(item.job_data.triggers.github_webhook, false) &&
+        !try(item.job_data.triggers.git_provider_webhook, false) &&
+        !try(item.job_data.triggers.on_merge, false)
+      ) : false
+    )
+  }
+
+  # Gate job creation when deployment_type is not set on the target environment.
+  # We intentionally do NOT infer deployment_type from the environment name:
+  # deployment_type must come from the source snapshot/mapping.
+  #
+  # Runtime evidence: dbt Cloud job creation can return SAO-related 405s for jobs
+  # targeting environments where deployment_type is null.
+  env_has_deployment_type = {
+    for key, item in local.jobs_map :
+    key => (
+      try(dbtcloud_environment.environments["${item.project_key}_${item.environment_key}"].deployment_type, null) != null &&
+      try(dbtcloud_environment.environments["${item.project_key}_${item.environment_key}"].deployment_type, "") != ""
+    )
+  }
+
+  jobs_creatable_map = {
+    for key, item in local.jobs_map :
+    key => item
+    if local.env_has_deployment_type[key]
+  }
+
 }
 
 # Create jobs
 resource "dbtcloud_job" "jobs" {
-  for_each = local.jobs_map
+  for_each = local.jobs_creatable_map
+
+  depends_on = [
+    dbtcloud_environment.environments,
+    dbtcloud_environment_variable.environment_variables
+  ]
 
   project_id     = each.value.project_id
   name           = each.value.job_data.name
@@ -74,8 +121,11 @@ resource "dbtcloud_job" "jobs" {
   errors_on_lint_failure   = try(each.value.job_data.errors_on_lint_failure, true)
   generate_docs            = try(each.value.job_data.generate_docs, false)
   is_active                = try(each.value.job_data.is_active, true)
-  num_threads              = try(each.value.job_data.num_threads, 4)
-  run_compare_changes      = try(each.value.job_data.run_compare_changes, false)
+  num_threads              = coalesce(try(each.value.job_data.num_threads, null), 4)
+  # Only enable run_compare_changes if validation passes (staging/prod environment and not CI/Merge job)
+  run_compare_changes      = local.validate_run_compare_changes[each.key]
+  # Use null for compare_changes_flags if validation fails - empty string still triggers SAO validation
+  compare_changes_flags    = local.validate_run_compare_changes[each.key] ? try(each.value.job_data.compare_changes_flags, "--select state:modified") : null
   run_generate_sources     = try(each.value.job_data.run_generate_sources, false)
   run_lint                 = try(each.value.job_data.run_lint, false)
   schedule_cron            = try(each.value.job_data.schedule_cron, null)

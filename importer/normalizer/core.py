@@ -639,7 +639,7 @@ def _normalize_environments(
             "type": env.type,
         }
         
-        # Resolve connection reference
+        # Resolve connection reference - ALWAYS include for Terraform type consistency
         # First try to resolve using connection key mapping (original key -> normalized key)
         # Then fall back to element_mapping_id resolution
         if env.connection_key:
@@ -653,14 +653,15 @@ def _normalize_environments(
                 lookup_id = f"LOOKUP:{env.connection_key}"
                 env_data["connection"] = lookup_id
                 context.add_placeholder(lookup_id, f"Connection for environment {env.name}")
+        else:
+            env_data["connection"] = None
         
-        # Credential
+        # Credential - ALWAYS include all fields for Terraform type consistency
         env_data["credential"] = {
-            "token_name": env.credential.token_name,
-            "schema": env.credential.schema,
+            "token_name": env.credential.token_name or "",
+            "schema": env.credential.schema or "",
+            "catalog": env.credential.catalog or None,
         }
-        if env.credential.catalog:
-            env_data["credential"]["catalog"] = env.credential.catalog
         
         # Optional fields - ALWAYS include to ensure Terraform type consistency
         env_data["dbt_version"] = env.dbt_version or None
@@ -681,6 +682,9 @@ def _normalize_jobs(
     """Normalize jobs for a project."""
     result = []
     exclude_keys = config.get_exclude_keys("jobs")
+    
+    # Build mapping of environment_id -> environment_key for deferral resolution
+    env_id_to_key = {env.id: env.key for env in project.environments if env.id}
     
     for job in project.jobs:
         if job.key in exclude_keys:
@@ -703,23 +707,31 @@ def _normalize_jobs(
             "triggers": job.triggers,
         }
         
-        # Optional schedule settings
-        if job.settings.get("schedule_type"):
-            job_data["schedule_type"] = job.settings["schedule_type"]
+        # Extract deferring_environment_id and map to environment_key
+        # Always include this field (even if null) for Terraform type consistency
+        deferring_env_id = job.settings.get("deferring_environment_id")
+        if deferring_env_id and deferring_env_id in env_id_to_key:
+            job_data["deferring_environment_key"] = env_id_to_key[deferring_env_id]
+        else:
+            # Explicitly set to null to ensure all jobs have the same structure
+            job_data["deferring_environment_key"] = None
         
-        if job.settings.get("schedule_hours"):
-            job_data["schedule_hours"] = job.settings["schedule_hours"]
+        # Schedule settings - ALWAYS include for Terraform type consistency
+        job_data["schedule_type"] = job.settings.get("schedule_type") or None
+        job_data["schedule_hours"] = job.settings.get("schedule_hours") or None
+        job_data["schedule_days"] = job.settings.get("schedule_days") or None
+        job_data["schedule_cron"] = job.settings.get("schedule_cron") or None
         
-        if job.settings.get("schedule_days"):
-            job_data["schedule_days"] = job.settings["schedule_days"]
-        
-        if job.settings.get("schedule_cron"):
-            job_data["schedule_cron"] = job.settings["schedule_cron"]
-        
-        # Optional job settings
-        for field in ["num_threads", "timeout_seconds", "target_name", "dbt_version", "generate_docs", "run_lint", "run_generate_sources", "run_compare_changes"]:
-            if field in job.settings and job.settings[field] is not None:
-                job_data[field] = job.settings[field]
+        # Optional job settings - ALWAYS include for Terraform type consistency
+        job_data["num_threads"] = job.settings.get("num_threads") or None
+        job_data["timeout_seconds"] = job.settings.get("timeout_seconds") or None
+        job_data["target_name"] = job.settings.get("target_name") or None
+        job_data["dbt_version"] = job.settings.get("dbt_version") or None
+        job_data["generate_docs"] = job.settings.get("generate_docs", False)
+        job_data["run_lint"] = job.settings.get("run_lint", False)
+        job_data["run_generate_sources"] = job.settings.get("run_generate_sources", False)
+        job_data["run_compare_changes"] = job.settings.get("run_compare_changes", False)
+        job_data["compare_changes_flags"] = job.settings.get("compare_changes_flags") or None
         
         result.append(job_data)
     

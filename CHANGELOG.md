@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.10] - 2026-01-08
+
+### Fixed
+- **Jobs: compare_changes_flags unknown after apply**: Fixed Terraform apply failures where the provider left `compare_changes_flags` unknown post-create, producing `Provider returned invalid result object after apply`.
+  - Provider now ensures `compare_changes_flags` is always known after job creation (set from API when present, otherwise `null`).
+  - This unblocks E2E applies when creating jobs, even when state-aware orchestration is disabled.
+
 ## [0.6.9] - 2026-01-08
 
 ### Fixed
