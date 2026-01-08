@@ -101,7 +101,9 @@ resource "dbtcloud_environment" "environments" {
   dbt_version                = try(each.value.env_data.dbt_version, null)
   enable_model_query_history = try(each.value.env_data.enable_model_query_history, null)
   custom_branch              = try(each.value.env_data.custom_branch, null)
-  deployment_type            = try(each.value.env_data.deployment_type, null)
+  # deployment_type must come from the source snapshot / mapping.
+  # Do NOT infer from the environment name.
+  deployment_type = try(each.value.env_data.deployment_type, null)
   # Note: target_name is not a valid argument for dbtcloud_environment resource
   use_custom_branch          = try(each.value.env_data.custom_branch, null) != null
 }
