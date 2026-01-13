@@ -71,3 +71,4 @@ __pycache__/
 .venv/
 venv/
 *.egg-info/
+.cursor/debug.log
