@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.3] - 2026-01-13
+
+### Added
+- **Explore Entities Tab**: "Default" button in column selector resets to optimized columns per entity type
+- **Explore Entities Tab**: Explicit `colId` on all columns prevents AG Grid auto-numbering issues
+
+### Changed
+- **Explore Entities Tab**: Column header changed from "#" to "Line #" for clarity
+
+### Fixed
+- **Explore Entities Tab**: Column visibility selector now properly updates grid using AG Grid's `setGridOption` API
+- **Explore Entities Tab**: Fixed duplicate column names ("Sort Key 2", "Name 3") caused by AG Grid sorting properties
+- **Explore Entities Tab**: Removed `initialState.sortModel` and column-level `sort`/`sortIndex` properties that created phantom columns
+
 ## [0.7.2] - 2026-01-13
 
 ### Changed
