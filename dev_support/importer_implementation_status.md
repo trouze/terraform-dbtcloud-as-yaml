@@ -1,7 +1,7 @@
 # Importer Implementation Status & Tracking
 
 **Last Updated:** 2026-01-13  
-**Current Importer Version:** 0.7.2  
+**Current Importer Version:** 0.7.3  
 **Status:** Phase 3 Complete + Interactive Mode + Web UI + E2E Testing Infrastructure
 
 > **⚠️ IMPORTANT: Keep This Document Updated**
@@ -666,6 +666,16 @@ The following items require API endpoint research before implementation can begi
 ---
 
 ## Change Log
+
+### 2026-01-13 (v0.7.3)
+- **Version:** Incremented to 0.7.3 (patch release - Web UI entity table fixes)
+- **Web UI: Entity Table Column Visibility**: Fixed column selector not properly updating grid display
+  - Using AG Grid's `setGridOption` API for reliable column updates
+- **Web UI: Duplicate Column Names**: Fixed "Sort Key 2", "Name 3", "Project 1" appearing in table headers
+  - Root cause: AG Grid's `initialState.sortModel` and column-level `sort`/`sortIndex` properties creating phantom columns
+  - Removed all sorting-related properties that caused conflicts with NiceGUI's AGGrid component
+- **Web UI: Column Selector Enhancements**: Added "Default" button to reset to optimized columns per entity type
+- **Web UI: Column Header**: Changed "#" to "Line #" for clarity
 
 ### 2026-01-09 (v0.6.11)
 - **Version:** Incremented to 0.6.11 (patch release - scheduled job configuration)
