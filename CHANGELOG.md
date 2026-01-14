@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.8] - 2026-01-14
+
+### Added
+- **YAML Preview Search**: Real-time search with highlighting, match count, and next/previous navigation
+- **Phase 2 Map Complete**: All Map step user stories implemented (US-028 through US-036)
+
+### Changed
+- **YAML Preview**: Search shows "X of Y" format with orange highlight on current match
+
 ## [0.7.7] - 2026-01-14
 
 ### Added
