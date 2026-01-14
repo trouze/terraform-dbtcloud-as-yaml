@@ -55,7 +55,7 @@ resource "dbtcloud_environment_variable" "environment_variables" {
       dbtcloud_environment.environments[local.env_name_to_resource_key["${each.value.project_key}_${env_key}"]].name :
       # Fallback to env_key if environment not found (will cause API error, but that's expected)
       env_key
-    ) => (
+      ) => (
       # If value starts with secret prefix, look it up in token_map
       can(regex("^secret_", env_value)) ?
       lookup(var.token_map, replace(env_value, "secret_", ""), env_value) :

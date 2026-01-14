@@ -15,6 +15,10 @@ from importer.web.utils.yaml_viewer import (
     create_yaml_viewer_dialog,
     get_yaml_stats,
 )
+from importer.web.components.backend_config import (
+    create_backend_config_section,
+    write_backend_tf,
+)
 
 
 # dbt brand colors
@@ -44,6 +48,10 @@ def create_deploy_page(
         "plan_running": False,
         "apply_running": False,
         "destroy_running": False,
+        "backend_config": {
+            "type": "local",
+            "use_existing": False,
+        },
     }
 
     with ui.column().classes("w-full max-w-6xl mx-auto p-6 gap-6"):
@@ -62,6 +70,12 @@ def create_deploy_page(
 
         # Deployment summary
         _create_deployment_summary(state)
+
+        # Backend configuration (collapsible)
+        with ui.expansion("Backend Configuration", icon="storage").classes("w-full").props("dense"):
+            create_backend_config_section(
+                backend_config=deploy_state["backend_config"],
+            )
 
         # Row 1: Generate, Init, Validate (3 equal tiles)
         with ui.row().classes("w-full gap-4"):
@@ -469,8 +483,10 @@ def _create_apply_section(
             ui.badge("5", color="primary").props("rounded")
             ui.label("Apply Changes").classes("font-semibold")
             
-            if state.deploy.apply_complete:
-                ui.icon("check_circle", size="sm").classes("text-green-500 ml-auto")
+            # Dynamic checkmark - stored in deploy_state for updating
+            apply_checkmark = ui.icon("check_circle", size="sm").classes("text-green-500 ml-auto")
+            apply_checkmark.visible = state.deploy.apply_complete
+            deploy_state["apply_checkmark"] = apply_checkmark
 
         ui.label(
             "Deploy resources to the target dbt Platform account."
@@ -568,6 +584,18 @@ async def _run_generate(
     terminal.clear()
     terminal.info("Generating Terraform configuration files...")
     terminal.info("")
+    
+    # Reset all downstream checkmarks and state when regenerating
+    # This ensures a clean state for the new deployment
+    state.deploy.terraform_initialized = False
+    state.deploy.last_validate_success = False
+    state.deploy.last_plan_success = False
+    state.deploy.apply_complete = False
+    
+    # Reset checkmark visibility in UI
+    for checkmark_key in ["init_checkmark", "validate_checkmark", "plan_checkmark", "apply_checkmark"]:
+        if checkmark_key in deploy_state:
+            deploy_state[checkmark_key].visible = False
 
     try:
         # Check if YAML file exists
@@ -601,6 +629,13 @@ async def _run_generate(
             yaml_file,
             str(output_path),
         )
+
+        # Generate backend.tf if configured
+        backend_config = deploy_state.get("backend_config", {})
+        if not backend_config.get("use_existing", False):
+            backend_file = write_backend_tf(backend_config, str(output_path))
+            if backend_file:
+                terminal.info(f"Generated backend configuration: {Path(backend_file).name}")
 
         terminal.success("Terraform files generated!")
         terminal.info("")
@@ -1027,6 +1062,11 @@ async def _run_terraform_apply(
             terminal.success("━━━ DEPLOYMENT COMPLETE ━━━")
             state.deploy.apply_complete = True
             save_state()
+            
+            # Update checkmark visibility
+            if "apply_checkmark" in deploy_state:
+                deploy_state["apply_checkmark"].visible = True
+            
             ui.notify("Deployment complete!", type="positive")
         else:
             terminal.error("")

@@ -97,8 +97,8 @@ output "environment_connections" {
     key => {
       environment_id = env.id
       connection_id  = env.connection_id
-      project_key   = split("_", key)[0]
-      env_key       = split("_", key)[1]
+      project_key    = split("_", key)[0]
+      env_key        = split("_", key)[1]
     }
   }
 }
@@ -108,13 +108,13 @@ output "repository_integration_status" {
   value = {
     for key, repo in dbtcloud_repository.repositories :
     key => {
-      repository_id         = repo.id
-      git_clone_strategy    = repo.git_clone_strategy
+      repository_id          = repo.id
+      git_clone_strategy     = repo.git_clone_strategy
       github_installation_id = repo.github_installation_id
-      gitlab_project_id     = repo.gitlab_project_id
-      azure_project_id      = repo.azure_active_directory_project_id
-      azure_repository_id   = repo.azure_active_directory_repository_id
-      linked_to_project     = try(dbtcloud_project_repository.project_repositories[key].id, null) != null
+      gitlab_project_id      = repo.gitlab_project_id
+      azure_project_id       = repo.azure_active_directory_project_id
+      azure_repository_id    = repo.azure_active_directory_repository_id
+      linked_to_project      = try(dbtcloud_project_repository.project_repositories[key].id, null) != null
     }
   }
 }
@@ -122,10 +122,10 @@ output "repository_integration_status" {
 output "github_integration_discovery" {
   description = "Debug: GitHub integration discovery status"
   value = {
-    pat_provided            = var.dbt_pat != null
-    installations_found     = length(local.github_installations)
-    github_installation_id  = local.github_installation_id
-    host_url                = local.dbt_host_url
+    pat_provided           = var.dbt_pat != null
+    installations_found    = length(local.github_installations)
+    github_installation_id = local.github_installation_id
+    host_url               = local.dbt_host_url
   }
 }
 
@@ -156,16 +156,16 @@ output "job_deferral_debug" {
 output "env_var_debug" {
   description = "Debug: Environment variable processing status"
   value = {
-    all_env_vars_count     = length(local.all_environment_variables)
-    env_vars_map_keys      = keys(local.env_vars_map)
-    env_vars_map_count     = length(local.env_vars_map)
-    sample_env_var         = length(local.all_environment_variables) > 0 ? {
-      name                = local.all_environment_variables[0].env_var_key
-      project_key         = local.all_environment_variables[0].project_key
-      environment_values  = try(local.all_environment_variables[0].env_var_data.environment_values, {})
-      env_values_count    = length(try(local.all_environment_variables[0].env_var_data.environment_values, {}))
+    all_env_vars_count = length(local.all_environment_variables)
+    env_vars_map_keys  = keys(local.env_vars_map)
+    env_vars_map_count = length(local.env_vars_map)
+    sample_env_var = length(local.all_environment_variables) > 0 ? {
+      name               = local.all_environment_variables[0].env_var_key
+      project_key        = local.all_environment_variables[0].project_key
+      environment_values = try(local.all_environment_variables[0].env_var_data.environment_values, {})
+      env_values_count   = length(try(local.all_environment_variables[0].env_var_data.environment_values, {}))
     } : null
-    resources_planned      = length(dbtcloud_environment_variable.environment_variables)
+    resources_planned = length(dbtcloud_environment_variable.environment_variables)
   }
 }
 

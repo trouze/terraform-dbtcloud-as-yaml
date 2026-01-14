@@ -123,6 +123,7 @@ def _create_recent_runs_section(
             {"name": "account", "label": "Account", "field": "account", "align": "left"},
             {"name": "timestamp", "label": "Timestamp", "field": "timestamp", "align": "left"},
             {"name": "status", "label": "Status", "field": "status", "align": "left"},
+            {"name": "actions", "label": "", "field": "actions", "align": "center"},
         ]
 
         rows = []
@@ -132,11 +133,85 @@ def _create_recent_runs_section(
                 "account": f"Account {run.get('account_id', 'N/A')}",
                 "timestamp": run.get("timestamp", "Unknown"),
                 "status": "Complete" if run.get("success", True) else "Failed",
+                "run_id": run.get("run_id", ""),
+                "account_id": run.get("account_id", ""),
+                "run_type": run.get("type", "fetch"),
             })
 
         table = ui.table(columns=columns, rows=rows, row_key="timestamp").classes("w-full")
+        table.add_slot(
+            "body-cell-actions",
+            '''
+            <q-td :props="props">
+                <q-btn flat dense icon="open_in_new" size="sm" @click="$parent.$emit('load-run', props.row)" />
+            </q-td>
+            '''
+        )
+        table.on("load-run", lambda e: _load_run_and_navigate(
+            e.args, state, on_step_change
+        ))
 
-        # TODO: Add click handler to load run data
+        ui.label("Click a row to load that run's data into the Explore view.").classes(
+            "text-xs text-slate-500 mt-2"
+        )
+
+
+def _load_run_and_navigate(
+    row: dict,
+    state: AppState,
+    on_step_change: Callable[[WorkflowStep], None],
+) -> None:
+    """Load a run's data and navigate to Explore.
+    
+    Args:
+        row: Table row data containing run information
+        state: Application state to update
+        on_step_change: Callback to navigate
+    """
+    account_id = row.get("account_id", "")
+    run_id = row.get("run_id", "")
+    run_type = row.get("run_type", "fetch")
+    
+    if not account_id or not run_id:
+        ui.notify("Run data not available", type="warning")
+        return
+    
+    output_path = Path(state.fetch.output_dir)
+    
+    # Find the YAML file for this run
+    yaml_file = None
+    
+    if run_type == "fetch":
+        # Look for the fetched account YAML
+        account_yaml = output_path / str(account_id) / run_id / f"account_{account_id}.yaml"
+        if account_yaml.exists():
+            yaml_file = account_yaml
+        else:
+            # Try alternative path patterns
+            account_dir = output_path / str(account_id) / run_id
+            if account_dir.exists():
+                yaml_files = list(account_dir.glob("*.yaml"))
+                if yaml_files:
+                    yaml_file = yaml_files[0]
+    elif run_type == "normalize":
+        # Look for normalized YAML
+        norm_yaml = output_path / "normalized" / str(account_id) / run_id / "normalized.yaml"
+        if norm_yaml.exists():
+            yaml_file = norm_yaml
+    
+    if not yaml_file or not yaml_file.exists():
+        ui.notify(f"Could not find data for run {run_id}", type="warning")
+        return
+    
+    # Update state
+    state.fetch.fetch_complete = True
+    state.fetch.last_yaml_file = str(yaml_file)
+    state.source_account.account_id = account_id
+    
+    ui.notify(f"Loaded run {run_id}", type="positive")
+    
+    # Navigate to Explore
+    on_step_change(WorkflowStep.EXPLORE)
 
 
 def _load_recent_runs(output_dir: str) -> list:

@@ -27,7 +27,7 @@ locals {
   globals_v2        = try(local.yaml_content.globals, {})
   # yamldecode returns a tuple for lists, but Terraform can handle tuples directly
   # The variable type accepts list(any), which works with tuples
-  projects_v2       = try(local.yaml_content.projects, [])
+  projects_v2 = try(local.yaml_content.projects, [])
 }
 
 #############################################
@@ -143,11 +143,12 @@ module "projects_v2" {
   count  = local.schema_version == 2 ? 1 : 0
   source = "./modules/projects_v2"
 
-  account        = local.account_config_v2
-  globals        = local.globals_v2
-  projects       = local.projects_v2
-  token_map      = var.token_map
-  dbt_account_id = var.dbt_account_id
-  dbt_pat        = var.dbt_pat != "" ? var.dbt_pat : null
-  dbt_host_url   = var.dbt_host_url
+  account                = local.account_config_v2
+  globals                = local.globals_v2
+  projects               = local.projects_v2
+  token_map              = var.token_map
+  connection_credentials = var.connection_credentials
+  dbt_account_id         = var.dbt_account_id
+  dbt_pat                = var.dbt_pat != "" ? var.dbt_pat : null
+  dbt_host_url           = var.dbt_host_url
 }

@@ -20,6 +20,9 @@ from importer.web.utils.yaml_viewer import (
     create_migration_summary_card,
     create_yaml_viewer_dialog,
 )
+from importer.web.components.connection_config import (
+    create_connection_config_section,
+)
 
 
 # dbt brand colors
@@ -50,26 +53,25 @@ def create_target_page(
     # UI element references for dynamic updates
     status_container_ref = {"container": None}
 
-    with ui.column().classes("w-full max-w-5xl mx-auto p-6 gap-6"):
-        # Page header
-        with ui.row().classes("w-full items-center gap-4"):
-            ui.icon("settings", size="2rem").style(f"color: {DBT_ORANGE};")
-            ui.label("Configure Target Account").classes("text-2xl font-bold")
-
-        ui.label(
-            "Configure the target dbt Platform account where resources will be deployed."
-        ).classes("text-slate-600 dark:text-slate-400")
+    with ui.column().classes("w-full max-w-7xl mx-auto p-4 gap-4"):
+        # Page header - compact
+        with ui.row().classes("w-full items-center gap-3"):
+            ui.icon("settings", size="1.5rem").style(f"color: {DBT_ORANGE};")
+            ui.label("Configure Target Account").classes("text-xl font-bold")
+            ui.label(
+                "Configure the target dbt Platform account where resources will be deployed."
+            ).classes("text-slate-600 dark:text-slate-400 text-sm")
 
         # Prerequisite check
         if not state.map.normalize_complete:
             _create_prerequisite_warning(state, on_step_change)
             return
 
-        # Two-column layout
-        with ui.row().classes("w-full gap-6"):
-            # Left column: Credentials form
-            with ui.column().classes("w-1/2 min-w-[400px] gap-4"):
-                # Source account info card (read-only reference)
+        # Two-column layout for credentials section
+        with ui.row().classes("w-full gap-4 items-start"):
+            # Left column: Source reference + Target credentials
+            with ui.column().classes("w-[340px] min-w-[300px] gap-3"):
+                # Source account info card (compact)
                 _create_source_reference_card(state)
 
                 # Target credentials form
@@ -85,15 +87,15 @@ def create_target_page(
                     on_save_env=lambda: _save_env_credentials(state),
                 )
 
-            # Right column: Connection status and actions
-            with ui.column().classes("flex-grow gap-4"):
-                # Connection test section
+            # Right column: Connection status + Migration summary (stacked)
+            with ui.column().classes("flex-grow min-w-[400px] gap-3"):
                 _create_connection_test_section(
                     state, save_state, connection_status, status_container_ref
                 )
-
-                # Migration summary (what will be deployed)
                 _create_migration_summary(state)
+
+        # Connection provider configuration section (full width)
+        _create_connection_provider_section(state)
 
         # Navigation buttons
         _create_navigation_section(state, on_step_change, save_state)
@@ -103,52 +105,50 @@ def _create_prerequisite_warning(
     state: AppState, on_step_change: Callable[[WorkflowStep], None]
 ) -> None:
     """Show warning when prerequisites aren't met."""
-    with ui.card().classes("w-full p-6 border-l-4 border-yellow-500"):
+    with ui.card().classes("w-full p-4 border-l-4 border-yellow-500"):
         with ui.row().classes("items-center gap-3"):
-            ui.icon("warning", size="lg").classes("text-yellow-500")
-            ui.label("Prerequisites Required").classes("text-xl font-semibold")
+            ui.icon("warning", size="md").classes("text-yellow-500")
+            ui.label("Prerequisites Required").classes("text-lg font-semibold")
 
         ui.label(
-            "You need to complete the Map step and normalize your configuration before configuring the target account."
-        ).classes("mt-4 text-slate-600 dark:text-slate-400")
+            "Complete the Map step and normalize your configuration first."
+        ).classes("mt-2 text-sm text-slate-600 dark:text-slate-400")
 
-        with ui.row().classes("mt-6 gap-4"):
+        with ui.row().classes("mt-4 gap-3"):
             if not state.fetch.fetch_complete:
                 ui.button(
                     "Go to Fetch",
                     icon="cloud_download",
                     on_click=lambda: on_step_change(WorkflowStep.FETCH),
-                ).props("outline")
+                ).props("outline size=sm")
             elif not state.map.normalize_complete:
                 ui.button(
                     "Go to Map",
                     icon="tune",
                     on_click=lambda: on_step_change(WorkflowStep.MAP),
-                ).style(f"background-color: {DBT_ORANGE};")
+                ).props("size=sm").style(f"background-color: {DBT_ORANGE};")
 
 
 def _create_source_reference_card(state: AppState) -> None:
-    """Create a read-only card showing source account info for reference."""
-    with ui.card().classes("w-full bg-slate-50 dark:bg-slate-800/50"):
-        with ui.row().classes("items-center gap-2 mb-2"):
-            ui.icon("info", size="sm").classes("text-slate-500")
-            ui.label("Source Account (Reference)").classes(
-                "text-sm font-medium text-slate-600 dark:text-slate-400"
+    """Create a compact read-only card showing source account info for reference."""
+    with ui.card().classes("w-full bg-slate-50 dark:bg-slate-800/50 p-3"):
+        with ui.row().classes("items-center gap-2"):
+            ui.icon("cloud_download", size="xs").classes("text-slate-400")
+            ui.label("Source").classes(
+                "text-xs font-medium text-slate-500 dark:text-slate-400"
             )
-
-        with ui.column().classes("gap-1"):
             if state.source_account.account_name:
-                ui.label(f"Account: {state.source_account.account_name}").classes(
-                    "text-sm"
+                ui.label(state.source_account.account_name).classes(
+                    "text-sm font-medium"
                 )
-            if state.source_account.account_id:
-                ui.label(f"ID: {state.source_account.account_id}").classes(
-                    "text-xs text-slate-500 font-mono"
-                )
-            if state.source_account.host_url:
-                ui.label(f"Host: {state.source_account.host_url}").classes(
-                    "text-xs text-slate-500 font-mono"
-                )
+        if state.source_account.account_id:
+            ui.label(f"ID: {state.source_account.account_id}").classes(
+                "text-xs text-slate-500 font-mono mt-1"
+            )
+        if state.source_account.host_url:
+            ui.label(state.source_account.host_url).classes(
+                "text-xs text-slate-500 mt-1"
+            )
 
 
 def _create_connection_test_section(
@@ -158,10 +158,11 @@ def _create_connection_test_section(
     status_container_ref: dict,
 ) -> None:
     """Create the connection test section."""
-    with ui.card().classes("w-full"):
-        with ui.row().classes("items-center justify-between mb-4"):
-            ui.label("Connection Status").classes("text-lg font-semibold")
-
+    with ui.card().classes("w-full p-4"):
+        with ui.row().classes("items-center justify-between mb-3"):
+            with ui.row().classes("items-center gap-2"):
+                ui.icon("network_check", size="sm").classes("text-slate-400")
+                ui.label("Connection Status").classes("text-sm font-semibold")
             # Test connection button
             test_btn = ui.button(
                 "Test Connection",
@@ -169,7 +170,7 @@ def _create_connection_test_section(
                 on_click=lambda: _test_connection(
                     state, save_state, connection_status, status_container_ref
                 ),
-            ).props("outline")
+            ).props("outline size=sm")
 
         # Status display area
         status_container = ui.column().classes("w-full")
@@ -180,50 +181,39 @@ def _create_connection_test_section(
 
 
 def _render_connection_status(state: AppState, connection_status: dict) -> None:
-    """Render the current connection status."""
+    """Render the current connection status (compact)."""
     creds = state.target_credentials
 
     if not creds.is_complete():
         # Show placeholder when credentials aren't entered
-        with ui.row().classes("items-center gap-3 p-4 bg-slate-100 dark:bg-slate-800 rounded"):
-            ui.icon("pending", size="md").classes("text-slate-400")
-            with ui.column().classes("gap-1"):
-                ui.label("Awaiting credentials").classes("font-medium text-slate-600 dark:text-slate-400")
-                ui.label("Enter target account credentials to test the connection").classes(
-                    "text-sm text-slate-500"
-                )
+        with ui.row().classes("items-center gap-2 p-2 bg-slate-100 dark:bg-slate-800 rounded"):
+            ui.icon("pending", size="sm").classes("text-slate-400")
+            ui.label("Enter credentials").classes("text-xs text-slate-500")
     elif connection_status["tested"]:
         if connection_status["success"]:
             # Show success state
-            with ui.row().classes("items-center gap-3 p-4 bg-green-50 dark:bg-green-900/20 rounded border border-green-200 dark:border-green-800"):
-                ui.icon("check_circle", size="md").classes("text-green-500")
-                with ui.column().classes("gap-1"):
-                    ui.label("Connection Verified").classes("font-medium text-green-700 dark:text-green-400")
-                    if connection_status["account_name"]:
-                        ui.label(f"Account: {connection_status['account_name']}").classes(
-                            "text-sm text-green-600 dark:text-green-500"
-                        )
-                    ui.label(connection_status["message"]).classes(
-                        "text-sm text-green-600 dark:text-green-500"
+            with ui.column().classes("gap-1 p-2 bg-green-50 dark:bg-green-900/20 rounded border border-green-200 dark:border-green-800"):
+                with ui.row().classes("items-center gap-2"):
+                    ui.icon("check_circle", size="sm").classes("text-green-500")
+                    ui.label("Verified").classes("text-sm font-medium text-green-700 dark:text-green-400")
+                if connection_status["account_name"]:
+                    ui.label(connection_status["account_name"]).classes(
+                        "text-xs text-green-600 dark:text-green-500 font-mono"
                     )
         else:
             # Show error state
-            with ui.row().classes("items-center gap-3 p-4 bg-red-50 dark:bg-red-900/20 rounded border border-red-200 dark:border-red-800"):
-                ui.icon("error", size="md").classes("text-red-500")
-                with ui.column().classes("gap-1"):
-                    ui.label("Connection Failed").classes("font-medium text-red-700 dark:text-red-400")
-                    ui.label(connection_status["message"]).classes(
-                        "text-sm text-red-600 dark:text-red-500"
-                    )
+            with ui.column().classes("gap-1 p-2 bg-red-50 dark:bg-red-900/20 rounded border border-red-200 dark:border-red-800"):
+                with ui.row().classes("items-center gap-2"):
+                    ui.icon("error", size="sm").classes("text-red-500")
+                    ui.label("Failed").classes("text-sm font-medium text-red-700 dark:text-red-400")
+                ui.label(connection_status["message"]).classes(
+                    "text-xs text-red-600 dark:text-red-500"
+                )
     else:
         # Credentials entered but not tested
-        with ui.row().classes("items-center gap-3 p-4 bg-blue-50 dark:bg-blue-900/20 rounded border border-blue-200 dark:border-blue-800"):
-            ui.icon("info", size="md").classes("text-blue-500")
-            with ui.column().classes("gap-1"):
-                ui.label("Ready to Test").classes("font-medium text-blue-700 dark:text-blue-400")
-                ui.label("Click 'Test Connection' to verify your credentials").classes(
-                    "text-sm text-blue-600 dark:text-blue-500"
-                )
+        with ui.row().classes("items-center gap-2 p-2 bg-blue-50 dark:bg-blue-900/20 rounded border border-blue-200 dark:border-blue-800"):
+            ui.icon("info", size="sm").classes("text-blue-500")
+            ui.label("Ready to test").classes("text-xs text-blue-600 dark:text-blue-500")
 
 
 def _create_migration_summary(state: AppState) -> None:
@@ -245,26 +235,40 @@ def _create_migration_summary(state: AppState) -> None:
     )
 
 
+def _create_connection_provider_section(state: AppState) -> None:
+    """Create the connection provider configuration section.
+    
+    This allows users to configure connection-specific details like
+    Snowflake account, Databricks host, BigQuery project, etc.
+    """
+    yaml_path = state.map.last_yaml_file
+    
+    with ui.column().classes("w-full"):
+        create_connection_config_section(
+            yaml_path=yaml_path,
+        )
+
+
 def _create_navigation_section(
     state: AppState,
     on_step_change: Callable[[WorkflowStep], None],
     save_state: Callable[[], None],
 ) -> None:
     """Create the navigation buttons section."""
-    with ui.row().classes("w-full justify-between mt-6"):
+    with ui.row().classes("w-full justify-between mt-4"):
         # Back button
         ui.button(
             "Back to Map",
             icon="arrow_back",
             on_click=lambda: on_step_change(WorkflowStep.MAP),
-        ).props("outline")
+        ).props("outline size=sm")
 
         # Continue button
         continue_btn = ui.button(
             "Continue to Deploy",
             icon="arrow_forward",
             on_click=lambda: _continue_to_deploy(state, on_step_change),
-        ).style(f"background-color: {DBT_ORANGE};")
+        ).props("size=sm").style(f"background-color: {DBT_ORANGE};")
 
         # Disable if credentials aren't complete
         if not state.target_credentials.is_complete():

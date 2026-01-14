@@ -148,17 +148,17 @@ resource "dbtcloud_job" "jobs" {
   triggers       = each.value.job_data.triggers
 
   # Optional fields
-  description              = try(each.value.job_data.description, null)
-  dbt_version              = try(each.value.job_data.dbt_version, null)
+  description = try(each.value.job_data.description, null)
+  dbt_version = try(each.value.job_data.dbt_version, null)
   # Deferring environment ID: Look up from the referenced environment key
   # Note: deferring_job_id is not set - it conflicts with deferring_environment_id
   deferring_environment_id = (
     try(each.value.job_data.deferring_environment_key, null) != null
   ) ? try(dbtcloud_environment.environments["${each.value.project_key}_${each.value.job_data.deferring_environment_key}"].environment_id, null) : null
-  errors_on_lint_failure   = try(each.value.job_data.errors_on_lint_failure, true)
-  generate_docs            = try(each.value.job_data.generate_docs, false)
-  is_active                = try(each.value.job_data.is_active, true)
-  num_threads              = coalesce(try(each.value.job_data.num_threads, null), 4)
+  errors_on_lint_failure = try(each.value.job_data.errors_on_lint_failure, true)
+  generate_docs          = try(each.value.job_data.generate_docs, false)
+  is_active              = try(each.value.job_data.is_active, true)
+  num_threads            = coalesce(try(each.value.job_data.num_threads, null), 4)
   # Only enable run_compare_changes if validation passes (staging/prod environment and not CI/Merge job)
   run_compare_changes = local.validate_run_compare_changes[each.key]
   # Use null for compare_changes_flags if validation fails - empty string still triggers SAO validation

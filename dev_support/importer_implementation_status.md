@@ -1,7 +1,7 @@
 # Importer Implementation Status & Tracking
 
 **Last Updated:** 2026-01-14  
-**Current Importer Version:** 0.7.9  
+**Current Importer Version:** 0.8.0  
 **Status:** Phase 3 Complete + Interactive Mode + Web UI + E2E Testing Infrastructure
 
 > **⚠️ IMPORTANT: Keep This Document Updated**
@@ -666,6 +666,19 @@ The following items require API endpoint research before implementation can begi
 ---
 
 ## Change Log
+
+### 2026-01-14 (v0.8.0)
+- **Version:** Incremented to 0.8.0 (minor release - OAuth/SSO credential support)
+- **OAuth/SSO Support**: Full OAuth credential configuration for Snowflake, Databricks, and BigQuery connections
+- **Connection Credentials Variable**: New `connection_credentials` Terraform variable for passing OAuth secrets
+- **Secrets Auto-Generation**: `secrets.auto.tfvars` file generated with OAuth credentials (auto-loaded by Terraform)
+- **OAuth Warning Cards**: Warning in Target page explaining OAuth integrations cannot be reused from source
+- **Documentation Links**: Links to dbt platform OAuth setup guides (Snowflake SSO, External OAuth, Databricks, BigQuery)
+- **Terraform Module**: Added OAuth fields to `globals.tf` for all connection types
+- **Target Page**: OAuth fields grouped under "OAuth / SSO Configuration" section
+- **Target Page**: Source reference card now displays host URL
+- **Deploy Page**: Apply checkmark shows after successful deployment, all checkmarks reset on regenerate
+- **Credential Loading Fix**: Fixed regex pattern to correctly parse multi-part field names from .env
 
 ### 2026-01-14 (v0.7.9)
 - **Version:** Incremented to 0.7.9 (patch release - Job deferral fixes, Deploy page improvements)

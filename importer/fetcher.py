@@ -82,7 +82,7 @@ def _should_include_resource(item: Dict[str, Any]) -> bool:
 def fetch_account_snapshot(
     client: DbtCloudClient,
     progress: Optional[FetchProgressCallback] = None,
-    threads: int = 5,
+    threads: int = 15,
     cancel_event: Optional[threading.Event] = None,
 ) -> AccountSnapshot:
     """
@@ -540,12 +540,34 @@ def _fetch_connections(
     if progress:
         progress.on_resource_start("connections")
     connections: Dict[str, Connection] = {}
-    for item in client.paginate("/connections/", version="v3"):
-        key = item.get("name") or f"connection_{item['id']}"
+    
+    # First, list all connections to get IDs (list endpoint doesn't return full config)
+    connection_list = list(client.paginate("/connections/", version="v3"))
+    log.info(f"Found {len(connection_list)} connections, fetching detailed config for each")
+    
+    for item in connection_list:
+        conn_id = item.get("id")
+        key = item.get("name") or f"connection_{conn_id}"
         connection_key = slug(key)
 
         if progress:
             progress.on_resource_item("connections", connection_key)
+
+        # Fetch detailed config from individual endpoint
+        # The individual GET /connections/{id}/ endpoint returns full config including
+        # connection_details with provider-specific fields (host, http_path, etc.)
+        try:
+            detailed = client.get(
+                f"/connections/{conn_id}/",
+                version="v3",
+                params={"include_related": '["connection_details"]'}
+            )
+            if detailed.get("data"):
+                # Merge detailed data into item, keeping original fields as fallback
+                item = {**item, **detailed["data"]}
+                log.debug(f"Fetched detailed config for connection {connection_key}")
+        except Exception as e:
+            log.warning(f"Failed to fetch details for connection {conn_id}: {e}")
 
         # Extract connection type: prefer API 'type' field, fall back to adapter_version
         # According to API docs, 'type' is often null, so we derive it from adapter_version
@@ -558,6 +580,12 @@ def _fetch_connections(
                 log.debug(f"Derived connection type '{conn_type}' from adapter_version '{adapter_version}' for connection {connection_key}")
             else:
                 log.warning(f"Could not extract connection type from adapter_version '{adapter_version}' for connection {connection_key}")
+        
+        # Log if we got connection_details with config
+        conn_details = item.get("connection_details")
+        if conn_details:
+            config = conn_details.get("config") if isinstance(conn_details, dict) else None
+            log.debug(f"Connection {connection_key} connection_details: keys={list(conn_details.keys()) if isinstance(conn_details, dict) else 'non-dict'}, config={config}")
 
         connections[connection_key] = Connection(
             key=connection_key,
