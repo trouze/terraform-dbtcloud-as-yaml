@@ -9,11 +9,11 @@ locals {
   job_triggers = flatten([
     for key, item in local.jobs_creatable_map : [
       for cond in [try(item.job_data.job_completion_trigger_condition, null)] : {
-        key            = key
-        job_key        = item.job_key
-        project_key    = item.project_key
-        project_id     = item.project_id
-        condition      = cond
+        key              = key
+        job_key          = item.job_key
+        project_key      = item.project_key
+        project_id       = item.project_id
+        condition        = cond
         upstream_job_key = try(cond.job_key, null)
       }
       if cond != null && try(cond.job_key, null) != null

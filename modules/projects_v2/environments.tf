@@ -67,9 +67,9 @@ resource "dbtcloud_databricks_credential" "credentials" {
     for item in local.all_environments :
     "${item.project_key}_${item.env_key}" => item
     if try(item.env_data.credential, null) != null &&
-       try(item.env_data.credential.token_name, null) != null &&
-       contains(local.available_token_names, item.env_data.credential.token_name) &&
-       try(item.env_data.credential.schema, null) != null
+    try(item.env_data.credential.token_name, null) != null &&
+    contains(local.available_token_names, item.env_data.credential.token_name) &&
+    try(item.env_data.credential.schema, null) != null
   }
 
   project_id   = each.value.project_id
@@ -105,6 +105,6 @@ resource "dbtcloud_environment" "environments" {
   # Do NOT infer from the environment name.
   deployment_type = try(each.value.env_data.deployment_type, null)
   # Note: target_name is not a valid argument for dbtcloud_environment resource
-  use_custom_branch          = try(each.value.env_data.custom_branch, null) != null
+  use_custom_branch = try(each.value.env_data.custom_branch, null) != null
 }
 

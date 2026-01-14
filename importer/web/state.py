@@ -79,7 +79,7 @@ class FetchState:
 
     output_dir: str = "dev_support/samples"
     auto_timestamp: bool = True
-    threads: int = 5
+    threads: int = 15
     is_fetching: bool = False
     fetch_complete: bool = False
     last_fetch_file: Optional[str] = None

@@ -227,26 +227,93 @@ def load_connection_configs(env_path: Optional[str] = None) -> dict:
     """Load connection provider configurations from .env file.
 
     Looks for variables matching pattern: DBT_CONNECTION_{NAME}_{FIELD}
+    
+    Field names can be multi-part (e.g., OAUTH_CLIENT_ID, HTTP_PATH) so we
+    match against known field names to correctly split connection name from field.
 
     Returns:
         Nested dictionary: {connection_name: {field: value}}
     """
     values = load_env_values(env_path)
     configs = {}
+    
+    # Known field names (in uppercase, may have underscores)
+    # These are all the fields used in CONNECTION_SCHEMAS and Terraform provider
+    known_fields = {
+        # Common fields
+        "HOST", "PORT", "DATABASE", "DBNAME", "HOSTNAME",
+        # Snowflake
+        "ACCOUNT", "WAREHOUSE", "ROLE", "CLIENT_SESSION_KEEP_ALIVE", "ALLOW_SSO",
+        "OAUTH_CLIENT_ID", "OAUTH_CLIENT_SECRET",
+        # Databricks
+        "HTTP_PATH", "CATALOG", "CLIENT_ID", "CLIENT_SECRET",
+        # BigQuery
+        "GCP_PROJECT_ID", "PROJECT_ID", "LOCATION", "TIMEOUT_SECONDS", "PRIORITY",
+        "PRIVATE_KEY_ID", "PRIVATE_KEY", "CLIENT_EMAIL", "AUTH_URI", "TOKEN_URI",
+        "AUTH_PROVIDER_X509_CERT_URL", "CLIENT_X509_CERT_URL",
+        "APPLICATION_ID", "APPLICATION_SECRET", "SCOPES",
+        "DEPLOYMENT_ENV_AUTH_TYPE", "USE_LATEST_ADAPTER",
+        "MAXIMUM_BYTES_BILLED", "RETRIES", "EXECUTION_PROJECT",
+        "IMPERSONATE_SERVICE_ACCOUNT",
+        "JOB_CREATION_TIMEOUT_SECONDS", "JOB_EXECUTION_TIMEOUT_SECONDS", "JOB_RETRY_DEADLINE_SECONDS",
+        "DATAPROC_REGION", "DATAPROC_CLUSTER_NAME", "GCS_BUCKET",
+        # Postgres/Redshift
+        "SSH_TUNNEL_ENABLED", "SSH_TUNNEL_HOSTNAME", "SSH_TUNNEL_PORT", "SSH_TUNNEL_USERNAME",
+        "PASSWORD",
+        # Athena
+        "REGION_NAME", "S3_STAGING_DIR", "WORK_GROUP", "S3_DATA_DIR",
+        "S3_TMP_TABLE_DIR", "S3_DATA_NAMING", "NUM_RETRIES",
+        "NUM_BOTO3_RETRIES", "NUM_ICEBERG_RETRIES", "POLL_INTERVAL",
+        "SPARK_WORK_GROUP",
+        # Fabric/Synapse
+        "SERVER", "LOGIN_TIMEOUT", "QUERY_TIMEOUT",
+        # Starburst
+        "METHOD",
+        # Apache Spark
+        "CLUSTER", "ORGANIZATION", "USER", "AUTH",
+        "CONNECT_TIMEOUT", "CONNECT_RETRIES",
+        # Teradata
+        "TMODE", "REQUEST_TIMEOUT",
+    }
 
-    pattern = re.compile(r"^DBT_CONNECTION_([A-Z0-9_]+)_([A-Z0-9_]+)$")
-
+    prefix = "DBT_CONNECTION_"
+    
     for key, value in values.items():
-        match = pattern.match(key)
-        if match:
-            conn_name = match.group(1).lower()
-            field_name = match.group(2).lower()
-
+        if not key.startswith(prefix):
+            continue
+            
+        # Remove prefix
+        remainder = key[len(prefix):]
+        
+        # Try to find a known field name from the end
+        field_name = None
+        conn_name = None
+        
+        for known_field in sorted(known_fields, key=len, reverse=True):
+            # Check if the remainder ends with _FIELD_NAME
+            suffix = f"_{known_field}"
+            if remainder.endswith(suffix):
+                conn_name = remainder[:-len(suffix)].lower()
+                field_name = known_field.lower()
+                break
+        
+        if conn_name and field_name:
             if conn_name not in configs:
                 configs[conn_name] = {}
             configs[conn_name][field_name] = value
 
     return configs
+
+
+# Fields that contain sensitive OAuth/SSO credentials
+# These should be handled with care and not logged
+SENSITIVE_OAUTH_FIELDS = {
+    "oauth_client_secret",  # Snowflake OAuth
+    "client_secret",        # Databricks OAuth, BigQuery
+    "private_key",          # BigQuery service account
+    "application_secret",   # BigQuery external OAuth (WIF)
+    "password",             # Redshift, Postgres
+}
 
 
 def save_connection_config(
@@ -256,9 +323,25 @@ def save_connection_config(
 ) -> Path:
     """Save a connection provider configuration to .env file.
 
+    Saves all connection fields including OAuth/SSO credentials.
+    Sensitive fields (oauth_client_secret, client_secret, private_key, etc.)
+    are stored as environment variables with the naming convention:
+    DBT_CONNECTION_{CONNECTION_NAME}_{FIELD_NAME}
+
+    For example:
+    - DBT_CONNECTION_SNOWFLAKE_PROD_OAUTH_CLIENT_ID
+    - DBT_CONNECTION_SNOWFLAKE_PROD_OAUTH_CLIENT_SECRET
+    - DBT_CONNECTION_DATABRICKS_DEV_CLIENT_ID
+    - DBT_CONNECTION_DATABRICKS_DEV_CLIENT_SECRET
+    - DBT_CONNECTION_BIGQUERY_MAIN_PRIVATE_KEY
+
+    Note: Sensitive credentials are stored in plaintext in the .env file.
+    Ensure the .env file has appropriate permissions and is excluded from
+    version control (add to .gitignore).
+
     Args:
         connection_name: Name of the connection (e.g., "snowflake_prod")
-        config: Dictionary of field names to values
+        config: Dictionary of field names to values (including OAuth fields)
         env_path: Path to .env file. If None, uses default location.
 
     Returns:
@@ -280,9 +363,31 @@ def save_connection_config(
     for field_name, value in config.items():
         field_upper = field_name.upper().replace("-", "_")
         env_key = f"DBT_CONNECTION_{conn_upper}_{field_upper}"
+        
+        # Convert booleans to string representation
+        if isinstance(value, bool):
+            value = "true" if value else "false"
+        
         set_key(str(path), env_key, str(value) if value is not None else "")
 
     return path
+
+
+def load_connection_config(
+    connection_name: str,
+    env_path: Optional[str] = None,
+) -> dict:
+    """Load a specific connection's configuration from .env file.
+
+    Args:
+        connection_name: Name of the connection to load
+        env_path: Path to .env file. If None, searches for one.
+
+    Returns:
+        Dictionary of field names to values for this connection
+    """
+    all_configs = load_connection_configs(env_path)
+    return all_configs.get(connection_name.lower().replace("-", "_"), {})
 
 
 def get_env_file_path(env_path: Optional[str] = None) -> Path:

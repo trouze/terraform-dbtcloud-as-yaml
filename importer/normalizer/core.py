@@ -23,6 +23,177 @@ from . import MappingConfig, NormalizationContext
 log = logging.getLogger(__name__)
 
 
+# Field mapping from dbt Cloud API connection_details.config to Terraform provider field names.
+# These are the non-sensitive fields that can be fetched and pre-populated.
+# Sensitive fields (passwords, secrets, keys) are never returned by the API.
+# Note: OAuth/SSO credentials are sensitive and must be provided via connection_credentials variable.
+CONNECTION_FIELD_MAPPING: Dict[str, Dict[str, str]] = {
+    "databricks": {
+        # API field -> Terraform field (same names)
+        "host": "host",
+        "http_path": "http_path",
+        "catalog": "catalog",
+        # Note: client_id/client_secret are sensitive and not returned by API
+    },
+    "snowflake": {
+        "account": "account",
+        "database": "database",
+        "warehouse": "warehouse",
+        "role": "role",
+        "client_session_keep_alive": "client_session_keep_alive",
+        "allow_sso": "allow_sso",
+        # Note: oauth_client_id/oauth_client_secret are sensitive and not returned by API
+    },
+    "bigquery": {
+        # Required
+        "gcp_project_id": "gcp_project_id",
+        "project_id": "gcp_project_id",  # API may use project_id
+        # Auth type
+        "deployment_env_auth_type": "deployment_env_auth_type",
+        # Service account (non-sensitive parts)
+        "client_email": "client_email",
+        "client_id": "client_id",
+        "auth_uri": "auth_uri",
+        "token_uri": "token_uri",
+        "auth_provider_x509_cert_url": "auth_provider_x509_cert_url",
+        "client_x509_cert_url": "client_x509_cert_url",
+        # Query configuration
+        "timeout_seconds": "timeout_seconds",
+        "location": "location",
+        "maximum_bytes_billed": "maximum_bytes_billed",
+        "priority": "priority",
+        "retries": "retries",
+        "job_creation_timeout_seconds": "job_creation_timeout_seconds",
+        "job_execution_timeout_seconds": "job_execution_timeout_seconds",
+        "job_retry_deadline_seconds": "job_retry_deadline_seconds",
+        # Execution options
+        "execution_project": "execution_project",
+        "impersonate_service_account": "impersonate_service_account",
+        # Dataproc configuration
+        "dataproc_region": "dataproc_region",
+        "dataproc_cluster_name": "dataproc_cluster_name",
+        "gcs_bucket": "gcs_bucket",
+        # Adapter version
+        "use_latest_adapter": "use_latest_adapter",
+        # Note: private_key, private_key_id, application_id/secret are sensitive
+    },
+    "redshift": {
+        "hostname": "hostname",
+        "host": "hostname",  # API may use host
+        "port": "port",
+        "dbname": "dbname",
+        "database": "dbname",  # API may use database
+    },
+    "postgres": {
+        "hostname": "hostname",
+        "host": "hostname",  # API may use host
+        "port": "port",
+        "dbname": "dbname",
+        "database": "dbname",  # API may use database
+    },
+    "athena": {
+        "region_name": "region_name",
+        "database": "database",
+        "s3_staging_dir": "s3_staging_dir",
+        "work_group": "work_group",
+        "s3_data_dir": "s3_data_dir",
+        "s3_tmp_table_dir": "s3_tmp_table_dir",
+        "s3_data_naming": "s3_data_naming",
+        "spark_work_group": "spark_work_group",
+        "num_retries": "num_retries",
+        "num_boto3_retries": "num_boto3_retries",
+        "num_iceberg_retries": "num_iceberg_retries",
+        "poll_interval": "poll_interval",
+    },
+    "fabric": {
+        "server": "server",
+        "database": "database",
+        "port": "port",
+        "login_timeout": "login_timeout",
+        "query_timeout": "query_timeout",
+        "retries": "retries",
+    },
+    "synapse": {
+        "host": "host",
+        "server": "host",  # API may use server
+        "database": "database",
+        "port": "port",
+        "login_timeout": "login_timeout",
+        "query_timeout": "query_timeout",
+        "retries": "retries",
+    },
+    "starburst": {
+        "host": "host",
+        "port": "port",
+        "method": "method",
+    },
+    "apache_spark": {
+        "host": "host",
+        "cluster": "cluster",
+        "method": "method",
+        "port": "port",
+        "organization": "organization",
+        "user": "user",
+        "connect_timeout": "connect_timeout",
+        "connect_retries": "connect_retries",
+    },
+    "teradata": {
+        "host": "host",
+        "port": "port",
+        "tmode": "tmode",
+        "request_timeout": "request_timeout",
+        "retries": "retries",
+    },
+}
+
+
+def _map_connection_details_to_terraform(
+    connection_type: Optional[str],
+    connection_details: Dict[str, Any],
+) -> Dict[str, Any]:
+    """
+    Map dbt Cloud API connection_details to Terraform provider field names.
+    
+    Args:
+        connection_type: The normalized connection type (e.g., 'databricks', 'snowflake')
+        connection_details: The connection_details dict from the API response
+        
+    Returns:
+        A dict with Terraform-compatible field names and values
+    """
+    if not connection_type or not connection_details:
+        return {}
+    
+    # Normalize connection type (handle variants like 'databricks_spark')
+    conn_type_lower = connection_type.lower()
+    for known_type in CONNECTION_FIELD_MAPPING:
+        if known_type in conn_type_lower:
+            conn_type_lower = known_type
+            break
+    
+    field_mapping = CONNECTION_FIELD_MAPPING.get(conn_type_lower, {})
+    if not field_mapping:
+        log.debug(f"No field mapping defined for connection type '{connection_type}'")
+        return {}
+    
+    # Extract config from connection_details (this is where provider-specific fields live)
+    config = connection_details.get("config", {})
+    if not config:
+        # Fallback: check if fields are at the top level of connection_details
+        config = connection_details
+    
+    result = {}
+    for api_field, tf_field in field_mapping.items():
+        if api_field in config and config[api_field] is not None:
+            # Skip empty strings
+            value = config[api_field]
+            if isinstance(value, str) and not value.strip():
+                continue
+            result[tf_field] = value
+    
+    return result
+
+
 def _get_element_id(obj: Any) -> Optional[str]:
     """Safely get element_mapping_id from an object, returns None if not present."""
     return getattr(obj, 'element_mapping_id', None)
@@ -180,6 +351,28 @@ def _normalize_connections(
                 conn_data["private_link_endpoint_key"] = lookup_id
                 context.add_placeholder(lookup_id, f"PrivateLink endpoint ID {privatelink_id}")
         
+        # Extract provider_config from connection details (fetched from individual endpoint)
+        # This contains provider-specific fields like host, http_path, account, etc.
+        # The config can be in two places:
+        # 1. conn.details.connection_details.config (when using include_related)
+        # 2. conn.details.config (direct from individual endpoint response)
+        connection_details = conn.details.get("connection_details")
+        if connection_details and isinstance(connection_details, dict):
+            provider_config = _map_connection_details_to_terraform(
+                conn.type, connection_details
+            )
+        elif conn.details.get("config") and isinstance(conn.details.get("config"), dict):
+            # Fallback: config is directly in details (common with individual endpoint)
+            provider_config = _map_connection_details_to_terraform(
+                conn.type, {"config": conn.details["config"]}
+            )
+        else:
+            provider_config = {}
+        
+        if provider_config:
+            conn_data["provider_config"] = provider_config
+            log.debug(f"Mapped provider_config for {key}: {list(provider_config.keys())}")
+        
         # Add only essential provider-specific configuration
         if conn.details and config.include_connection_details:
             essential_fields = {}
@@ -192,7 +385,7 @@ def _normalize_connections(
             if conn.details.get("is_ssh_tunnel_enabled"):
                 essential_fields["is_ssh_tunnel_enabled"] = True
             
-            # Include provider-specific config if present
+            # Include provider-specific config if present (legacy - from old fetcher)
             if conn.details.get("config"):
                 essential_fields["config"] = conn.details["config"]
             

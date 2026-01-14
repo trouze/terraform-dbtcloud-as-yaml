@@ -1,4 +1,4 @@
-cd """Fetch step page for configuring source credentials and fetching account data."""
+"""Fetch step page for configuring source credentials and fetching account data."""
 
 import asyncio
 import json

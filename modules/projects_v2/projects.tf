@@ -21,7 +21,7 @@ locals {
       try(local.repositories_map[project.repository], null)
     )
   }
-  
+
   # Filter projects that have valid repositories (not null, not LOOKUP)
   projects_with_repositories = {
     for project in var.projects :
@@ -47,9 +47,9 @@ locals {
       # If explicitly set, use it (unless github_app without PAT)
       try(repo.git_clone_strategy, null) != null ? (
         try(repo.git_clone_strategy, "") == "github_app" && local.github_installation_id == null ?
-        "deploy_key" :  # Fallback to deploy_key if github_app but no PAT
+        "deploy_key" : # Fallback to deploy_key if github_app but no PAT
         try(repo.git_clone_strategy, null)
-      ) : null  # Let Terraform/provider auto-detect
+      ) : null # Let Terraform/provider auto-detect
     )
   }
 

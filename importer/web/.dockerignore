@@ -1,0 +1,63 @@
+# Docker build context exclusions for dbt Magellan Web UI
+
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv
+venv/
+ENV/
+env/
+.eggs/
+*.egg-info/
+*.egg
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Test files
+test/
+tests/
+pytest_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Build artifacts
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+terraform.tfvars
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# Development files
+.env.example
+*.log
+.cursor/
+*.plan
+
+# Local output directories
+output/
+terraform_output/
+deployments/
+
+# Temporary files
+*.tmp
+*.temp
+.DS_Store
+Thumbs.db

@@ -56,6 +56,26 @@ variable "token_map" {
   sensitive   = true
 }
 
+variable "connection_credentials" {
+  description = "Map of connection keys to their sensitive credential values (OAuth secrets, private keys, etc.). Keys should match connection.key in YAML."
+  type = map(object({
+    # Snowflake OAuth
+    oauth_client_id     = optional(string)
+    oauth_client_secret = optional(string)
+    # Databricks OAuth
+    client_id     = optional(string)
+    client_secret = optional(string)
+    # BigQuery Service Account
+    private_key_id = optional(string)
+    private_key    = optional(string)
+    # BigQuery External OAuth (WIF)
+    application_id     = optional(string)
+    application_secret = optional(string)
+  }))
+  default   = {}
+  sensitive = true
+}
+
 variable "dbt_account_id" {
   description = "dbt Cloud account ID"
   type        = number

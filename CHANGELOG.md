@@ -9,6 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-01-14
+
+### Added
+- **OAuth/SSO Support**: Full OAuth credential configuration for Snowflake, Databricks, and BigQuery connections
+- **Connection Credentials Variable**: New `connection_credentials` Terraform variable for passing OAuth secrets securely
+- **Secrets Auto-Generation**: `secrets.auto.tfvars` file generated with OAuth credentials (auto-loaded by Terraform)
+- **OAuth Warning Cards**: Warning cards in Target page explaining OAuth integrations cannot be reused from source
+- **Documentation Links**: Links to dbt platform OAuth setup guides for each provider (Snowflake SSO, Snowflake External OAuth, Databricks, BigQuery)
+- **Terraform Module**: Added OAuth fields to `globals.tf` for all connection types (Snowflake, Databricks, BigQuery, Postgres, Redshift)
+
+### Changed
+- **Target Page**: OAuth fields now grouped under "OAuth / SSO Configuration" section
+- **Target Page**: Source reference card now displays host URL
+- **Connection Config**: Databricks `client_id`/`client_secret` moved to OAuth section
+- **Deploy Page**: Apply checkmark now shows after successful deployment
+- **Deploy Page**: All checkmarks reset when regenerating Terraform files
+
+### Fixed
+- **Credential Loading**: Fixed regex pattern in `load_connection_configs()` to correctly parse multi-part field names
+- **Secrets Passing**: OAuth credentials now properly passed to Terraform via `secrets.auto.tfvars`
+
 ## [0.7.9] - 2026-01-14
 
 ### Added
