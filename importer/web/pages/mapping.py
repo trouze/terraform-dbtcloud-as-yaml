@@ -13,6 +13,7 @@ from importer.web.state import AppState, WorkflowStep, STEP_NAMES
 from importer.web.components.stepper import DBT_ORANGE
 from importer.web.components.selection_manager import SelectionManager
 from importer.web.components.hierarchy_index import HierarchyIndex, TYPE_DEPTH
+from importer.web.components.entity_table import show_entity_detail_dialog
 
 # Resource type display info with new abbreviation codes
 RESOURCE_TYPES = {
@@ -672,6 +673,18 @@ def _create_selection_grid(
             print(f"Cell value change error: {ex}")
     
     grid.on("cellValueChanged", on_cell_value_changed)
+    
+    # Handle cell click to show entity detail popup
+    def on_cell_clicked(e):
+        """Handle cell click to show entity details."""
+        # Don't show popup for checkbox column clicks
+        if e.args and e.args.get("colId") == "_selected":
+            return
+        if e.args and "data" in e.args:
+            row_data_item = e.args["data"]
+            show_entity_detail_dialog(row_data_item, state)
+    
+    grid.on("cellClicked", on_cell_clicked)
 
 
 def _create_action_panel(
@@ -1133,7 +1146,8 @@ def _create_summary_stats(
     # Progress bar
     if counts['total'] > 0:
         pct = (counts['selected'] / counts['total']) * 100
-        ui.linear_progress(value=pct/100).classes("w-full")
+        ui.linear_progress(value=pct/100, show_value=False).classes("w-full")
+        ui.label(f"{pct:.0f}% selected").classes("text-xs text-center text-slate-500 dark:text-slate-400")
     
     # By type breakdown - use report_items to get type info
     ui.label("By Type:").classes("text-sm font-medium mt-2")

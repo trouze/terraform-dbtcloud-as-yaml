@@ -173,12 +173,27 @@ def _create_fetch_options(state: AppState, save_state: Callable[[], None]) -> No
 
         # Advanced options (collapsed by default)
         with ui.expansion("Advanced Options", icon="settings").classes("w-full mt-4"):
+            def _update_threads(e):
+                # For on("update:model-value"), value is in e.args
+                val = e.args if e.args is not None else 5
+                state.fetch.threads = int(val) if val else 5
+                save_state()
+            
+            ui.number(
+                label="Threads",
+                value=getattr(state.fetch, 'threads', 5) or 5,
+                min=1,
+                max=20,
+            ).classes("w-full").props('outlined').tooltip(
+                "Number of parallel threads for fetching data (1-20)"
+            ).on("update:model-value", _update_threads)
+            
             ui.number(
                 label="API Timeout (seconds)",
                 value=90,
                 min=10,
                 max=300,
-            ).classes("w-full").props('outlined')
+            ).classes("w-full mt-2").props('outlined')
 
             ui.number(
                 label="Max Retries",
@@ -491,7 +506,11 @@ async def _run_fetch(
         # Run fetch in thread pool
         terminal.info("Connecting to dbt Platform API...")
         threads = getattr(state.fetch, 'threads', 5) or 5
+        terminal.info(f"Using {threads} threads for parallel fetching")
         event = cancel_event["event"]
+        
+        import time
+        fetch_start_time = time.time()
         
         def do_fetch():
             client = DbtCloudClient(settings)
@@ -503,6 +522,8 @@ async def _run_fetch(
                 client.close()
 
         snapshot = await asyncio.to_thread(do_fetch)
+        
+        fetch_duration = time.time() - fetch_start_time
 
         terminal.info("")
         terminal.success("Fetch complete!")
@@ -578,6 +599,7 @@ async def _run_fetch(
         terminal.info(f"  Jobs: {state.fetch.resource_counts.get('jobs', 0)}")
         terminal.info(f"  Connections: {state.fetch.resource_counts.get('connections', 0)}")
         terminal.info(f"  Repositories: {state.fetch.resource_counts.get('repositories', 0)}")
+        terminal.info(f"  Total time: {fetch_duration:.1f}s")
 
         # Mark progress tree as complete
         progress_tree.complete()

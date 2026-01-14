@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.7] - 2026-01-14
+
+### Added
+- **Map Page**: Entity detail popup - click any row to view entity details (same as Explore tab)
+- **Fetch Page**: Total fetch time displayed in final summary ("Total time: X.Xs")
+- **Fetch Page**: Threads value log message confirms configured thread count
+
+### Changed
+- **Entity Detail Dialog**: Resized to match View YAML popup (height: 80vh, width: max-w-4xl)
+- **Fetch Page**: Threads input now properly saves/loads via `e.args` event handling
+
+### Fixed
+- **Fetch Page**: Threads setting now correctly persists and applies to fetch operations
+
 ## [0.7.6] - 2026-01-13
 
 ### Added

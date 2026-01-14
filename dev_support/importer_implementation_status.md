@@ -1,7 +1,7 @@
 # Importer Implementation Status & Tracking
 
-**Last Updated:** 2026-01-13  
-**Current Importer Version:** 0.7.6  
+**Last Updated:** 2026-01-14  
+**Current Importer Version:** 0.7.7  
 **Status:** Phase 3 Complete + Interactive Mode + Web UI + E2E Testing Infrastructure
 
 > **⚠️ IMPORTANT: Keep This Document Updated**
@@ -666,6 +666,14 @@ The following items require API endpoint research before implementation can begi
 ---
 
 ## Change Log
+
+### 2026-01-14 (v0.7.7)
+- **Version:** Incremented to 0.7.7 (patch release - Map entity popup, fetch timing, UI improvements)
+- **Map Page: Entity Detail Popup**: Click any row to view entity details (same as Explore tab)
+- **Fetch Page: Total Time Log**: Fetch duration displayed in final summary
+- **Fetch Page: Threads Fix**: Threads setting now correctly persists and applies via `e.args` event handling
+- **Entity Detail Dialog**: Resized to match View YAML popup (height: 80vh, width: max-w-4xl)
+- **Map Page: Selection Summary**: Progress bar shows percentage instead of decimal
 
 ### 2026-01-13 (v0.7.6)
 - **Version:** Incremented to 0.7.6 (patch release - Fetch cancel button, threads option, Explore type codes)

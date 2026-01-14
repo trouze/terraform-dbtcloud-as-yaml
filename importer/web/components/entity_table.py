@@ -576,7 +576,7 @@ def create_entity_table(
         """Show detail dialog for clicked entity."""
         if e.args and "data" in e.args:
             row_data = e.args["data"]
-            _show_detail_dialog(row_data, state)
+            show_entity_detail_dialog(row_data, state)
     
     # Main container with grid layout to fill available space
     with ui.element("div").style(
@@ -820,7 +820,7 @@ SUMMARY_FIELDS = {
 }
 
 
-def _show_detail_dialog(row_data: dict, state: Optional["AppState"] = None) -> None:
+def show_entity_detail_dialog(row_data: dict, state: Optional["AppState"] = None) -> None:
     """Show a dialog with entity details."""
     
     type_code = row_data.get("element_type_code", "UNK")
@@ -830,7 +830,7 @@ def _show_detail_dialog(row_data: dict, state: Optional["AppState"] = None) -> N
     full_data = _get_full_entity_data(state, row_data) if state else None
     display_data = full_data if full_data else row_data
     
-    with ui.dialog() as dialog, ui.card().classes("w-[1000px] max-h-[90vh]"):
+    with ui.dialog() as dialog, ui.card().classes("w-full max-w-4xl").style("height: 80vh;"):
         # Header
         with ui.row().classes("w-full items-center justify-between p-4 border-b"):
             with ui.row().classes("items-center gap-2"):
@@ -847,15 +847,15 @@ def _show_detail_dialog(row_data: dict, state: Optional["AppState"] = None) -> N
             if full_data:
                 json_full_tab = ui.tab("JSON (Full)", icon="data_object")
         
-        with ui.tab_panels(tabs, value=summary_tab).classes("w-full"):
+        with ui.tab_panels(tabs, value=summary_tab).classes("w-full flex-1"):
             # Summary tab - curated key fields
             with ui.tab_panel(summary_tab):
-                with ui.scroll_area().style("max-height: 550px;"):
+                with ui.scroll_area().style("height: 55vh;"):
                     _render_summary_tab(row_data, display_data, type_code, type_info)
             
             # Details tab - compact table layout
             with ui.tab_panel(details_tab):
-                with ui.scroll_area().style("max-height: 550px;"):
+                with ui.scroll_area().style("height: 55vh;"):
                     _render_details_table(display_data)
             
             # JSON Summary tab
@@ -871,7 +871,7 @@ def _show_detail_dialog(row_data: dict, state: Optional["AppState"] = None) -> N
                                 ui.notify("Copied to clipboard", type="positive"),
                             ),
                         ).props("flat dense")
-                    with ui.scroll_area().style("max-height: 500px;"):
+                    with ui.scroll_area().style("height: 55vh;"):
                         ui.code(formatted_json, language="json").classes("w-full text-xs")
             
             # JSON Full tab (if full data available)
@@ -888,7 +888,7 @@ def _show_detail_dialog(row_data: dict, state: Optional["AppState"] = None) -> N
                                     ui.notify("Copied to clipboard", type="positive"),
                                 ),
                             ).props("flat dense")
-                        with ui.scroll_area().style("max-height: 500px;"):
+                        with ui.scroll_area().style("height: 55vh;"):
                             ui.code(full_json, language="json").classes("w-full text-xs")
     
     dialog.open()
