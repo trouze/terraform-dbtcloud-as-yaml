@@ -1432,17 +1432,116 @@ def _create_results_display(state: AppState, on_step_change: Callable[[WorkflowS
                             ui.label("Generated YAML Preview").classes("text-lg font-bold")
                             ui.button(icon="close", on_click=dialog.close).props("flat round")
                         
-                        # Search input
+                        # Search state
+                        search_results = {"count": 0, "current": 0}
+                        
+                        # Search input with result count and navigation
                         search_container = ui.row().classes("w-full mb-2 items-center gap-2")
                         with search_container:
                             search_input = ui.input(
                                 placeholder="Search in YAML...",
-                            ).props("outlined dense").classes("flex-1")
+                            ).props("outlined dense clearable").classes("flex-1")
+                            
+                            # Navigation buttons (hidden initially)
+                            with ui.row().classes("items-center gap-1") as nav_container:
+                                prev_btn = ui.button(icon="keyboard_arrow_up", on_click=lambda: None).props(
+                                    "flat dense round size=sm"
+                                ).classes("hidden")
+                                next_btn = ui.button(icon="keyboard_arrow_down", on_click=lambda: None).props(
+                                    "flat dense round size=sm"
+                                ).classes("hidden")
+                            
+                            search_count_label = ui.label("").classes("text-xs text-slate-400 min-w-[100px]")
                             ui.label(f"{len(yaml_content)} chars").classes("text-xs text-slate-400")
                         
                         # YAML content with syntax highlighting
-                        with ui.scroll_area().classes("w-full").style("height: 50vh;"):
-                            ui.code(yaml_content, language="yaml").classes("w-full text-sm")
+                        with ui.scroll_area().classes("w-full").style("height: 50vh;") as scroll_area:
+                            code_element = ui.code(yaml_content, language="yaml").classes("w-full text-sm yaml-preview-code")
+                        
+                        # JavaScript for search highlighting
+                        async def on_search(e):
+                            # For on("update:model-value"), value is in e.args
+                            search_term = e.args if e.args else ""
+                            if not search_term:
+                                search_count_label.set_text("")
+                                search_results["count"] = 0
+                                search_results["current"] = 0
+                                prev_btn.classes("hidden", remove=False)
+                                next_btn.classes("hidden", remove=False)
+                                # Clear highlights
+                                await ui.run_javascript('''
+                                    document.querySelectorAll('.yaml-preview-code mark').forEach(m => {
+                                        m.outerHTML = m.textContent;
+                                    });
+                                ''')
+                                return
+                            
+                            # Count matches
+                            count = yaml_content.lower().count(search_term.lower())
+                            search_results["count"] = count
+                            search_results["current"] = 1 if count > 0 else 0
+                            
+                            if count > 1:
+                                search_count_label.set_text(f"1 of {count}")
+                                prev_btn.classes(remove="hidden")
+                                next_btn.classes(remove="hidden")
+                            elif count == 1:
+                                search_count_label.set_text("1 of 1")
+                                prev_btn.classes("hidden", remove=False)
+                                next_btn.classes("hidden", remove=False)
+                            else:
+                                search_count_label.set_text("No matches")
+                                prev_btn.classes("hidden", remove=False)
+                                next_btn.classes("hidden", remove=False)
+                            
+                            # Highlight matches using JavaScript
+                            escaped_term = search_term.replace("'", "\\'").replace('"', '\\"')
+                            await ui.run_javascript(f'''
+                                const codeEl = document.querySelector('.yaml-preview-code code');
+                                if (codeEl) {{
+                                    // Restore original text first
+                                    const originalText = codeEl.textContent;
+                                    const regex = new RegExp('(' + '{escaped_term}'.replace(/[.*+?^${{}}()|[\\]\\\\]/g, '\\\\$&') + ')', 'gi');
+                                    const highlighted = originalText.replace(regex, '<mark style="background-color: #fef08a; color: #000;">$1</mark>');
+                                    codeEl.innerHTML = highlighted;
+                                    
+                                    // Highlight first match as current
+                                    const marks = codeEl.querySelectorAll('mark');
+                                    if (marks.length > 0) {{
+                                        marks[0].style.backgroundColor = '#f97316';
+                                        marks[0].scrollIntoView({{ behavior: 'smooth', block: 'center' }});
+                                    }}
+                                }}
+                            ''')
+                        
+                        async def go_to_match(direction):
+                            count = search_results["count"]
+                            if count <= 1:
+                                return
+                            
+                            current = search_results["current"]
+                            if direction == "next":
+                                new_idx = current + 1 if current < count else 1
+                            else:
+                                new_idx = current - 1 if current > 1 else count
+                            
+                            search_results["current"] = new_idx
+                            search_count_label.set_text(f"{new_idx} of {count}")
+                            
+                            # Update highlighting in JavaScript
+                            await ui.run_javascript(f'''
+                                const marks = document.querySelectorAll('.yaml-preview-code mark');
+                                marks.forEach((m, i) => {{
+                                    m.style.backgroundColor = (i === {new_idx - 1}) ? '#f97316' : '#fef08a';
+                                }});
+                                if (marks[{new_idx - 1}]) {{
+                                    marks[{new_idx - 1}].scrollIntoView({{ behavior: 'smooth', block: 'center' }});
+                                }}
+                            ''')
+                        
+                        prev_btn.on("click", lambda: go_to_match("prev"))
+                        next_btn.on("click", lambda: go_to_match("next"))
+                        search_input.on("update:model-value", on_search)
                         
                         # Action buttons
                         with ui.row().classes("w-full justify-end gap-2 mt-4"):

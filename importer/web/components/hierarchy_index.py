@@ -10,8 +10,9 @@ ENTITY_PARENT_TYPES = {
     "ENV": ["PRJ"],         # Environment belongs to Project
     "VAR": ["PRJ"],         # Environment Variable belongs to Project
     "PRJ": ["ACC"],         # Project belongs to Account
-    # Globals belong to Account
-    "CON": ["ACC"],
+    # Connections can be children of environments (via connection_id) AND account
+    "CON": ["ENV", "ACC"],  # Connection used by Environment, also account-level
+    # Other globals belong to Account
     "REP": ["ACC"],
     "TOK": ["ACC"],
     "GRP": ["ACC"],
@@ -88,6 +89,9 @@ class HierarchyIndex:
         # Repository key -> Mapping ID (for repository lookups)
         self._repo_by_key: Dict[str, str] = {}
         
+        # Connection key -> Mapping ID (for connection lookups by key)
+        self._connection_by_key: Dict[str, str] = {}
+        
         if entities:
             self.build_index(entities)
     
@@ -104,6 +108,7 @@ class HierarchyIndex:
         self._by_type.clear()
         self._project_by_key.clear()
         self._repo_by_key.clear()
+        self._connection_by_key.clear()
         
         # First pass: index all entities by mapping_id and type
         for entity in entities:
@@ -131,6 +136,12 @@ class HierarchyIndex:
                 if repo_key:
                     self._repo_by_key[repo_key] = mapping_id
             
+            # Index connections by key
+            if entity_type == "CON":
+                conn_key = entity.get("key")
+                if conn_key:
+                    self._connection_by_key[conn_key] = mapping_id
+            
             # Initialize parent/child sets
             if mapping_id not in self._children:
                 self._children[mapping_id] = set()
@@ -154,6 +165,13 @@ class HierarchyIndex:
             env_mapping_id = entity.get("environment_mapping_id")
             if env_mapping_id:
                 self._link_parent_child(env_mapping_id, mapping_id)
+            
+            # Check for connection_key (ENV has this - links environment to its connection)
+            if entity_type == "ENV":
+                connection_key = entity.get("connection_key")
+                if connection_key and connection_key in self._connection_by_key:
+                    conn_mapping_id = self._connection_by_key[connection_key]
+                    self._link_parent_child(mapping_id, conn_mapping_id)
             
             # Link globals (without parent_project_id) to account
             if entity_type in {"CON", "TOK", "GRP", "NOT", "WEB", "PLE"}:

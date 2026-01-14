@@ -1,7 +1,7 @@
 # Importer Implementation Status & Tracking
 
 **Last Updated:** 2026-01-14  
-**Current Importer Version:** 0.7.7  
+**Current Importer Version:** 0.7.8  
 **Status:** Phase 3 Complete + Interactive Mode + Web UI + E2E Testing Infrastructure
 
 > **⚠️ IMPORTANT: Keep This Document Updated**
@@ -666,6 +666,11 @@ The following items require API endpoint research before implementation can begi
 ---
 
 ## Change Log
+
+### 2026-01-14 (v0.7.8)
+- **Version:** Incremented to 0.7.8 (patch release - Phase 2 Map complete)
+- **YAML Preview Search**: Real-time search with highlighting, match count ("X of Y"), and prev/next navigation
+- **Phase 2 Map Complete**: All Map step user stories fully implemented (US-028 through US-036)
 
 ### 2026-01-14 (v0.7.7)
 - **Version:** Incremented to 0.7.7 (patch release - Map entity popup, fetch timing, UI improvements)
