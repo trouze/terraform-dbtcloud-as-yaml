@@ -15,6 +15,7 @@ def create_account_cards(
     state: AppState,
     on_configure_source: Callable[[], None],
     on_configure_target: Callable[[], None],
+    show_target: bool = True,
 ) -> None:
     """Create account info cards for the sidebar.
 
@@ -22,6 +23,7 @@ def create_account_cards(
         state: Current application state
         on_configure_source: Callback when "Configure" is clicked for source
         on_configure_target: Callback when "Configure" is clicked for target
+        show_target: Whether to show the target account card (default True)
     """
     ui.label("ACCOUNTS").classes(
         "px-4 pt-4 pb-2 text-xs text-slate-500 font-semibold tracking-wider"
@@ -35,13 +37,14 @@ def create_account_cards(
         on_configure=on_configure_source,
     )
 
-    # Target Account Card
-    _create_account_card(
-        account=state.target_account,
-        label="Target",
-        icon_color="#10B981",  # green
-        on_configure=on_configure_target,
-    )
+    # Target Account Card (hidden in Account Explorer workflow)
+    if show_target:
+        _create_account_card(
+            account=state.target_account,
+            label="Target",
+            icon_color="#10B981",  # green
+            on_configure=on_configure_target,
+        )
 
 
 def _create_account_card(

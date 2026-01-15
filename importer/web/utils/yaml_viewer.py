@@ -1,7 +1,9 @@
 """Utilities for viewing and analyzing YAML configuration files."""
 
+import json
+import re
 from pathlib import Path
-from typing import Any, Dict, Optional, Callable
+from typing import Any, Dict, List, Optional, Callable, Set, Tuple
 
 import yaml
 from nicegui import ui
@@ -83,6 +85,25 @@ def get_yaml_content(yaml_path: str) -> str:
     path = Path(yaml_path)
     if not path.exists():
         return f"# File not found: {yaml_path}"
+
+    try:
+        return path.read_text(encoding="utf-8")
+    except Exception as e:
+        return f"# Error reading file: {e}"
+
+
+def get_text_content(file_path: str) -> str:
+    """Read raw file content.
+
+    Args:
+        file_path: Path to the file
+
+    Returns:
+        File content as string or error message
+    """
+    path = Path(file_path)
+    if not path.exists():
+        return f"# File not found: {file_path}"
 
     try:
         return path.read_text(encoding="utf-8")
@@ -258,6 +279,37 @@ def create_yaml_viewer_dialog(
     return dialog
 
 
+def create_text_viewer_dialog(
+    file_path: str,
+    title: str = "File Viewer",
+    language: str = "text",
+) -> ui.dialog:
+    """Create a dialog for viewing file content with syntax highlighting."""
+    content = get_text_content(file_path)
+
+    with ui.dialog() as dialog:
+        dialog.props("maximized")
+
+        with ui.card().classes("w-full h-full").style("display: flex; flex-direction: column;"):
+            with ui.row().classes("w-full items-center justify-between mb-2"):
+                with ui.row().classes("items-center gap-3"):
+                    ui.icon("description", size="lg").classes("text-orange-500")
+                    ui.label(title).classes("text-xl font-bold")
+
+                ui.button(icon="close", on_click=dialog.close).props("flat round")
+
+            with ui.row().classes("items-center justify-between gap-2 mb-2"):
+                with ui.row().classes("items-center gap-2"):
+                    ui.icon("folder", size="xs").classes("text-slate-500")
+                    ui.label(file_path).classes("text-xs text-slate-500 font-mono")
+                ui.label(f"{len(content):,} chars").classes("text-xs text-slate-400")
+
+            with ui.scroll_area().classes("w-full").style("flex: 1; min-height: 0;"):
+                ui.code(content, language=language).classes("w-full text-sm")
+
+    return dialog
+
+
 def _copy_to_clipboard(content: str) -> None:
     """Copy content to clipboard."""
     ui.run_javascript(f'navigator.clipboard.writeText({repr(content)})')
@@ -405,9 +457,10 @@ def create_plan_viewer_dialog(
 
             with ui.scroll_area().classes("w-full").style("flex: 1; min-height: 0;"):
                 # Use html element with pre/code for monospace display
+                # sanitize=False because we already escape content in colorize_plan_line()
                 ui.html(
                     f'<pre class="plan-viewer-code text-sm font-mono whitespace-pre-wrap p-4 bg-slate-50 dark:bg-slate-900 rounded overflow-x-auto"><code>{colorized_content}</code></pre>',
-                    sanitize=False,  # Safe - we control the content and escape user input
+                    sanitize=False,
                 ).classes("w-full")
 
             # JavaScript for search highlighting
@@ -599,3 +652,354 @@ def create_migration_summary_card(
                 ui.label(yaml_path).classes(
                     "text-xs text-slate-500 font-mono truncate"
                 )
+
+
+def _extract_sensitive_paths(state_data: Dict[str, Any]) -> Set[Tuple[str, ...]]:
+    """Extract sensitive attribute paths from Terraform state.
+    
+    Terraform state includes 'sensitive_attributes' arrays that indicate
+    which nested paths contain sensitive values.
+    
+    Args:
+        state_data: Parsed terraform state JSON
+        
+    Returns:
+        Set of tuples representing paths to sensitive values
+    """
+    sensitive_paths = set()
+    
+    resources = state_data.get("resources", [])
+    for resource in resources:
+        resource_name = resource.get("name", "")
+        resource_type = resource.get("type", "")
+        
+        for instance in resource.get("instances", []):
+            # Parse sensitive_attributes array
+            # Format: [{"type": "get_attr", "value": "field_name"}, ...]
+            sensitive_attrs = instance.get("sensitive_attributes", [])
+            for attr_path in sensitive_attrs:
+                if isinstance(attr_path, list):
+                    # Build the path tuple
+                    path_parts = []
+                    for part in attr_path:
+                        if isinstance(part, dict) and part.get("type") == "get_attr":
+                            path_parts.append(part.get("value", ""))
+                    if path_parts:
+                        # Include resource context
+                        full_path = (resource_type, resource_name) + tuple(path_parts)
+                        sensitive_paths.add(full_path)
+    
+    return sensitive_paths
+
+
+def _mask_sensitive_values(
+    state_data: Dict[str, Any],
+    sensitive_paths: Set[Tuple[str, ...]],
+) -> Dict[str, Any]:
+    """Create a copy of state data with sensitive values masked.
+    
+    Args:
+        state_data: Original terraform state data
+        sensitive_paths: Set of paths to mask
+        
+    Returns:
+        Copy of state data with sensitive values replaced by '********'
+    """
+    import copy
+    masked_data = copy.deepcopy(state_data)
+    
+    resources = masked_data.get("resources", [])
+    for resource in resources:
+        resource_name = resource.get("name", "")
+        resource_type = resource.get("type", "")
+        
+        for instance in resource.get("instances", []):
+            attributes = instance.get("attributes", {})
+            
+            # Check each sensitive path
+            for path in sensitive_paths:
+                if len(path) >= 2 and path[0] == resource_type and path[1] == resource_name:
+                    # Navigate to the sensitive value and mask it
+                    attr_path = path[2:]  # Skip resource type and name
+                    _mask_nested_value(attributes, attr_path)
+    
+    return masked_data
+
+
+def _mask_nested_value(obj: Any, path: Tuple[str, ...], mask: str = "********") -> None:
+    """Recursively mask a value at the given path in an object."""
+    if not path:
+        return
+    
+    key = path[0]
+    
+    if isinstance(obj, dict):
+        if key in obj:
+            if len(path) == 1:
+                obj[key] = mask
+            else:
+                _mask_nested_value(obj[key], path[1:], mask)
+    elif isinstance(obj, list):
+        # Try to interpret key as index
+        try:
+            idx = int(key)
+            if 0 <= idx < len(obj):
+                if len(path) == 1:
+                    obj[idx] = mask
+                else:
+                    _mask_nested_value(obj[idx], path[1:], mask)
+        except ValueError:
+            # Key is not an index, search all list items
+            for item in obj:
+                _mask_nested_value(item, path, mask)
+
+
+def create_state_viewer_dialog(
+    state_path: str,
+    title: str = "Terraform State",
+) -> ui.dialog:
+    """Create a dialog for viewing Terraform state with sensitive value masking.
+    
+    Features:
+    - Search functionality
+    - Copy to clipboard (respects masking)
+    - Download .tfstate (respects masking)
+    - Sensitive value masking with toggle
+    
+    Args:
+        state_path: Path to the terraform.tfstate file
+        title: Dialog title
+        
+    Returns:
+        The dialog element (call .open() to show it)
+    """
+    # Load and parse state file
+    path = Path(state_path)
+    if not path.exists():
+        raw_content = f"// File not found: {state_path}"
+        state_data = {}
+    else:
+        try:
+            raw_content = path.read_text(encoding="utf-8")
+            state_data = json.loads(raw_content)
+        except Exception as e:
+            raw_content = f"// Error reading file: {e}"
+            state_data = {}
+    
+    # Extract sensitive paths
+    sensitive_paths = _extract_sensitive_paths(state_data)
+    
+    # Create masked version
+    masked_data = _mask_sensitive_values(state_data, sensitive_paths) if sensitive_paths else state_data
+    masked_content = json.dumps(masked_data, indent=2) if state_data else raw_content
+    
+    # State for masking toggle and search
+    viewer_state = {
+        "show_sensitive": False,
+        "search_count": 0,
+        "search_current": 0,
+    }
+    
+    def get_current_content() -> str:
+        """Get content based on current masking state."""
+        if viewer_state["show_sensitive"]:
+            return raw_content
+        return masked_content
+    
+    with ui.dialog() as dialog:
+        dialog.props("maximized")
+        
+        with ui.card().classes("w-full h-full").style("display: flex; flex-direction: column;"):
+            # Header
+            with ui.row().classes("w-full items-center justify-between mb-2"):
+                with ui.row().classes("items-center gap-3"):
+                    ui.icon("data_object", size="lg").classes("text-orange-500")
+                    ui.label(title).classes("text-xl font-bold")
+                    
+                    # Sensitive values indicator
+                    if sensitive_paths:
+                        ui.badge(
+                            f"{len(sensitive_paths)} sensitive",
+                            color="warning"
+                        ).props("rounded").tooltip(
+                            "This state contains sensitive values that are masked by default"
+                        )
+                
+                ui.button(icon="close", on_click=dialog.close).props("flat round")
+            
+            # File info row
+            with ui.row().classes("items-center justify-between gap-2 mb-2"):
+                with ui.row().classes("items-center gap-2"):
+                    ui.icon("folder", size="xs").classes("text-slate-500")
+                    ui.label(state_path).classes("text-xs text-slate-500 font-mono")
+                
+                with ui.row().classes("items-center gap-2"):
+                    # Resource count
+                    resource_count = len(state_data.get("resources", []))
+                    ui.label(f"{resource_count} resources").classes("text-xs text-slate-400")
+                    ui.label(f"{len(raw_content):,} chars").classes("text-xs text-slate-400")
+            
+            # Toolbar row
+            with ui.row().classes("w-full mb-2 items-center gap-2"):
+                # Search input
+                search_input = ui.input(
+                    placeholder="Search in state...",
+                ).props("outlined dense clearable").classes("flex-1")
+                
+                # Navigation buttons
+                with ui.row().classes("items-center gap-1"):
+                    prev_btn = ui.button(
+                        icon="keyboard_arrow_up",
+                        on_click=lambda: None,
+                    ).props("flat dense round size=sm").classes("hidden")
+                    next_btn = ui.button(
+                        icon="keyboard_arrow_down", 
+                        on_click=lambda: None,
+                    ).props("flat dense round size=sm").classes("hidden")
+                
+                search_count_label = ui.label("").classes("text-xs text-slate-400 min-w-[80px]")
+                
+                # Sensitive toggle (only show if there are sensitive values)
+                if sensitive_paths:
+                    def toggle_sensitive():
+                        viewer_state["show_sensitive"] = not viewer_state["show_sensitive"]
+                        # Update code display
+                        code_element.content = get_current_content()
+                        code_element.update()
+                        if viewer_state["show_sensitive"]:
+                            sensitive_btn.props("color=warning")
+                            sensitive_btn.tooltip("Click to mask sensitive values")
+                        else:
+                            sensitive_btn.props(remove="color=warning")
+                            sensitive_btn.tooltip("Click to reveal sensitive values")
+                    
+                    sensitive_btn = ui.button(
+                        icon="visibility_off",
+                        on_click=toggle_sensitive,
+                    ).props("flat dense").tooltip("Click to reveal sensitive values")
+            
+            # State content with syntax highlighting
+            with ui.scroll_area().classes("w-full state-viewer-scroll").style("flex: 1; min-height: 0;"):
+                code_element = ui.code(
+                    masked_content if state_data else raw_content,
+                    language="json"
+                ).classes("w-full text-sm state-viewer-code")
+            
+            # Search functionality
+            async def on_search(e):
+                search_term = e.args if e.args else ""
+                current_content = get_current_content()
+                
+                if not search_term:
+                    search_count_label.set_text("")
+                    viewer_state["search_count"] = 0
+                    viewer_state["search_current"] = 0
+                    prev_btn.classes("hidden", remove=False)
+                    next_btn.classes("hidden", remove=False)
+                    # Clear highlights
+                    await ui.run_javascript('''
+                        document.querySelectorAll('.state-viewer-code mark').forEach(m => {
+                            m.outerHTML = m.textContent;
+                        });
+                    ''')
+                    return
+                
+                # Count matches
+                count = current_content.lower().count(search_term.lower())
+                viewer_state["search_count"] = count
+                viewer_state["search_current"] = 1 if count > 0 else 0
+                
+                if count > 1:
+                    search_count_label.set_text(f"1 of {count}")
+                    prev_btn.classes(remove="hidden")
+                    next_btn.classes(remove="hidden")
+                elif count == 1:
+                    search_count_label.set_text("1 of 1")
+                    prev_btn.classes("hidden", remove=False)
+                    next_btn.classes("hidden", remove=False)
+                else:
+                    search_count_label.set_text("No matches")
+                    prev_btn.classes("hidden", remove=False)
+                    next_btn.classes("hidden", remove=False)
+                
+                # Highlight matches
+                escaped_term = search_term.replace("'", "\\'").replace('"', '\\"')
+                await ui.run_javascript(f'''
+                    const codeEl = document.querySelector('.state-viewer-code code');
+                    if (codeEl) {{
+                        const originalText = codeEl.textContent;
+                        const regex = new RegExp('({escaped_term})', 'gi');
+                        const highlighted = originalText.replace(regex, '<mark class="bg-yellow-300 dark:bg-yellow-600">$1</mark>');
+                        codeEl.innerHTML = highlighted;
+                        const firstMark = document.querySelector('.state-viewer-code mark');
+                        if (firstMark) {{
+                            firstMark.scrollIntoView({{ behavior: 'smooth', block: 'center' }});
+                            firstMark.classList.add('ring-2', 'ring-orange-500');
+                        }}
+                    }}
+                ''')
+            
+            async def go_to_match(direction):
+                count = viewer_state["search_count"]
+                if count <= 1:
+                    return
+                
+                current = viewer_state["search_current"]
+                if direction == "next":
+                    new_idx = current + 1 if current < count else 1
+                else:
+                    new_idx = current - 1 if current > 1 else count
+                
+                viewer_state["search_current"] = new_idx
+                search_count_label.set_text(f"{new_idx} of {count}")
+                
+                await ui.run_javascript(f'''
+                    const marks = document.querySelectorAll('.state-viewer-code mark');
+                    marks.forEach((m, i) => {{
+                        m.classList.remove('ring-2', 'ring-orange-500');
+                        if (i === {new_idx - 1}) {{
+                            m.classList.add('ring-2', 'ring-orange-500');
+                            m.scrollIntoView({{ behavior: 'smooth', block: 'center' }});
+                        }}
+                    }});
+                ''')
+            
+            prev_btn.on("click", lambda: go_to_match("prev"))
+            next_btn.on("click", lambda: go_to_match("next"))
+            search_input.on("update:model-value", on_search)
+            
+            # Action buttons
+            with ui.row().classes("w-full justify-end gap-2 mt-4"):
+                # Download button - respects masking
+                def download_state():
+                    content = get_current_content()
+                    filename = "terraform.tfstate"
+                    if not viewer_state["show_sensitive"] and sensitive_paths:
+                        filename = "terraform_masked.tfstate"
+                    ui.download(content.encode("utf-8"), filename)
+                    ui.notify(f"Downloaded {filename}", type="positive")
+                
+                ui.button(
+                    "Download",
+                    icon="download",
+                    on_click=download_state,
+                ).props("outline")
+                
+                # Copy button - respects masking
+                def copy_state():
+                    content = get_current_content()
+                    ui.run_javascript(f'navigator.clipboard.writeText({repr(content)})')
+                    msg = "Copied to clipboard"
+                    if not viewer_state["show_sensitive"] and sensitive_paths:
+                        msg += " (masked)"
+                    ui.notify(msg, type="positive")
+                
+                ui.button(
+                    "Copy",
+                    icon="content_copy",
+                    on_click=copy_state,
+                ).props("outline")
+                
+                ui.button("Close", on_click=dialog.close)
+    
+    return dialog

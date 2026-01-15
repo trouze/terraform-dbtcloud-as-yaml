@@ -57,7 +57,7 @@ def create_target_page(
         # Page header - compact
         with ui.row().classes("w-full items-center gap-3"):
             ui.icon("settings", size="1.5rem").style(f"color: {DBT_ORANGE};")
-            ui.label("Configure Target Account").classes("text-xl font-bold")
+            ui.label(state.get_step_label(WorkflowStep.TARGET)).classes("text-xl font-bold")
             ui.label(
                 "Configure the target dbt Platform account where resources will be deployed."
             ).classes("text-slate-600 dark:text-slate-400 text-sm")
@@ -123,7 +123,7 @@ def _create_prerequisite_warning(
                 ).props("outline size=sm")
             elif not state.map.normalize_complete:
                 ui.button(
-                    "Go to Map",
+                    f"Go to {state.get_step_label(WorkflowStep.MAP)}",
                     icon="tune",
                     on_click=lambda: on_step_change(WorkflowStep.MAP),
                 ).props("size=sm").style(f"background-color: {DBT_ORANGE};")
@@ -258,7 +258,7 @@ def _create_navigation_section(
     with ui.row().classes("w-full justify-between mt-4"):
         # Back button
         ui.button(
-            "Back to Map",
+            f"Back to {state.get_step_label(WorkflowStep.MAP)}",
             icon="arrow_back",
             on_click=lambda: on_step_change(WorkflowStep.MAP),
         ).props("outline size=sm")

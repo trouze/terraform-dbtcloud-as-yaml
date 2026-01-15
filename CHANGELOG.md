@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-01-15
+
+### Added
+- **Deploy Page**: Dynamic Output panel title showing current step (GENERATE, INIT, VALIDATE, PLAN, APPLY, DESTROY)
+- **Deploy Page**: Status colors for buttons - green (success), yellow (warnings), red (errors)
+- **Terminal Output**: Auto-detection of warning/error messages from terraform output
+- **Terminal Output**: New `set_title()` method for dynamic title updates
+- **Terminal Output**: New `info_auto()` method for log level auto-detection
+
+### Changed
+- **Terminal Output**: Timestamps now in ISO8601 format with timezone offset (e.g., `2026-01-15T07:36:21-0800`)
+- **Terminal Output**: Search bar width increased from 150px to 250px
+- **Terminal Output**: Timestamp label width increased to accommodate longer format
+- **Deploy Page**: Removed duplicate "Output" label (terminal has its own header)
+- **Deploy Page**: "This will create/modify resources" message changed from WARN to INFO level
+
+### Fixed
+- **Deploy Page**: Buttons now properly reset visual state (outline, opacity) when regenerating files
+- **Deploy Page**: Button styles properly cleared before applying new colors
+
 ## [0.8.0] - 2026-01-14
 
 ### Added

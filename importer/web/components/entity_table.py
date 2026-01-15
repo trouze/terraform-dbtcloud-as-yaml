@@ -741,6 +741,10 @@ def create_entity_table(
             row_data = get_filtered_data()
             
             # AGGrid table - Note: removed initialState.sortModel as it may create phantom columns
+            # Use quartz theme for automatic dark mode support
+            # #region agent log
+            import json as _json; open('/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug.log','a').write(_json.dumps({"hypothesisId":"dark-mode","location":"entity_table.py:build_grid_in_container","message":"Creating AG Grid with quartz theme","timestamp":__import__('time').time()*1000})+'\n')
+            # #endregion
             grid = ui.aggrid({
                 "columnDefs": column_defs,
                 "rowData": row_data,
@@ -760,7 +764,7 @@ def create_entity_table(
                     "wrapText": True,
                     "autoHeight": True,
                 },
-            }, theme="balham").classes("w-full h-full").style("overflow-x: auto;")
+            }, theme="quartz").classes("w-full h-full").style("overflow-x: auto;")
             
             grid_ref["grid"] = grid
             grid.on("cellClicked", show_entity_detail)
@@ -822,6 +826,9 @@ SUMMARY_FIELDS = {
 
 def show_entity_detail_dialog(row_data: dict, state: Optional["AppState"] = None) -> None:
     """Show a dialog with entity details."""
+    # #region agent log
+    import json as _json; open('/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug.log','a').write(_json.dumps({"hypothesisId":"popup-width","location":"entity_table.py:show_entity_detail_dialog","message":"Opening entity dialog with max-w-6xl","timestamp":__import__('time').time()*1000})+'\n')
+    # #endregion
     
     type_code = row_data.get("element_type_code", "UNK")
     type_info = RESOURCE_TYPES.get(type_code, {"name": type_code, "code": type_code, "icon": "info", "color": "#6B7280"})
@@ -830,7 +837,7 @@ def show_entity_detail_dialog(row_data: dict, state: Optional["AppState"] = None
     full_data = _get_full_entity_data(state, row_data) if state else None
     display_data = full_data if full_data else row_data
     
-    with ui.dialog() as dialog, ui.card().classes("w-full max-w-4xl").style("height: 80vh;"):
+    with ui.dialog() as dialog, ui.card().classes("w-full max-w-6xl").style("height: 80vh;"):
         # Header
         with ui.row().classes("w-full items-center justify-between p-4 border-b"):
             with ui.row().classes("items-center gap-2"):

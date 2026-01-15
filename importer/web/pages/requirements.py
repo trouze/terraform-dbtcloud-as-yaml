@@ -6,9 +6,11 @@ from nicegui import ui
 
 from importer.web.state import AppState
 from importer.web.utils.dependency_checker import (
+    DependencyCategory,
     DependencyResult,
     DependencyStatus,
     check_dbt_cloud_provider,
+    check_dbt_jobs_as_code,
     check_git,
     check_python_packages,
     check_terraform,
@@ -93,6 +95,10 @@ def _create_dependency_card(result: DependencyResult) -> None:
         icon = "check_circle"
         icon_color = "text-green-500"
         border_color = "border-green-500"
+    elif result.status == DependencyStatus.OPTIONAL:
+        icon = "info"
+        icon_color = "text-slate-400"
+        border_color = "border-slate-300"
     elif result.status == DependencyStatus.MISSING:
         icon = "cancel"
         icon_color = "text-red-500"
@@ -111,15 +117,22 @@ def _create_dependency_card(result: DependencyResult) -> None:
             with ui.row().classes("items-center gap-3"):
                 ui.icon(icon, size="md").classes(icon_color)
                 with ui.column().classes("gap-0"):
-                    ui.label(result.name).classes("font-semibold")
+                    with ui.row().classes("items-center gap-2"):
+                        ui.label(result.name).classes("font-semibold")
+                        # Show category badge for optional/workflow-specific
+                        if result.category == DependencyCategory.WORKFLOW_SPECIFIC:
+                            ui.badge("Optional", color="grey").props("rounded outline")
                     if result.version:
                         ui.label(f"Version: {result.version}").classes("text-sm text-slate-500")
+                    # Show which workflows need this dependency
+                    if result.workflows:
+                        ui.label(f"Used by: {', '.join(result.workflows)}").classes("text-xs text-slate-400")
             
             # Status message
             ui.label(result.message or "").classes("text-sm text-slate-600 dark:text-slate-400")
         
-        # Install instructions if missing
-        if result.status in (DependencyStatus.MISSING, DependencyStatus.ERROR):
+        # Install instructions if missing or optional
+        if result.status in (DependencyStatus.MISSING, DependencyStatus.ERROR, DependencyStatus.OPTIONAL):
             with ui.column().classes("mt-3 pt-3 border-t border-slate-200 dark:border-slate-700 gap-2"):
                 if result.install_command:
                     with ui.row().classes("items-center gap-2"):
