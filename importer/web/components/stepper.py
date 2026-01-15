@@ -5,7 +5,13 @@ from typing import Callable
 from nicegui import ui
 
 from importer.web import __version__
-from importer.web.state import STEP_ICONS, STEP_NAMES, AppState, WorkflowStep
+from importer.web.state import (
+    STEP_ICONS,
+    WORKFLOW_LABELS,
+    AppState,
+    WorkflowStep,
+    WorkflowType,
+)
 from importer.web.components.account_selector import create_account_cards
 
 
@@ -19,6 +25,7 @@ DBT_NAVY_LIGHT = "#2D2D3D"
 def create_nav_drawer(
     state: AppState,
     on_step_change: Callable[[WorkflowStep], None],
+    on_workflow_change: Callable[[WorkflowType], None],
     on_theme_change: Callable[[], None],
     on_clear_session: Callable[[], None],
     on_navigate_requirements: Callable[[], None],
@@ -28,6 +35,7 @@ def create_nav_drawer(
     Args:
         state: Current application state
         on_step_change: Callback when user clicks a step
+        on_workflow_change: Callback when user selects a workflow
         on_theme_change: Callback when theme toggle is clicked
         on_clear_session: Callback when clear session is clicked
         on_navigate_requirements: Callback when requirements link is clicked
@@ -37,31 +45,49 @@ def create_nav_drawer(
         f"background-color: {DBT_NAVY};"
     ) as drawer:
         # Logo/title area
-        with ui.column().classes("w-full items-center py-6 border-b border-slate-700"):
-            ui.image("/static/favicon.svg").classes("w-14 h-14")
-            ui.label("dbt Magellan").classes("text-xl font-bold mt-3 text-white")
-            ui.label("Exploration & Migration Tool").classes("text-sm text-slate-400")
+        with ui.column().classes("w-full items-center py-2 border-b border-slate-700"):
+            ui.image("/static/vertical_logo.png").classes("max-w-[200px] h-auto object-contain")
             ui.label(f"v{__version__}").classes("text-xs text-slate-500 mt-1")
 
-        # Workflow steps
-        ui.label("WORKFLOW").classes("px-4 pt-6 pb-2 text-xs text-slate-500 font-semibold tracking-wider")
+        # Workflow selector
+        workflow_options = {
+            WorkflowType.MIGRATION: WORKFLOW_LABELS[WorkflowType.MIGRATION],
+            WorkflowType.ACCOUNT_EXPLORER: WORKFLOW_LABELS[WorkflowType.ACCOUNT_EXPLORER],
+            WorkflowType.JOBS_AS_CODE: WORKFLOW_LABELS[WorkflowType.JOBS_AS_CODE],
+        }
 
-        workflow_steps = [
-            WorkflowStep.FETCH,
-            WorkflowStep.EXPLORE,
-            WorkflowStep.MAP,
-            WorkflowStep.TARGET,
-            WorkflowStep.DEPLOY,
-        ]
+        def handle_workflow_change(e) -> None:
+            value = e.value
+            if isinstance(value, WorkflowType):
+                selected = value
+            else:
+                selected = WorkflowType(value)
+            on_workflow_change(selected)
 
-        for step in workflow_steps:
-            _create_step_item(state, step, on_step_change)
+        ui.select(
+            label="Workflow",
+            options=workflow_options,
+            value=state.workflow,
+            on_change=handle_workflow_change,
+        ).props("dense outlined").classes("w-full px-4 pt-4 pb-3")
+
+        with ui.row().classes("px-4 pb-2 items-center gap-2 text-xs text-slate-500"):
+            ui.icon("hourglass_empty", size="xs").classes("text-slate-500")
+            ui.label("Import & Adopt (Coming Soon)")
+
+        workflow_steps = state.workflow_steps()
+
+        for index, step in enumerate(workflow_steps, start=1):
+            _create_step_item(state, step, index, on_step_change)
 
         # Account cards section (below workflow)
+        # Hide target card in Account Explorer workflow
+        show_target = state.workflow != WorkflowType.ACCOUNT_EXPLORER
         create_account_cards(
             state=state,
             on_configure_source=lambda: on_step_change(WorkflowStep.FETCH),
             on_configure_target=lambda: on_step_change(WorkflowStep.TARGET),
+            show_target=show_target,
         )
 
         # Spacer
@@ -105,6 +131,7 @@ def create_nav_drawer(
 def _create_step_item(
     state: AppState,
     step: WorkflowStep,
+    step_number: int,
     on_step_change: Callable[[WorkflowStep], None],
 ) -> None:
     """Create a single step item in the navigation."""
@@ -153,11 +180,11 @@ def _create_step_item(
             with ui.element("div").classes(
                 "w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold"
             ).style(number_style):
-                ui.label(str(step.value))
+                ui.label(str(step_number))
 
         # Step icon and name
         ui.icon(STEP_ICONS[step], size="sm").classes(icon_class)
-        ui.label(STEP_NAMES[step]).classes(f"flex-grow font-medium {text_class}")
+        ui.label(state.get_step_label(step)).classes(f"flex-grow font-medium {text_class}")
 
         # Lock indicator for inaccessible steps
         if not is_accessible:
@@ -168,13 +195,7 @@ def create_progress_header(state: AppState) -> None:
     """Create the progress header showing current step and overall progress."""
     is_light = state.theme == "light"
     
-    workflow_steps = [
-        WorkflowStep.FETCH,
-        WorkflowStep.EXPLORE,
-        WorkflowStep.MAP,
-        WorkflowStep.TARGET,
-        WorkflowStep.DEPLOY,
-    ]
+    workflow_steps = state.workflow_steps()
 
     completed_count = sum(1 for s in workflow_steps if state.step_is_complete(s))
     total_steps = len(workflow_steps)
@@ -198,7 +219,8 @@ def create_progress_header(state: AppState) -> None:
         if state.current_step == WorkflowStep.HOME:
             step_text = "Home"
         else:
-            step_text = f"Step {state.current_step.value} of {total_steps}: {STEP_NAMES[state.current_step]}"
+            step_number = state.get_step_number(state.current_step) or state.current_step.value
+            step_text = f"Step {step_number} of {total_steps}: {state.get_step_label(state.current_step)}"
 
         ui.label(step_text).classes("text-lg font-semibold").style(f"color: {text_color};")
 

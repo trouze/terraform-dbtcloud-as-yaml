@@ -5,7 +5,7 @@ import os
 import re
 import subprocess
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import List, Optional, Tuple
@@ -17,6 +17,14 @@ class DependencyStatus(Enum):
     MISSING = "missing"
     ERROR = "error"
     OUTDATED = "outdated"
+    OPTIONAL = "optional"  # Not required, can be skipped
+
+
+class DependencyCategory(Enum):
+    """Category of dependency."""
+    REQUIRED = "required"
+    OPTIONAL = "optional"
+    WORKFLOW_SPECIFIC = "workflow_specific"
 
 
 @dataclass
@@ -28,10 +36,17 @@ class DependencyResult:
     message: Optional[str] = None
     install_command: Optional[str] = None
     install_url: Optional[str] = None
+    category: DependencyCategory = DependencyCategory.REQUIRED
+    workflows: List[str] = field(default_factory=list)  # Which workflows need this
 
 
 def check_terraform() -> DependencyResult:
-    """Check if Terraform CLI is installed and get version."""
+    """Check if Terraform CLI is installed and get version.
+    
+    Terraform is optional - only required for Migration and Import & Adopt workflows.
+    """
+    workflows = ["Migration Workflow", "Import & Adopt"]
+    
     try:
         result = subprocess.run(
             ["terraform", "version"],
@@ -47,35 +62,45 @@ def check_terraform() -> DependencyResult:
                 name="Terraform CLI",
                 status=DependencyStatus.OK,
                 version=version,
-                message=f"Terraform v{version} installed"
+                message=f"Terraform v{version} installed",
+                category=DependencyCategory.WORKFLOW_SPECIFIC,
+                workflows=workflows,
             )
         else:
             return DependencyResult(
                 name="Terraform CLI",
-                status=DependencyStatus.ERROR,
-                message=f"Error running terraform: {result.stderr}",
+                status=DependencyStatus.OPTIONAL,
+                message="Optional - needed for Migration workflow",
                 install_command="brew install terraform",
-                install_url="https://developer.hashicorp.com/terraform/downloads"
+                install_url="https://developer.hashicorp.com/terraform/downloads",
+                category=DependencyCategory.WORKFLOW_SPECIFIC,
+                workflows=workflows,
             )
     except FileNotFoundError:
         return DependencyResult(
             name="Terraform CLI",
-            status=DependencyStatus.MISSING,
-            message="Terraform not found in PATH",
+            status=DependencyStatus.OPTIONAL,
+            message="Optional - needed for Migration workflow",
             install_command="brew install terraform",
-            install_url="https://developer.hashicorp.com/terraform/downloads"
+            install_url="https://developer.hashicorp.com/terraform/downloads",
+            category=DependencyCategory.WORKFLOW_SPECIFIC,
+            workflows=workflows,
         )
     except subprocess.TimeoutExpired:
         return DependencyResult(
             name="Terraform CLI",
             status=DependencyStatus.ERROR,
-            message="Terraform command timed out"
+            message="Terraform command timed out",
+            category=DependencyCategory.WORKFLOW_SPECIFIC,
+            workflows=workflows,
         )
     except Exception as e:
         return DependencyResult(
             name="Terraform CLI",
             status=DependencyStatus.ERROR,
-            message=str(e)
+            message=str(e),
+            category=DependencyCategory.WORKFLOW_SPECIFIC,
+            workflows=workflows,
         )
 
 
@@ -288,29 +313,103 @@ def install_python_packages(packages: Optional[List[str]] = None) -> Tuple[bool,
         return False, f"Installation error: {str(e)}"
 
 
+def check_dbt_jobs_as_code() -> DependencyResult:
+    """Check if dbt-jobs-as-code CLI is installed.
+    
+    This is optional - only required for Jobs as Code workflow.
+    """
+    workflows = ["Jobs as Code Generator"]
+    
+    try:
+        result = subprocess.run(
+            ["dbt-jobs-as-code", "--version"],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        if result.returncode == 0:
+            # Parse version from output
+            version_text = result.stdout.strip() or result.stderr.strip()
+            match = re.search(r"(\d+\.\d+\.\d+)", version_text)
+            version = match.group(1) if match else "unknown"
+            return DependencyResult(
+                name="dbt-jobs-as-code",
+                status=DependencyStatus.OK,
+                version=version,
+                message=f"dbt-jobs-as-code v{version} installed",
+                category=DependencyCategory.WORKFLOW_SPECIFIC,
+                workflows=workflows,
+            )
+        else:
+            return DependencyResult(
+                name="dbt-jobs-as-code",
+                status=DependencyStatus.OPTIONAL,
+                message="Optional - needed for Jobs as Code workflow",
+                install_command="pip install dbt-jobs-as-code",
+                install_url="https://github.com/dbt-labs/dbt-jobs-as-code",
+                category=DependencyCategory.WORKFLOW_SPECIFIC,
+                workflows=workflows,
+            )
+    except FileNotFoundError:
+        return DependencyResult(
+            name="dbt-jobs-as-code",
+            status=DependencyStatus.OPTIONAL,
+            message="Optional - needed for Jobs as Code workflow",
+            install_command="pip install dbt-jobs-as-code",
+            install_url="https://github.com/dbt-labs/dbt-jobs-as-code",
+            category=DependencyCategory.WORKFLOW_SPECIFIC,
+            workflows=workflows,
+        )
+    except subprocess.TimeoutExpired:
+        return DependencyResult(
+            name="dbt-jobs-as-code",
+            status=DependencyStatus.ERROR,
+            message="Command timed out",
+            category=DependencyCategory.WORKFLOW_SPECIFIC,
+            workflows=workflows,
+        )
+    except Exception as e:
+        return DependencyResult(
+            name="dbt-jobs-as-code",
+            status=DependencyStatus.ERROR,
+            message=str(e),
+            category=DependencyCategory.WORKFLOW_SPECIFIC,
+            workflows=workflows,
+        )
+
+
 def run_all_checks() -> List[DependencyResult]:
     """Run all dependency checks and return results."""
     results = []
     
-    # Terraform
-    results.append(check_terraform())
-    
-    # dbt Cloud Provider
-    results.append(check_dbt_cloud_provider())
-    
-    # Python packages (just the summary result)
+    # Python packages (required - just the summary result)
     python_result, _ = check_python_packages()
     results.append(python_result)
     
-    # Git
+    # Git (required)
     results.append(check_git())
+    
+    # Terraform (optional - workflow specific)
+    results.append(check_terraform())
+    
+    # dbt Cloud Provider (optional - depends on terraform)
+    results.append(check_dbt_cloud_provider())
+    
+    # dbt-jobs-as-code (optional - workflow specific)
+    results.append(check_dbt_jobs_as_code())
     
     return results
 
 
 def get_overall_status(results: List[DependencyResult]) -> DependencyStatus:
-    """Get overall status from a list of results."""
-    statuses = [r.status for r in results]
+    """Get overall status from a list of results.
+    
+    Only considers required dependencies for overall status.
+    Optional/workflow-specific dependencies don't affect overall status.
+    """
+    # Filter to only required dependencies
+    required_results = [r for r in results if r.category == DependencyCategory.REQUIRED]
+    statuses = [r.status for r in required_results]
     
     if DependencyStatus.ERROR in statuses:
         return DependencyStatus.ERROR

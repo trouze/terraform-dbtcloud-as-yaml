@@ -5,7 +5,7 @@ from typing import Optional
 
 from nicegui import app, ui
 
-from importer.web.state import AppState, WorkflowStep, STEP_NAMES
+from importer.web.state import AppState, WorkflowStep, WorkflowType, STEP_NAMES
 from importer.web.components.stepper import create_nav_drawer, create_progress_header, DBT_NAVY
 from importer.web.pages.home import create_home_page
 from importer.web.pages.requirements import create_requirements_page
@@ -14,6 +14,7 @@ from importer.web.pages.explore import create_explore_page
 from importer.web.pages.mapping import create_mapping_page
 from importer.web.pages.target import create_target_page
 from importer.web.pages.deploy import create_deploy_page
+from importer.web.pages.destroy import create_destroy_page
 from importer.web.env_manager import load_account_info_from_env
 
 # Static files directory
@@ -65,6 +66,17 @@ def navigate_to_step(step: WorkflowStep) -> None:
     ui.navigate.to(f"/{step.name.lower()}" if step != WorkflowStep.HOME else "/")
 
 
+def set_workflow(workflow: WorkflowType) -> None:
+    """Set the active workflow and navigate to a valid step."""
+    state = get_state()
+    state.workflow = workflow
+    steps = state.workflow_steps()
+    next_step = state.current_step if state.current_step in steps else steps[0]
+    state.current_step = next_step
+    save_state()
+    ui.navigate.to(f"/{next_step.name.lower()}" if next_step != WorkflowStep.HOME else "/")
+
+
 def toggle_theme() -> None:
     """Toggle between dark and light theme."""
     state = get_state()
@@ -99,6 +111,7 @@ def setup_page(state: AppState) -> None:
     create_nav_drawer(
         state,
         navigate_to_step,
+        set_workflow,
         toggle_theme,
         clear_session,
         navigate_to_requirements,
@@ -110,7 +123,7 @@ def create_page_content(state: AppState) -> None:
     step = state.current_step
 
     if step == WorkflowStep.HOME:
-        create_home_page(state, navigate_to_step)
+        create_home_page(state, navigate_to_step, set_workflow)
     elif step == WorkflowStep.FETCH:
         create_fetch_page(state, navigate_to_step, save_state)
     elif step == WorkflowStep.EXPLORE:
@@ -121,6 +134,14 @@ def create_page_content(state: AppState) -> None:
         create_target_page(state, navigate_to_step, save_state)
     elif step == WorkflowStep.DEPLOY:
         create_deploy_page(state, navigate_to_step, save_state)
+    elif step == WorkflowStep.DESTROY:
+        create_destroy_page(state, navigate_to_step, save_state)
+    elif step == WorkflowStep.MATCH_TARGET:
+        _create_placeholder_page(
+            "Match Target",
+            "Coming soon: match existing target resources to avoid duplicates.",
+            state,
+        )
 
 
 def _create_placeholder_page(title: str, description: str, state: AppState) -> None:
@@ -232,6 +253,32 @@ def deploy_page() -> None:
     """Deploy step page route."""
     state = get_state()
     state.current_step = WorkflowStep.DEPLOY
+    save_state()
+    setup_page(state)
+
+    with ui.column().classes("w-full"):
+        create_progress_header(state)
+        create_page_content(state)
+
+
+@ui.page("/destroy")
+def destroy_page() -> None:
+    """Destroy step page route."""
+    state = get_state()
+    state.current_step = WorkflowStep.DESTROY
+    save_state()
+    setup_page(state)
+
+    with ui.column().classes("w-full"):
+        create_progress_header(state)
+        create_page_content(state)
+
+
+@ui.page("/match_target")
+def match_target_page() -> None:
+    """Match Target step page route (placeholder)."""
+    state = get_state()
+    state.current_step = WorkflowStep.MATCH_TARGET
     save_state()
     setup_page(state)
 

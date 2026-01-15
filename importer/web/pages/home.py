@@ -7,22 +7,24 @@ from typing import Callable, Optional
 
 from nicegui import ui
 
-from importer.web.state import AppState, WorkflowStep
+from importer.web.state import AppState, WorkflowStep, WorkflowType, WORKFLOW_LABELS
 
 
 def create_home_page(
     state: AppState,
     on_step_change: Callable[[WorkflowStep], None],
+    on_workflow_change: Callable[[WorkflowType], None],
 ) -> None:
     """Create the home/dashboard page content.
 
     Args:
         state: Current application state
         on_step_change: Callback to navigate to a step
+        on_workflow_change: Callback to switch workflows
     """
     with ui.column().classes("w-full max-w-4xl mx-auto p-8 gap-8"):
         # Welcome section
-        _create_welcome_section(on_step_change)
+        _create_welcome_section(state, on_step_change, on_workflow_change)
 
         # Quick stats (if there's previous data)
         if state.fetch.fetch_complete:
@@ -32,40 +34,83 @@ def create_home_page(
         _create_recent_runs_section(state, on_step_change)
 
 
-def _create_welcome_section(on_step_change: Callable[[WorkflowStep], None]) -> None:
+def _create_welcome_section(
+    state: AppState,
+    on_step_change: Callable[[WorkflowStep], None],
+    on_workflow_change: Callable[[WorkflowType], None],
+) -> None:
     """Create the welcome/hero section."""
-    with ui.card().classes("w-full p-8"):
-        with ui.column().classes("gap-4"):
-            with ui.row().classes("items-center gap-4"):
-                ui.image("/static/favicon.svg").classes("w-12 h-12")
-                with ui.column().classes("gap-0"):
-                    ui.label("dbt Magellan").classes("text-3xl font-bold")
-                    ui.label("Exploration & Migration Tool").classes("text-sm text-slate-500")
-
+    with ui.card().classes("w-full p-6"):
+        with ui.column().classes("gap-3"):
             ui.markdown("""
-                Explore, audit, and migrate dbt Platform account configurations with a guided workflow:
-                
-                1. **Fetch** - Download your account configuration via API
-                2. **Explore** - Review entities, view reports, export CSVs, analyze charts
-                3. **Map** - Select entities to migrate, configure transformations
-                4. **Target** - Set up destination account credentials
-                5. **Deploy** - Generate Terraform and apply changes
-                
-                *Use steps 1-2 for account exploration and auditing, or complete all steps for full migration.*
+                Choose a workflow to explore, audit, or migrate dbt Platform account configurations.
             """).classes("text-slate-600 dark:text-slate-400")
 
-            with ui.row().classes("gap-4 mt-4"):
-                ui.button(
-                    "Get Started",
+            with ui.row().classes("gap-4 mt-4 flex-wrap"):
+                _create_workflow_card(
+                    title=WORKFLOW_LABELS[WorkflowType.MIGRATION],
+                    description="Full end-to-end migration with scoped selection and deploy.",
                     icon="rocket_launch",
-                    on_click=lambda: on_step_change(WorkflowStep.FETCH),
-                ).style("background-color: #FF694A;")
+                    on_click=lambda: on_workflow_change(WorkflowType.MIGRATION),
+                    highlight=True,
+                )
+                _create_workflow_card(
+                    title=WORKFLOW_LABELS[WorkflowType.ACCOUNT_EXPLORER],
+                    description="Fetch and explore account configuration without deployment.",
+                    icon="search",
+                    on_click=lambda: on_workflow_change(WorkflowType.ACCOUNT_EXPLORER),
+                )
+                _create_workflow_card(
+                    title=WORKFLOW_LABELS[WorkflowType.JOBS_AS_CODE],
+                    description="Generate jobs-as-code outputs from selected entities.",
+                    icon="code",
+                    on_click=lambda: on_workflow_change(WorkflowType.JOBS_AS_CODE),
+                )
+                _create_workflow_card(
+                    title=WORKFLOW_LABELS[WorkflowType.IMPORT_ADOPT],
+                    description="Import existing infrastructure and adopt it into Terraform.",
+                    icon="cloud_sync",
+                    on_click=None,
+                    disabled=True,
+                )
 
+            with ui.row().classes("gap-4 mt-4"):
                 ui.button(
                     "Documentation",
                     icon="menu_book",
                     on_click=lambda: ui.notify("Documentation coming soon"),
                 ).props("outline")
+
+
+def _create_workflow_card(
+    title: str,
+    description: str,
+    icon: str,
+    on_click: Optional[Callable[[], None]],
+    highlight: bool = False,
+    disabled: bool = False,
+) -> None:
+    """Create a workflow selection card."""
+    card_classes = "w-full md:w-[calc(50%-0.5rem)] p-4"
+    if highlight:
+        card_classes += " border-2 border-orange-400"
+
+    with ui.card().classes(card_classes):
+        with ui.row().classes("items-center gap-2"):
+            ui.icon(icon, size="md").classes("text-slate-400")
+            ui.label(title).classes("text-lg font-semibold")
+            if disabled:
+                ui.badge("Coming Soon", color="warning").props("rounded")
+
+        ui.label(description).classes("text-sm text-slate-500 mt-2")
+
+        action = ui.button(
+            "Select",
+            icon="arrow_forward",
+            on_click=on_click if on_click else None,
+        ).props("outline")
+        if disabled:
+            action.disable()
 
 
 def _create_quick_stats(state: AppState) -> None:

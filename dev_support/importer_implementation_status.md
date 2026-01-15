@@ -1,7 +1,7 @@
 # Importer Implementation Status & Tracking
 
-**Last Updated:** 2026-01-14  
-**Current Importer Version:** 0.8.0  
+**Last Updated:** 2026-01-15  
+**Current Importer Version:** 0.8.1  
 **Status:** Phase 3 Complete + Interactive Mode + Web UI + E2E Testing Infrastructure
 
 > **⚠️ IMPORTANT: Keep This Document Updated**
@@ -666,6 +666,15 @@ The following items require API endpoint research before implementation can begi
 ---
 
 ## Change Log
+
+### 2026-01-15 (v0.8.1)
+- **Version:** Incremented to 0.8.1 (patch release - Deploy page UI polish)
+- **Deploy Page**: Dynamic Output panel title showing current step (GENERATE, INIT, VALIDATE, etc.)
+- **Deploy Page**: Status colors for buttons - green (success), yellow (warnings), red (errors)
+- **Terminal Output**: ISO8601 timestamps with timezone offset
+- **Terminal Output**: Auto-detection of warning/error messages from terraform output
+- **Terminal Output**: Wider search bar (250px)
+- **Deploy Page**: Buttons properly reset visual state when regenerating files
 
 ### 2026-01-14 (v0.8.0)
 - **Version:** Incremented to 0.8.0 (minor release - OAuth/SSO credential support)

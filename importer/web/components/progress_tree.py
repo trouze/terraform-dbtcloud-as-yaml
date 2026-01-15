@@ -48,8 +48,12 @@ class ProgressTree:
         self._project_items: dict[str, dict] = {}
         self._project_header: Optional[ui.row] = None
     
-    def create(self) -> ui.column:
-        """Create the progress tree UI component."""
+    def create(self, compact: bool = False) -> ui.column:
+        """Create the progress tree UI component.
+        
+        Args:
+            compact: If True, use two-column layout for global/project resources
+        """
         with ui.column().classes("w-full") as container:
             self._container = container
             
@@ -58,26 +62,51 @@ class ProgressTree:
                 self._status_icon = ui.icon("hourglass_empty", size="sm").classes("text-slate-400")
                 self._status_label = ui.label("Ready to fetch").classes("font-medium")
             
-            # Global Resources Section
-            with ui.column().classes("w-full mt-3 gap-1"):
-                ui.label("Global Resources").classes("text-xs text-slate-500 font-semibold uppercase tracking-wide")
-                
-                with ui.column().classes("w-full pl-2 gap-0.5"):
-                    for resource_key, display_name in GLOBAL_RESOURCES:
-                        self._global_items[resource_key] = self._create_resource_row(resource_key, display_name)
-            
-            # Projects Section
-            with ui.column().classes("w-full mt-3 gap-1"):
-                with ui.row().classes("items-center gap-2") as project_header:
-                    self._project_header = project_header
-                    ui.label("Projects").classes("text-xs text-slate-500 font-semibold uppercase tracking-wide")
-                    self._project_counter = ui.label("").classes("text-xs text-slate-400")
-                
-                with ui.column().classes("w-full pl-2 gap-0.5"):
-                    self._project_name_label = ui.label("").classes("text-sm text-slate-600 dark:text-slate-400 italic")
+            if compact:
+                # Two-column layout: Global Resources | Project Resources
+                with ui.row().classes("w-full mt-3 gap-6"):
+                    # Global Resources Column
+                    with ui.column().classes("flex-1 gap-1"):
+                        ui.label("Global Resources").classes("text-xs text-slate-500 font-semibold uppercase tracking-wide")
+                        
+                        with ui.column().classes("w-full gap-0.5"):
+                            for resource_key, display_name in GLOBAL_RESOURCES:
+                                self._global_items[resource_key] = self._create_resource_row(resource_key, display_name)
                     
-                    for resource_key, display_name in PROJECT_RESOURCES:
-                        self._project_items[resource_key] = self._create_resource_row(resource_key, display_name)
+                    # Projects Column
+                    with ui.column().classes("flex-1 gap-1"):
+                        with ui.row().classes("items-center gap-2") as project_header:
+                            self._project_header = project_header
+                            ui.label("Projects").classes("text-xs text-slate-500 font-semibold uppercase tracking-wide")
+                            self._project_counter = ui.label("").classes("text-xs text-slate-400")
+                        
+                        with ui.column().classes("w-full gap-0.5"):
+                            self._project_name_label = ui.label("").classes("text-sm text-slate-600 dark:text-slate-400 italic hidden")
+                            
+                            for resource_key, display_name in PROJECT_RESOURCES:
+                                self._project_items[resource_key] = self._create_resource_row(resource_key, display_name)
+            else:
+                # Original single-column layout
+                # Global Resources Section
+                with ui.column().classes("w-full mt-3 gap-1"):
+                    ui.label("Global Resources").classes("text-xs text-slate-500 font-semibold uppercase tracking-wide")
+                    
+                    with ui.column().classes("w-full pl-2 gap-0.5"):
+                        for resource_key, display_name in GLOBAL_RESOURCES:
+                            self._global_items[resource_key] = self._create_resource_row(resource_key, display_name)
+                
+                # Projects Section
+                with ui.column().classes("w-full mt-3 gap-1"):
+                    with ui.row().classes("items-center gap-2") as project_header:
+                        self._project_header = project_header
+                        ui.label("Projects").classes("text-xs text-slate-500 font-semibold uppercase tracking-wide")
+                        self._project_counter = ui.label("").classes("text-xs text-slate-400")
+                    
+                    with ui.column().classes("w-full pl-2 gap-0.5"):
+                        self._project_name_label = ui.label("").classes("text-sm text-slate-600 dark:text-slate-400 italic")
+                        
+                        for resource_key, display_name in PROJECT_RESOURCES:
+                            self._project_items[resource_key] = self._create_resource_row(resource_key, display_name)
         
         return container
     

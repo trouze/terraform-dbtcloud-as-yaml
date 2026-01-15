@@ -27,7 +27,7 @@ class LogMessage:
 
     def __post_init__(self):
         if self.timestamp is None:
-            self.timestamp = datetime.now()
+            self.timestamp = datetime.now().astimezone()  # Timezone-aware local time
 
 
 class TerminalOutput:
@@ -65,20 +65,48 @@ class TerminalOutput:
         self._container: Optional[ui.column] = None
         self._scroll_area: Optional[ui.scroll_area] = None
 
-    def create(self, height: str = "300px") -> None:
+    def create(self, height: str = "300px", title: str = "Output") -> None:
         """Create the terminal output UI component.
 
         Args:
             height: CSS height for the terminal container
+            title: Title to display in the header
         """
+        # Search state
+        self._search_term = ""
+        self._search_count = 0
+        self._search_current = 0
+        self._current_title = title
+        
         with ui.card().classes("w-full").style(
             f"background-color: #1a1a2e; min-height: {height}; max-height: {height};"
         ):
             # Header with title and controls
             with ui.row().classes("w-full items-center justify-between px-3 py-2 border-b border-slate-700"):
-                ui.label("Output").classes("text-sm font-mono text-slate-400")
+                self._title_label = ui.label(title).classes("text-sm font-mono text-slate-400")
                 
                 with ui.row().classes("gap-2 items-center"):
+                    # Search input
+                    self._search_input = ui.input(
+                        placeholder="Search...",
+                    ).props("dense borderless dark").classes("text-slate-300").style(
+                        "width: 250px; background-color: #2d2d4a; border-radius: 4px;"
+                    )
+                    self._search_input.on("update:model-value", self._on_search_change)
+                    
+                    # Search count and navigation
+                    self._search_count_label = ui.label("").classes("text-xs text-slate-500 min-w-[60px]")
+                    
+                    self._search_prev_btn = ui.button(
+                        icon="keyboard_arrow_up",
+                        on_click=lambda: self._go_to_search_match("prev"),
+                    ).props("flat dense size=sm").classes("text-slate-400 hidden")
+                    
+                    self._search_next_btn = ui.button(
+                        icon="keyboard_arrow_down",
+                        on_click=lambda: self._go_to_search_match("next"),
+                    ).props("flat dense size=sm").classes("text-slate-400 hidden")
+                    
                     # Log level selector - ordered from least to most verbose (ERROR shows least, DEBUG shows all)
                     self._level_select = ui.select(
                         options={
@@ -105,11 +133,11 @@ class TerminalOutput:
                     ).props("flat dense size=sm").classes("text-slate-400").tooltip("Clear output")
 
             # Scroll area for log messages
-            with ui.scroll_area().classes("w-full flex-grow").style(
+            with ui.scroll_area().classes("w-full flex-grow terminal-scroll-area").style(
                 f"height: calc({height} - 50px);"
             ) as scroll:
                 self._scroll_area = scroll
-                self._container = ui.column().classes("w-full p-2 gap-0.5")
+                self._container = ui.column().classes("w-full p-2 gap-0.5 terminal-messages")
 
     def _on_level_change(self, e) -> None:
         """Handle log level filter change."""
@@ -157,6 +185,19 @@ class TerminalOutput:
         """Log an info message."""
         self.log(text, LogLevel.INFO)
 
+    def info_auto(self, text: str) -> None:
+        """Log a message with auto-detected level based on content.
+        
+        Detects 'Warning:' and 'Error:' prefixes and logs at appropriate level.
+        """
+        text_lower = text.lower()
+        if "warning:" in text_lower:
+            self.log(text, LogLevel.WARNING)
+        elif "error:" in text_lower:
+            self.log(text, LogLevel.ERROR)
+        else:
+            self.log(text, LogLevel.INFO)
+
     def warning(self, text: str) -> None:
         """Log a warning message."""
         self.log(text, LogLevel.WARNING)
@@ -172,6 +213,16 @@ class TerminalOutput:
     def debug(self, text: str) -> None:
         """Log a debug message."""
         self.log(text, LogLevel.DEBUG)
+
+    def set_title(self, title: str) -> None:
+        """Update the terminal output title.
+        
+        Args:
+            title: New title to display (e.g., "Output - INIT")
+        """
+        self._current_title = title
+        if hasattr(self, '_title_label') and self._title_label is not None:
+            self._title_label.set_text(title)
 
     def clear(self) -> None:
         """Clear all messages."""
@@ -198,8 +249,8 @@ class TerminalOutput:
             with ui.row().classes("w-full gap-2 items-start"):
                 if self.show_timestamps and msg.timestamp:
                     ui.label(
-                        msg.timestamp.strftime("%H:%M:%S")
-                    ).classes("text-xs font-mono text-slate-600 w-16 flex-shrink-0")
+                        msg.timestamp.strftime("%Y-%m-%dT%H:%M:%S%z")
+                    ).classes("text-xs font-mono text-slate-600 w-44 flex-shrink-0")
                 
                 # Log level badge
                 ui.label(config["label"]).classes("text-xs font-mono px-1 rounded flex-shrink-0").style(
@@ -266,6 +317,96 @@ class TerminalOutput:
                 text_lines.append(f"[{level_str}] {msg.text}")
         
         return "\n".join(text_lines)
+
+    async def _on_search_change(self, e) -> None:
+        """Handle search input change."""
+        search_term = e.args if e.args else ""
+        self._search_term = search_term
+        
+        if not search_term:
+            self._search_count = 0
+            self._search_current = 0
+            self._search_count_label.set_text("")
+            self._search_prev_btn.classes("hidden", remove=False)
+            self._search_next_btn.classes("hidden", remove=False)
+            # Clear highlights
+            await ui.run_javascript('''
+                document.querySelectorAll('.terminal-messages mark').forEach(m => {
+                    m.outerHTML = m.textContent;
+                });
+            ''')
+            return
+        
+        # Count matches in all displayed messages
+        text = self.get_text()
+        count = text.lower().count(search_term.lower())
+        self._search_count = count
+        self._search_current = 1 if count > 0 else 0
+        
+        if count > 1:
+            self._search_count_label.set_text(f"1/{count}")
+            self._search_prev_btn.classes(remove="hidden")
+            self._search_next_btn.classes(remove="hidden")
+        elif count == 1:
+            self._search_count_label.set_text("1/1")
+            self._search_prev_btn.classes("hidden", remove=False)
+            self._search_next_btn.classes("hidden", remove=False)
+        else:
+            self._search_count_label.set_text("0")
+            self._search_prev_btn.classes("hidden", remove=False)
+            self._search_next_btn.classes("hidden", remove=False)
+        
+        # Highlight matches using JavaScript
+        escaped_term = search_term.replace("'", "\\'").replace('"', '\\"').replace("\\", "\\\\")
+        await ui.run_javascript(f'''
+            const container = document.querySelector('.terminal-messages');
+            if (container) {{
+                // Get all text nodes
+                const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+                const textNodes = [];
+                while (walker.nextNode()) textNodes.push(walker.currentNode);
+                
+                const regex = new RegExp('({escaped_term})', 'gi');
+                textNodes.forEach(node => {{
+                    if (regex.test(node.textContent)) {{
+                        const span = document.createElement('span');
+                        span.innerHTML = node.textContent.replace(regex, '<mark class="bg-yellow-500/50 text-yellow-200 px-0.5 rounded">$1</mark>');
+                        node.parentNode.replaceChild(span, node);
+                    }}
+                }});
+                
+                // Scroll to first match
+                const firstMark = document.querySelector('.terminal-messages mark');
+                if (firstMark) {{
+                    firstMark.scrollIntoView({{ behavior: 'smooth', block: 'center' }});
+                    firstMark.classList.add('ring-2', 'ring-orange-500');
+                }}
+            }}
+        ''')
+
+    async def _go_to_search_match(self, direction: str) -> None:
+        """Navigate to next/previous search match."""
+        if self._search_count <= 1:
+            return
+        
+        if direction == "next":
+            self._search_current = self._search_current + 1 if self._search_current < self._search_count else 1
+        else:
+            self._search_current = self._search_current - 1 if self._search_current > 1 else self._search_count
+        
+        self._search_count_label.set_text(f"{self._search_current}/{self._search_count}")
+        
+        # Navigate to match using JavaScript
+        await ui.run_javascript(f'''
+            const marks = document.querySelectorAll('.terminal-messages mark');
+            marks.forEach((m, i) => {{
+                m.classList.remove('ring-2', 'ring-orange-500');
+                if (i === {self._search_current - 1}) {{
+                    m.classList.add('ring-2', 'ring-orange-500');
+                    m.scrollIntoView({{ behavior: 'smooth', block: 'center' }});
+                }}
+            }});
+        ''')
 
 
 class FetchProgressHandler:

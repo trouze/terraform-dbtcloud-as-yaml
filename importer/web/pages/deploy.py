@@ -12,6 +12,8 @@ from nicegui import ui
 from importer.web.state import AppState, WorkflowStep, DeployState
 from importer.web.components.terminal_output import TerminalOutput
 from importer.web.utils.yaml_viewer import (
+    create_state_viewer_dialog,
+    create_text_viewer_dialog,
     create_yaml_viewer_dialog,
     get_yaml_stats,
 )
@@ -19,11 +21,17 @@ from importer.web.components.backend_config import (
     create_backend_config_section,
     write_backend_tf,
 )
+from importer.web.components.folder_picker import create_folder_picker_dialog
 
 
 # dbt brand colors
 DBT_ORANGE = "#FF694A"
 DBT_NAVY = "#192847"
+
+# Status colors for buttons
+STATUS_SUCCESS = "#22C55E"  # green-500
+STATUS_WARNING = "#EAB308"  # yellow-500
+STATUS_ERROR = "#EF4444"    # red-500
 
 
 def create_deploy_page(
@@ -71,35 +79,38 @@ def create_deploy_page(
         # Deployment summary
         _create_deployment_summary(state)
 
+        # Output directories section (narrow row above tiles)
+        _create_output_directories_section(state, deploy_state)
+
         # Backend configuration (collapsible)
         with ui.expansion("Backend Configuration", icon="storage").classes("w-full").props("dense"):
             create_backend_config_section(
                 backend_config=deploy_state["backend_config"],
             )
 
-        # Row 1: Generate, Init, Validate (3 equal tiles)
-        with ui.row().classes("w-full gap-4"):
-            with ui.column().classes("flex-1"):
+        # Tiles: 2x3 grid
+        with ui.element("div").classes("w-full").style(
+            "display: grid; "
+            "grid-template-columns: repeat(3, minmax(0, 1fr)); "
+            "gap: 16px; "
+            "align-items: stretch;"
+        ):
+            with ui.column().classes("min-w-0 h-full"):
                 _create_generate_section(state, terminal, save_state, deploy_state)
-            with ui.column().classes("flex-1"):
+            with ui.column().classes("min-w-0 h-full"):
                 _create_init_section(state, terminal, save_state, deploy_state)
-            with ui.column().classes("flex-1"):
+            with ui.column().classes("min-w-0 h-full"):
                 _create_validate_section(state, terminal, save_state, deploy_state)
-
-        # Row 2: Plan + Apply stacked on left, Output Terminal on right
-        with ui.row().classes("w-full gap-4"):
-            # Left column: Plan and Apply stacked
-            with ui.column().classes("w-1/3 min-w-[300px] gap-4"):
+            with ui.column().classes("min-w-0 h-full"):
                 _create_plan_section(state, terminal, save_state, deploy_state)
+            with ui.column().classes("min-w-0 h-full"):
                 _create_apply_section(state, terminal, save_state, deploy_state)
-            # Right column: Output terminal (spans full height)
-            with ui.column().classes("flex-grow"):
-                with ui.card().classes("w-full"):
-                    ui.label("Output").classes("font-semibold mb-2")
-                    terminal.create(height="450px")
+            with ui.column().classes("min-w-0 h-full"):
+                _create_state_inspection_section(state, deploy_state)
 
-        # Row 3: Danger zone (full width)
-        _create_destroy_section(state, terminal, save_state, deploy_state)
+        # Output terminal (full width below tiles)
+        with ui.column().classes("w-full"):
+            terminal.create(height="450px")
 
         # Navigation buttons
         _create_navigation_section(state, on_step_change)
@@ -131,7 +142,7 @@ def _check_prerequisites(state: AppState, on_step_change: Callable[[WorkflowStep
                         ui.icon("error_outline", size="sm").classes("text-yellow-500")
                         ui.label(error_msg)
                         ui.button(
-                            f"Go to {step.name.title()}",
+                            f"Go to {state.get_step_label(step)}",
                             on_click=lambda s=step: on_step_change(s),
                         ).props("size=sm outline")
 
@@ -249,6 +260,64 @@ def _create_deployment_summary(state: AppState) -> None:
                     ui.label(f"Total: {total} resources").classes("text-xs text-slate-500")
 
 
+def _create_output_directories_section(state: AppState, deploy_state: dict) -> None:
+    """Create the output directories configuration section above tiles."""
+    # Initialize default paths
+    default_tf_dir = state.deploy.terraform_dir or "deployments/migration"
+    
+    with ui.card().classes("w-full p-4"):
+        with ui.row().classes("w-full items-end gap-4"):
+            # Terraform output directory
+            with ui.column().classes("flex-grow"):
+                ui.label("Terraform Output Directory").classes("text-sm font-medium mb-1")
+                with ui.row().classes("w-full items-center gap-2"):
+                    tf_dir_input = ui.input(
+                        value=default_tf_dir,
+                        placeholder="deployments/migration",
+                    ).classes("flex-grow").props("outlined dense")
+                    deploy_state["tf_dir_input"] = tf_dir_input
+                    
+                    def open_tf_folder_picker():
+                        def on_select(path: str):
+                            tf_dir_input.value = path
+                            deploy_state["terraform_dir"] = path
+                        
+                        dialog = create_folder_picker_dialog(
+                            initial_path=tf_dir_input.value or ".",
+                            title="Select Terraform Output Directory",
+                            on_select=on_select,
+                        )
+                        dialog.open()
+                    
+                    ui.button(
+                        icon="folder_open",
+                        on_click=open_tf_folder_picker,
+                    ).props("flat dense")
+            
+            # State file location (read-only info)
+            with ui.column().classes("flex-grow"):
+                ui.label("State File Location").classes("text-sm font-medium mb-1")
+                with ui.row().classes("w-full items-center gap-2"):
+                    state_path_display = ui.input(
+                        value=f"{default_tf_dir}/terraform.tfstate",
+                        placeholder="(determined by backend config)",
+                    ).classes("flex-grow").props("outlined dense readonly")
+                    deploy_state["state_path_display"] = state_path_display
+                    
+                    ui.icon("info", size="sm").classes("text-slate-400").tooltip(
+                        "State file location is determined by the backend configuration. "
+                        "For local backend, it's stored in the Terraform output directory."
+                    )
+            
+            # Update state path when tf_dir changes
+            def on_tf_dir_change(e):
+                if e.value:
+                    deploy_state["terraform_dir"] = e.value
+                    state_path_display.value = f"{e.value}/terraform.tfstate"
+            
+            tf_dir_input.on("change", on_tf_dir_change)
+
+
 def _create_generate_section(
     state: AppState,
     terminal: TerminalOutput,
@@ -258,8 +327,14 @@ def _create_generate_section(
     """Create the generate Terraform files section."""
     from importer.web.utils.yaml_viewer import create_plan_viewer_dialog
     
-    with ui.card().classes("w-full"):
-        with ui.row().classes("items-center gap-2 mb-4"):
+    # Get output directory from shared state
+    def get_output_dir():
+        if "tf_dir_input" in deploy_state:
+            return deploy_state["tf_dir_input"].value
+        return deploy_state.get("terraform_dir") or state.deploy.terraform_dir or "deployments/migration"
+    
+    with ui.card().classes("w-full h-full").style("display: flex; flex-direction: column;"):
+        with ui.row().classes("items-center gap-2 mb-2"):
             ui.badge("1", color="primary").props("rounded")
             ui.label("Generate Terraform Files").classes("font-semibold")
             
@@ -270,25 +345,28 @@ def _create_generate_section(
 
         ui.label(
             "Generate Terraform configuration from your normalized YAML."
-        ).classes("text-sm text-slate-500 mb-4")
+        ).classes("text-sm text-slate-500 flex-grow")
 
-        # Output directory
-        # Suggest a project-oriented deployment directory
-        default_deploy_dir = "deployments/migration"
-        output_dir = ui.input(
-            label="Output Directory",
-            value=default_deploy_dir,
-            placeholder=default_deploy_dir,
-        ).classes("w-full").props('outlined dense')
-
-        with ui.row().classes("w-full gap-2 mt-4"):
-            ui.button(
+        # Buttons at bottom - action button above view button
+        with ui.column().classes("w-full gap-2 mt-auto"):
+            # Determine button state
+            is_complete = state.deploy.files_generated
+            
+            generate_btn = ui.button(
                 "Generate Files",
                 icon="code",
                 on_click=lambda: _run_generate(
-                    state, terminal, save_state, deploy_state, output_dir.value
+                    state, terminal, save_state, deploy_state, get_output_dir()
                 ),
-            ).classes("flex-grow").style(f"background-color: {DBT_ORANGE};")
+            ).classes("w-full")
+            
+            # Style based on state: blue when enabled, green when complete
+            if is_complete:
+                generate_btn.style(f"background-color: {STATUS_SUCCESS};")
+            else:
+                generate_btn.style(f"background-color: {DBT_ORANGE};")
+            
+            deploy_state["generate_btn"] = generate_btn
             
             # View Generate Output button
             def open_generate_viewer():
@@ -299,14 +377,20 @@ def _create_generate_section(
                 dialog = create_plan_viewer_dialog(output, "Generate Output")
                 dialog.open()
             
+            has_output = deploy_state.get("last_generate_output") or state.deploy.last_generate_output
             view_btn = ui.button(
                 "View Output",
                 icon="visibility",
                 on_click=open_generate_viewer,
-            ).props("outline")
+            ).props("outline").classes("w-full")
+            
+            # White text when output available
+            if has_output:
+                view_btn.style("color: white; background-color: rgba(255,255,255,0.1);")
+            
             deploy_state["generate_view_btn"] = view_btn
             
-            if not deploy_state.get("last_generate_output") and not state.deploy.last_generate_output:
+            if not has_output:
                 view_btn.disable()
                 view_btn.tooltip("Run generate first")
 
@@ -320,8 +404,8 @@ def _create_init_section(
     """Create the Terraform init section."""
     from importer.web.utils.yaml_viewer import create_plan_viewer_dialog
     
-    with ui.card().classes("w-full"):
-        with ui.row().classes("items-center gap-2 mb-4"):
+    with ui.card().classes("w-full h-full").style("display: flex; flex-direction: column;"):
+        with ui.row().classes("items-center gap-2 mb-2"):
             ui.badge("2", color="primary").props("rounded")
             ui.label("Initialize Terraform").classes("font-semibold")
             
@@ -332,16 +416,33 @@ def _create_init_section(
 
         ui.label(
             "Initialize the Terraform working directory and download providers."
-        ).classes("text-sm text-slate-500 mb-4")
+        ).classes("text-sm text-slate-500 flex-grow")
 
-        with ui.row().classes("w-full gap-2"):
-            ui.button(
+        # Buttons at bottom
+        with ui.column().classes("w-full gap-2 mt-auto"):
+            # Determine button states
+            is_enabled = state.deploy.files_generated
+            is_complete = state.deploy.terraform_initialized
+            
+            init_btn = ui.button(
                 "Run terraform init",
                 icon="download",
                 on_click=lambda: _run_terraform_init(
                     state, terminal, save_state, deploy_state
                 ),
-            ).classes("flex-grow").props("outline")
+            ).classes("w-full")
+            
+            # Style based on state
+            if is_complete:
+                init_btn.style(f"background-color: {STATUS_SUCCESS};")
+            elif is_enabled:
+                init_btn.style(f"background-color: {DBT_ORANGE};")
+            else:
+                init_btn.props("outline").style("opacity: 0.5;")
+                init_btn.disable()
+                init_btn.tooltip("Generate files first")
+            
+            deploy_state["init_btn"] = init_btn
             
             # View Init Output button
             def open_init_viewer():
@@ -352,14 +453,19 @@ def _create_init_section(
                 dialog = create_plan_viewer_dialog(output, "Terraform Init Output")
                 dialog.open()
             
+            has_output = deploy_state.get("last_init_output") or state.deploy.last_init_output
             view_btn = ui.button(
                 "View Output",
                 icon="visibility",
                 on_click=open_init_viewer,
-            ).props("outline")
+            ).props("outline").classes("w-full")
+            
+            if has_output:
+                view_btn.style("color: white; background-color: rgba(255,255,255,0.1);")
+            
             deploy_state["init_view_btn"] = view_btn
             
-            if not deploy_state.get("last_init_output") and not state.deploy.last_init_output:
+            if not has_output:
                 view_btn.disable()
                 view_btn.tooltip("Run init first")
 
@@ -373,8 +479,8 @@ def _create_validate_section(
     """Create the Terraform validate section."""
     from importer.web.utils.yaml_viewer import create_plan_viewer_dialog
     
-    with ui.card().classes("w-full"):
-        with ui.row().classes("items-center gap-2 mb-4"):
+    with ui.card().classes("w-full h-full").style("display: flex; flex-direction: column;"):
+        with ui.row().classes("items-center gap-2 mb-2"):
             ui.badge("3", color="primary").props("rounded")
             ui.label("Validate Configuration").classes("font-semibold")
             
@@ -385,16 +491,33 @@ def _create_validate_section(
 
         ui.label(
             "Validate the Terraform configuration for syntax and consistency errors."
-        ).classes("text-sm text-slate-500 mb-4")
+        ).classes("text-sm text-slate-500 flex-grow")
 
-        with ui.row().classes("w-full gap-2"):
-            ui.button(
+        # Buttons at bottom
+        with ui.column().classes("w-full gap-2 mt-auto"):
+            # Determine button states
+            is_enabled = state.deploy.terraform_initialized
+            is_complete = state.deploy.last_validate_success
+            
+            validate_btn = ui.button(
                 "Run terraform validate",
                 icon="check",
                 on_click=lambda: _run_terraform_validate(
                     state, terminal, save_state, deploy_state
                 ),
-            ).classes("flex-grow").props("outline")
+            ).classes("w-full")
+            
+            # Style based on state
+            if is_complete:
+                validate_btn.style(f"background-color: {STATUS_SUCCESS};")
+            elif is_enabled:
+                validate_btn.style(f"background-color: {DBT_ORANGE};")
+            else:
+                validate_btn.props("outline").style("opacity: 0.5;")
+                validate_btn.disable()
+                validate_btn.tooltip("Run init first")
+            
+            deploy_state["validate_btn"] = validate_btn
             
             # View Validate Output button
             def open_validate_viewer():
@@ -405,14 +528,19 @@ def _create_validate_section(
                 dialog = create_plan_viewer_dialog(output, "Terraform Validate Output")
                 dialog.open()
             
+            has_output = deploy_state.get("last_validate_output") or state.deploy.last_validate_output
             view_btn = ui.button(
                 "View Output",
                 icon="visibility",
                 on_click=open_validate_viewer,
-            ).props("outline")
+            ).props("outline").classes("w-full")
+            
+            if has_output:
+                view_btn.style("color: white; background-color: rgba(255,255,255,0.1);")
+            
             deploy_state["validate_view_btn"] = view_btn
             
-            if not deploy_state.get("last_validate_output") and not state.deploy.last_validate_output:
+            if not has_output:
                 view_btn.disable()
                 view_btn.tooltip("Run validate first")
 
@@ -426,8 +554,8 @@ def _create_plan_section(
     """Create the Terraform plan section."""
     from importer.web.utils.yaml_viewer import create_plan_viewer_dialog
     
-    with ui.card().classes("w-full"):
-        with ui.row().classes("items-center gap-2 mb-4"):
+    with ui.card().classes("w-full h-full").style("display: flex; flex-direction: column;"):
+        with ui.row().classes("items-center gap-2 mb-2"):
             ui.badge("4", color="primary").props("rounded")
             ui.label("Plan Deployment").classes("font-semibold")
             
@@ -438,16 +566,33 @@ def _create_plan_section(
 
         ui.label(
             "Preview the changes that will be made to the target account."
-        ).classes("text-sm text-slate-500 mb-4")
+        ).classes("text-sm text-slate-500 flex-grow")
 
-        with ui.row().classes("w-full gap-2"):
-            ui.button(
+        # Buttons at bottom
+        with ui.column().classes("w-full gap-2 mt-auto"):
+            # Determine button states
+            is_enabled = state.deploy.terraform_initialized
+            is_complete = state.deploy.last_plan_success
+            
+            plan_btn = ui.button(
                 "Run terraform plan",
                 icon="preview",
                 on_click=lambda: _run_terraform_plan(
                     state, terminal, save_state, deploy_state
                 ),
-            ).classes("flex-grow").props("outline")
+            ).classes("w-full")
+            
+            # Style based on state
+            if is_complete:
+                plan_btn.style(f"background-color: {STATUS_SUCCESS};")
+            elif is_enabled:
+                plan_btn.style(f"background-color: {DBT_ORANGE};")
+            else:
+                plan_btn.props("outline").style("opacity: 0.5;")
+                plan_btn.disable()
+                plan_btn.tooltip("Run init first")
+            
+            deploy_state["plan_btn"] = plan_btn
             
             # View Plan button - opens dialog to view full plan output
             def open_plan_viewer():
@@ -458,15 +603,20 @@ def _create_plan_section(
                 dialog = create_plan_viewer_dialog(plan_output, "Terraform Plan")
                 dialog.open()
             
+            has_output = deploy_state.get("last_plan_output") or state.deploy.last_plan_output
             view_plan_btn = ui.button(
                 "View Plan",
                 icon="visibility",
                 on_click=open_plan_viewer,
-            ).props("outline")
+            ).props("outline").classes("w-full")
+            
+            if has_output:
+                view_plan_btn.style("color: white; background-color: rgba(255,255,255,0.1);")
+            
             deploy_state["plan_view_btn"] = view_plan_btn
             
             # Disable if no plan output exists yet
-            if not deploy_state.get("last_plan_output") and not state.deploy.last_plan_output:
+            if not has_output:
                 view_plan_btn.disable()
                 view_plan_btn.tooltip("Run plan first")
 
@@ -478,8 +628,10 @@ def _create_apply_section(
     deploy_state: dict,
 ) -> None:
     """Create the Terraform apply section."""
-    with ui.card().classes("w-full"):
-        with ui.row().classes("items-center gap-2 mb-4"):
+    from importer.web.utils.yaml_viewer import create_plan_viewer_dialog
+    
+    with ui.card().classes("w-full h-full").style("display: flex; flex-direction: column;"):
+        with ui.row().classes("items-center gap-2 mb-2"):
             ui.badge("5", color="primary").props("rounded")
             ui.label("Apply Changes").classes("font-semibold")
             
@@ -490,26 +642,35 @@ def _create_apply_section(
 
         ui.label(
             "Deploy resources to the target dbt Platform account."
-        ).classes("text-sm text-slate-500 mb-4")
+        ).classes("text-sm text-slate-500 flex-grow")
 
-        with ui.row().classes("w-full gap-2"):
+        # Buttons at bottom
+        with ui.column().classes("w-full gap-2 mt-auto"):
+            # Determine button states
+            is_enabled = state.deploy.last_plan_success
+            is_complete = state.deploy.apply_complete
+            
             apply_btn = ui.button(
                 "Run terraform apply",
                 icon="rocket_launch",
                 on_click=lambda: _run_terraform_apply(
                     state, terminal, save_state, deploy_state
                 ),
-            ).classes("flex-grow").style(f"background-color: {DBT_ORANGE};")
-            deploy_state["apply_btn"] = apply_btn
-
-            # Disable if plan hasn't succeeded
-            if not state.deploy.last_plan_success:
+            ).classes("w-full")
+            
+            # Style based on state
+            if is_complete:
+                apply_btn.style(f"background-color: {STATUS_SUCCESS};")
+            elif is_enabled:
+                apply_btn.style(f"background-color: {DBT_ORANGE};")
+            else:
+                apply_btn.props("outline").style("opacity: 0.5;")
                 apply_btn.disable()
                 apply_btn.tooltip("Run plan first")
             
-            # View Apply Output button
-            from importer.web.utils.yaml_viewer import create_plan_viewer_dialog
+            deploy_state["apply_btn"] = apply_btn
             
+            # View Apply Output button
             def open_apply_viewer():
                 output = deploy_state.get("last_apply_output") or state.deploy.last_apply_output
                 if not output:
@@ -518,37 +679,82 @@ def _create_apply_section(
                 dialog = create_plan_viewer_dialog(output, "Terraform Apply Output")
                 dialog.open()
             
+            has_output = deploy_state.get("last_apply_output") or state.deploy.last_apply_output
             view_btn = ui.button(
                 "View Output",
                 icon="visibility",
                 on_click=open_apply_viewer,
-            ).props("outline")
+            ).props("outline").classes("w-full")
+            
+            if has_output:
+                view_btn.style("color: white; background-color: rgba(255,255,255,0.1);")
+            
             deploy_state["apply_view_btn"] = view_btn
             
-            if not deploy_state.get("last_apply_output") and not state.deploy.last_apply_output:
+            if not has_output:
                 view_btn.disable()
                 view_btn.tooltip("Run apply first")
 
 
-def _create_destroy_section(
+def _get_state_file_path(state: AppState, deploy_state: dict) -> Optional[str]:
+    """Get the current terraform state file path if it exists."""
+    tf_dir = (
+        deploy_state.get("terraform_dir")
+        or state.deploy.terraform_dir
+        or "deployments/migration"
+    )
+    state_path = Path(tf_dir) / "terraform.tfstate"
+    if state_path.exists():
+        return str(state_path)
+    return None
+
+
+def _create_state_inspection_section(
     state: AppState,
-    terminal: TerminalOutput,
-    save_state: Callable[[], None],
     deploy_state: dict,
 ) -> None:
-    """Create the Terraform destroy section."""
-    with ui.expansion("Danger Zone", icon="warning").classes("w-full").props("dense"):
-        ui.label(
-            "⚠️ This will destroy all resources created in the target account."
-        ).classes("text-sm text-red-500 mb-4")
+    """Create the Terraform state inspection section."""
+    state_path = _get_state_file_path(state, deploy_state)
 
-        ui.button(
-            "Run terraform destroy",
-            icon="delete_forever",
-            on_click=lambda: _run_terraform_destroy(
-                state, terminal, save_state, deploy_state
-            ),
-        ).classes("w-full").props("outline color=negative")
+    def open_state_viewer() -> None:
+        # Re-check state path in case it was created after page load
+        current_state_path = _get_state_file_path(state, deploy_state)
+        if not current_state_path:
+            ui.notify("No terraform state file found", type="warning")
+            return
+        dialog = create_state_viewer_dialog(
+            current_state_path,
+            title="Terraform State",
+        )
+        dialog.open()
+
+    with ui.card().classes("w-full h-full").style("display: flex; flex-direction: column;"):
+        with ui.row().classes("items-center gap-2 mb-2"):
+            ui.badge("Optional", color="grey").props("rounded")
+            ui.label("Inspect Terraform State").classes("font-semibold")
+
+        ui.label(
+            "Review the current Terraform state file with sensitive value masking."
+        ).classes("text-sm text-slate-500")
+
+        if state_path:
+            ui.label(state_path).classes("text-xs text-slate-500 font-mono truncate flex-grow")
+        else:
+            ui.label("No state file available yet.").classes("text-xs text-slate-500 flex-grow")
+
+        # Button at bottom
+        with ui.column().classes("w-full gap-2 mt-auto"):
+            view_btn = ui.button(
+                "View State",
+                icon="visibility",
+                on_click=open_state_viewer,
+            ).props("outline").classes("w-full")
+            
+            if state_path:
+                view_btn.style("color: white; background-color: rgba(255,255,255,0.1);")
+            else:
+                view_btn.disable()
+                view_btn.tooltip("Generate, init, and apply to create state")
 
 
 def _create_navigation_section(
@@ -559,7 +765,7 @@ def _create_navigation_section(
     with ui.row().classes("w-full justify-between mt-6"):
         # Back button
         ui.button(
-            "Back to Target",
+            f"Back to {state.get_step_label(WorkflowStep.TARGET)}",
             icon="arrow_back",
             on_click=lambda: on_step_change(WorkflowStep.TARGET),
         ).props("outline")
@@ -581,6 +787,7 @@ async def _run_generate(
     output_dir: str,
 ) -> None:
     """Generate Terraform files from YAML configuration."""
+    terminal.set_title("Output — GENERATE")
     terminal.clear()
     terminal.info("Generating Terraform configuration files...")
     terminal.info("")
@@ -596,6 +803,46 @@ async def _run_generate(
     for checkmark_key in ["init_checkmark", "validate_checkmark", "plan_checkmark", "apply_checkmark"]:
         if checkmark_key in deploy_state:
             deploy_state[checkmark_key].visible = False
+    
+    # Disable downstream buttons since we're regenerating
+    # Init will be re-enabled after successful generation
+    # Note: style("") clears inline styles, then we add outline + opacity to match initial state
+    if "init_btn" in deploy_state:
+        deploy_state["init_btn"].disable()
+        deploy_state["init_btn"].props("outline")
+        deploy_state["init_btn"].style("")  # Clear all inline styles
+        deploy_state["init_btn"].style("opacity: 0.5;")
+        deploy_state["init_btn"].tooltip("Generate files first")
+    if "init_view_btn" in deploy_state:
+        deploy_state["init_view_btn"].disable()
+        deploy_state["init_view_btn"].tooltip("Run init first")
+    if "validate_btn" in deploy_state:
+        deploy_state["validate_btn"].disable()
+        deploy_state["validate_btn"].props("outline")
+        deploy_state["validate_btn"].style("")  # Clear all inline styles
+        deploy_state["validate_btn"].style("opacity: 0.5;")
+        deploy_state["validate_btn"].tooltip("Run init first")
+    if "validate_view_btn" in deploy_state:
+        deploy_state["validate_view_btn"].disable()
+        deploy_state["validate_view_btn"].tooltip("Run validate first")
+    if "plan_btn" in deploy_state:
+        deploy_state["plan_btn"].disable()
+        deploy_state["plan_btn"].props("outline")
+        deploy_state["plan_btn"].style("")  # Clear all inline styles
+        deploy_state["plan_btn"].style("opacity: 0.5;")
+        deploy_state["plan_btn"].tooltip("Run init first")
+    if "plan_view_btn" in deploy_state:
+        deploy_state["plan_view_btn"].disable()
+        deploy_state["plan_view_btn"].tooltip("Run plan first")
+    if "apply_btn" in deploy_state:
+        deploy_state["apply_btn"].disable()
+        deploy_state["apply_btn"].props("outline")
+        deploy_state["apply_btn"].style("")  # Clear all inline styles
+        deploy_state["apply_btn"].style("opacity: 0.5;")
+        deploy_state["apply_btn"].tooltip("Run plan first")
+    if "apply_view_btn" in deploy_state:
+        deploy_state["apply_view_btn"].disable()
+        deploy_state["apply_view_btn"].tooltip("Run apply first")
 
     try:
         # Check if YAML file exists
@@ -669,6 +916,18 @@ async def _run_generate(
         if "generate_view_btn" in deploy_state:
             deploy_state["generate_view_btn"].enable()
             deploy_state["generate_view_btn"].tooltip("")
+        
+        # Enable downstream buttons now that files are generated
+        if "init_btn" in deploy_state:
+            deploy_state["init_btn"].enable()
+            deploy_state["init_btn"].props(remove="outline")
+            deploy_state["init_btn"].style("")  # Clear all inline styles first
+            deploy_state["init_btn"].style(f"background-color: {DBT_ORANGE};")
+            deploy_state["init_btn"].tooltip("")
+        
+        # Update generate button to show success state (green)
+        if "generate_btn" in deploy_state:
+            deploy_state["generate_btn"].style(f"background-color: {STATUS_SUCCESS};")
 
         ui.notify("Terraform files generated successfully", type="positive")
 
@@ -728,6 +987,7 @@ async def _run_terraform_init(
         ui.notify("Generate files first", type="warning")
         return
 
+    terminal.set_title("Output — INIT")
     terminal.clear()
     terminal.info(f"Running terraform init in {tf_dir}...")
     terminal.info("")
@@ -747,10 +1007,10 @@ async def _run_terraform_init(
             env=env,
         )
 
-        # Output stdout
+        # Output stdout (auto-detect warnings/errors)
         for line in result.stdout.split("\n"):
             if line.strip():
-                terminal.info(line)
+                terminal.info_auto(line)
 
         # Output stderr
         for line in result.stderr.split("\n"):
@@ -769,6 +1029,9 @@ async def _run_terraform_init(
             
             save_state()
             
+            # Detect warnings in output
+            has_warnings = "warning" in result.stdout.lower() or "warning" in result.stderr.lower()
+            
             # Update UI elements
             if "init_checkmark" in deploy_state:
                 deploy_state["init_checkmark"].visible = True
@@ -776,7 +1039,33 @@ async def _run_terraform_init(
                 deploy_state["init_view_btn"].enable()
                 deploy_state["init_view_btn"].tooltip("")
             
-            ui.notify("Terraform initialized", type="positive")
+            # Update init button color based on result
+            if "init_btn" in deploy_state:
+                deploy_state["init_btn"].props(remove="outline")
+                deploy_state["init_btn"].style("")  # Clear all inline styles
+                if has_warnings:
+                    deploy_state["init_btn"].style(f"background-color: {STATUS_WARNING}; color: black;")
+                else:
+                    deploy_state["init_btn"].style(f"background-color: {STATUS_SUCCESS};")
+            
+            # Enable downstream buttons now that init is complete
+            if "validate_btn" in deploy_state:
+                deploy_state["validate_btn"].enable()
+                deploy_state["validate_btn"].props(remove="outline")
+                deploy_state["validate_btn"].style("")  # Clear all inline styles first
+                deploy_state["validate_btn"].style(f"background-color: {DBT_ORANGE};")
+                deploy_state["validate_btn"].tooltip("")
+            if "plan_btn" in deploy_state:
+                deploy_state["plan_btn"].enable()
+                deploy_state["plan_btn"].props(remove="outline")
+                deploy_state["plan_btn"].style("")  # Clear all inline styles first
+                deploy_state["plan_btn"].style(f"background-color: {DBT_ORANGE};")
+                deploy_state["plan_btn"].tooltip("")
+            
+            if has_warnings:
+                ui.notify("Terraform initialized with warnings", type="warning")
+            else:
+                ui.notify("Terraform initialized", type="positive")
         else:
             terminal.error("")
             terminal.error(f"Terraform init failed with exit code {result.returncode}")
@@ -788,6 +1077,12 @@ async def _run_terraform_init(
             if "init_view_btn" in deploy_state:
                 deploy_state["init_view_btn"].enable()
                 deploy_state["init_view_btn"].tooltip("")
+            
+            # Update init button to show error state (red)
+            if "init_btn" in deploy_state:
+                deploy_state["init_btn"].props(remove="outline")
+                deploy_state["init_btn"].style("")  # Clear all inline styles
+                deploy_state["init_btn"].style(f"background-color: {STATUS_ERROR}; color: white;")
             
             ui.notify("Init failed", type="negative")
 
@@ -825,6 +1120,7 @@ async def _run_terraform_validate(
         ui.notify("Run init first", type="warning")
         return
 
+    terminal.set_title("Output — VALIDATE")
     terminal.clear()
     terminal.info(f"Running terraform validate in {tf_dir}...")
     terminal.info("")
@@ -844,10 +1140,10 @@ async def _run_terraform_validate(
             env=env,
         )
 
-        # Output stdout
+        # Output stdout (auto-detect warnings/errors)
         for line in result.stdout.split("\n"):
             if line.strip():
-                terminal.info(line)
+                terminal.info_auto(line)
 
         # Output stderr
         for line in result.stderr.split("\n"):
@@ -866,6 +1162,9 @@ async def _run_terraform_validate(
             
             save_state()
             
+            # Detect warnings in output
+            has_warnings = "warning" in result.stdout.lower() or "warning" in result.stderr.lower()
+            
             # Update UI elements
             if "validate_checkmark" in deploy_state:
                 deploy_state["validate_checkmark"].visible = True
@@ -873,7 +1172,19 @@ async def _run_terraform_validate(
                 deploy_state["validate_view_btn"].enable()
                 deploy_state["validate_view_btn"].tooltip("")
             
-            ui.notify("Configuration validated successfully", type="positive")
+            # Update validate button color based on result
+            if "validate_btn" in deploy_state:
+                deploy_state["validate_btn"].props(remove="outline")
+                deploy_state["validate_btn"].style("")  # Clear all inline styles
+                if has_warnings:
+                    deploy_state["validate_btn"].style(f"background-color: {STATUS_WARNING}; color: black;")
+                else:
+                    deploy_state["validate_btn"].style(f"background-color: {STATUS_SUCCESS};")
+            
+            if has_warnings:
+                ui.notify("Configuration valid with warnings", type="warning")
+            else:
+                ui.notify("Configuration validated successfully", type="positive")
         else:
             terminal.error("")
             terminal.error(f"Validation failed with exit code {result.returncode}")
@@ -886,6 +1197,12 @@ async def _run_terraform_validate(
             if "validate_view_btn" in deploy_state:
                 deploy_state["validate_view_btn"].enable()
                 deploy_state["validate_view_btn"].tooltip("")
+            
+            # Update validate button to show error state (red)
+            if "validate_btn" in deploy_state:
+                deploy_state["validate_btn"].props(remove="outline")
+                deploy_state["validate_btn"].style("")  # Clear all inline styles
+                deploy_state["validate_btn"].style(f"background-color: {STATUS_ERROR}; color: white;")
             
             save_state()
             ui.notify("Validation failed", type="negative")
@@ -912,6 +1229,7 @@ async def _run_terraform_plan(
 
     tf_dir = deploy_state.get("terraform_dir") or state.deploy.terraform_dir or "deployments/migration"
     
+    terminal.set_title("Output — PLAN")
     terminal.clear()
     terminal.info(f"Running terraform plan in {tf_dir}...")
     terminal.info("")
@@ -942,7 +1260,7 @@ async def _run_terraform_plan(
                 elif "~" in line and "change" in line.lower():
                     terminal.warning(line)
                 else:
-                    terminal.info(line)
+                    terminal.info_auto(line)
 
         # Output stderr
         for line in result.stderr.split("\n"):
@@ -957,17 +1275,36 @@ async def _run_terraform_plan(
             deploy_state["last_plan_output"] = result.stdout  # Store for View Plan button
             save_state()
             
+            # Detect warnings in output
+            has_warnings = "warning" in result.stdout.lower() or "warning" in result.stderr.lower()
+            
             # Update UI elements
             if "plan_checkmark" in deploy_state:
                 deploy_state["plan_checkmark"].visible = True
             if "plan_view_btn" in deploy_state:
                 deploy_state["plan_view_btn"].enable()
                 deploy_state["plan_view_btn"].tooltip("")
+            
+            # Update plan button color based on result
+            if "plan_btn" in deploy_state:
+                deploy_state["plan_btn"].props(remove="outline")
+                deploy_state["plan_btn"].style("")  # Clear all inline styles
+                if has_warnings:
+                    deploy_state["plan_btn"].style(f"background-color: {STATUS_WARNING}; color: black;")
+                else:
+                    deploy_state["plan_btn"].style(f"background-color: {STATUS_SUCCESS};")
+            
             if "apply_btn" in deploy_state:
                 deploy_state["apply_btn"].enable()
+                deploy_state["apply_btn"].props(remove="outline")
+                deploy_state["apply_btn"].style("")  # Clear all inline styles first
+                deploy_state["apply_btn"].style(f"background-color: {DBT_ORANGE};")
                 deploy_state["apply_btn"].tooltip("")
             
-            ui.notify("Plan succeeded", type="positive")
+            if has_warnings:
+                ui.notify("Plan succeeded with warnings", type="warning")
+            else:
+                ui.notify("Plan succeeded", type="positive")
             
             # Auto-open the plan viewer dialog
             from importer.web.utils.yaml_viewer import create_plan_viewer_dialog
@@ -981,6 +1318,13 @@ async def _run_terraform_plan(
             if "plan_view_btn" in deploy_state:
                 deploy_state["plan_view_btn"].enable()
                 deploy_state["plan_view_btn"].tooltip("")
+            
+            # Update plan button to show error state (red)
+            if "plan_btn" in deploy_state:
+                deploy_state["plan_btn"].props(remove="outline")
+                deploy_state["plan_btn"].style("")  # Clear all inline styles
+                deploy_state["plan_btn"].style(f"background-color: {STATUS_ERROR}; color: white;")
+            
             if "apply_btn" in deploy_state:
                 deploy_state["apply_btn"].disable()
                 deploy_state["apply_btn"].tooltip("Run plan first")
@@ -1010,10 +1354,11 @@ async def _run_terraform_apply(
     # Use deploy_state value, or persisted state, or fall back to default directory
     tf_dir = deploy_state.get("terraform_dir") or state.deploy.terraform_dir or "deployments/migration"
     
+    terminal.set_title("Output — APPLY")
     terminal.clear()
     terminal.info(f"Running terraform apply in {tf_dir}...")
     terminal.info("")
-    terminal.warning("⚠️ This will create/modify resources in the target account!")
+    terminal.info("⚠️ This will create/modify resources in the target account!")
     terminal.info("")
 
     deploy_state["apply_running"] = True
@@ -1041,7 +1386,7 @@ async def _run_terraform_apply(
                 elif "destroyed" in line.lower():
                     terminal.warning(line)
                 else:
-                    terminal.info(line)
+                    terminal.info_auto(line)
 
         # Output stderr
         for line in result.stderr.split("\n"):
@@ -1063,15 +1408,37 @@ async def _run_terraform_apply(
             state.deploy.apply_complete = True
             save_state()
             
+            # Detect warnings in output
+            has_warnings = "warning" in result.stdout.lower() or "warning" in result.stderr.lower()
+            
             # Update checkmark visibility
             if "apply_checkmark" in deploy_state:
                 deploy_state["apply_checkmark"].visible = True
             
-            ui.notify("Deployment complete!", type="positive")
+            # Update apply button color based on result
+            if "apply_btn" in deploy_state:
+                deploy_state["apply_btn"].props(remove="outline")
+                deploy_state["apply_btn"].style("")  # Clear all inline styles
+                if has_warnings:
+                    deploy_state["apply_btn"].style(f"background-color: {STATUS_WARNING}; color: black;")
+                else:
+                    deploy_state["apply_btn"].style(f"background-color: {STATUS_SUCCESS};")
+            
+            if has_warnings:
+                ui.notify("Deployment complete with warnings!", type="warning")
+            else:
+                ui.notify("Deployment complete!", type="positive")
         else:
             terminal.error("")
             terminal.error(f"Apply failed with exit code {result.returncode}")
             save_state()
+            
+            # Update apply button to show error state (red)
+            if "apply_btn" in deploy_state:
+                deploy_state["apply_btn"].props(remove="outline")
+                deploy_state["apply_btn"].style("")  # Clear all inline styles
+                deploy_state["apply_btn"].style(f"background-color: {STATUS_ERROR}; color: white;")
+            
             ui.notify("Apply failed", type="negative")
 
     except Exception as e:
@@ -1096,6 +1463,7 @@ async def _run_terraform_destroy(
 
     tf_dir = deploy_state.get("terraform_dir") or state.deploy.terraform_dir or "deployments/migration"
     
+    terminal.set_title("Output — DESTROY")
     terminal.clear()
     terminal.warning("━━━ TERRAFORM DESTROY ━━━")
     terminal.warning("")
@@ -1127,7 +1495,7 @@ async def _run_terraform_destroy(
                 elif "Destroy complete" in line:
                     terminal.success(line)
                 else:
-                    terminal.info(line)
+                    terminal.info_auto(line)
 
         # Output stderr
         for line in result.stderr.split("\n"):

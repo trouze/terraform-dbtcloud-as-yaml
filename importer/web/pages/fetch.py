@@ -69,7 +69,7 @@ def create_fetch_page(
             "Configure your source dbt Platform account credentials and fetch the account data."
         ).classes("text-slate-600 dark:text-slate-400")
 
-        # Two-column layout: 1/3 credentials, 2/3 output
+        # Two-column layout: Left credentials/options, Right actions/progress
         with ui.row().classes("w-full gap-6"):
             # Left column: Credentials and Options (1/3 width)
             with ui.column().classes("w-1/3 min-w-[300px] gap-4"):
@@ -86,11 +86,12 @@ def create_fetch_page(
                 # Fetch Options
                 _create_fetch_options(state, save_state)
 
-            # Right column: Actions, Progress, and Output (2/3 width)
+            # Right column: Actions/Progress combined, and Fetch Complete (2/3 width)
             with ui.column().classes("flex-grow gap-4"):
-                # Action buttons row
+                # Combined Actions + Progress card
                 with ui.card().classes("w-full p-4"):
-                    with ui.row().classes("w-full items-center justify-between"):
+                    # Actions row at top
+                    with ui.row().classes("w-full items-center justify-between mb-3"):
                         ui.label("Actions").classes("font-semibold")
                         
                         # Test connection button
@@ -98,28 +99,26 @@ def create_fetch_page(
                             "Test Connection",
                             icon="network_check",
                             on_click=lambda: _test_connection(state, terminal),
-                        ).props("outline")
+                        ).props("outline size=sm")
 
-                    # Fetch button - defined after results_container
-                    fetch_btn_container = ui.row().classes("w-full mt-4")
-
-                # Progress Tree (structured hierarchy) and Terminal Output
-                with ui.row().classes("w-full gap-4"):
-                    # Progress tree panel
-                    with ui.card().classes("w-1/3 min-w-[220px] p-4"):
-                        ui.label("Progress").classes("font-semibold mb-2")
-                        progress_tree.create()
+                    # Fetch button row
+                    fetch_btn_container = ui.row().classes("w-full mb-4")
                     
-                    # Terminal output (scrolling logs)
-                    with ui.column().classes("flex-grow"):
-                        terminal.create(height="400px")
+                    # Progress section (compact two-column layout)
+                    ui.separator().classes("my-2")
+                    ui.label("Progress").classes("font-semibold mb-2")
+                    progress_tree.create(compact=True)
 
-        # Results section (shown after fetch completes)
-        results_container = ui.column().classes("w-full gap-4")
-        
-        if state.fetch.fetch_complete:
-            with results_container:
-                _create_results_section(state, on_step_change)
+                # Results section (Fetch Complete - shown after fetch completes)
+                results_container = ui.column().classes("w-full gap-4")
+                
+                if state.fetch.fetch_complete:
+                    with results_container:
+                        _create_results_section(state, on_step_change)
+
+        # Terminal output (full width below the two columns)
+        with ui.column().classes("w-full"):
+            terminal.create(height="600px")
 
         # Now add the fetch button with access to results_container
         with fetch_btn_container:
@@ -171,8 +170,8 @@ def _create_fetch_options(state: AppState, save_state: Callable[[], None]) -> No
             on_change=lambda e: _update_auto_timestamp(state, e.value, save_state),
         ).classes("mt-4")
 
-        # Advanced options (collapsed by default)
-        with ui.expansion("Advanced Options", icon="settings").classes("w-full mt-4"):
+        # Advanced options (expanded by default to align with Fetch Complete)
+        with ui.expansion("Advanced Options", icon="settings", value=True).classes("w-full mt-4"):
             def _update_threads(e):
                 # For on("update:model-value"), value is in e.args
                 val = e.args if e.args is not None else 15
@@ -475,6 +474,9 @@ async def _run_fetch(
     terminal.info(f"Output: {state.fetch.output_dir}")
     terminal.info("")
 
+    # Pre-declare FetchCancelledException to avoid UnboundLocalError if import fails
+    FetchCancelledException = Exception
+    
     try:
         # Import fetch dependencies
         from importer.config import Settings

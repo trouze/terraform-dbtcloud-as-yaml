@@ -1,7 +1,7 @@
 """Session state management for the web UI."""
 
 from dataclasses import dataclass, field
-from enum import IntEnum
+from enum import Enum, IntEnum
 from typing import Any, Optional
 
 
@@ -14,6 +14,17 @@ class WorkflowStep(IntEnum):
     MAP = 3
     TARGET = 4
     DEPLOY = 5
+    DESTROY = 6
+    MATCH_TARGET = 7
+
+
+class WorkflowType(str, Enum):
+    """Supported workflows."""
+
+    MIGRATION = "migration"
+    ACCOUNT_EXPLORER = "account_explorer"
+    JOBS_AS_CODE = "jobs_as_code"
+    IMPORT_ADOPT = "import_adopt"
 
 
 STEP_NAMES = {
@@ -21,8 +32,10 @@ STEP_NAMES = {
     WorkflowStep.FETCH: "Fetch",
     WorkflowStep.EXPLORE: "Explore",
     WorkflowStep.MAP: "Map",
-    WorkflowStep.TARGET: "Target",
+    WorkflowStep.TARGET: "Target Configuration",
     WorkflowStep.DEPLOY: "Deploy",
+    WorkflowStep.DESTROY: "Destroy",
+    WorkflowStep.MATCH_TARGET: "Match Target",
 }
 
 STEP_ICONS = {
@@ -32,6 +45,52 @@ STEP_ICONS = {
     WorkflowStep.MAP: "tune",
     WorkflowStep.TARGET: "settings",
     WorkflowStep.DEPLOY: "rocket_launch",
+    WorkflowStep.DESTROY: "delete_forever",
+    WorkflowStep.MATCH_TARGET: "link",
+}
+
+
+WORKFLOW_LABELS = {
+    WorkflowType.MIGRATION: "Migration Workflow",
+    WorkflowType.ACCOUNT_EXPLORER: "Account Explorer",
+    WorkflowType.JOBS_AS_CODE: "Jobs as Code Generator",
+    WorkflowType.IMPORT_ADOPT: "Import & Adopt",
+}
+
+WORKFLOW_STEPS = {
+    WorkflowType.MIGRATION: [
+        WorkflowStep.FETCH,
+        WorkflowStep.EXPLORE,
+        WorkflowStep.MAP,
+        WorkflowStep.TARGET,
+        WorkflowStep.DEPLOY,
+        WorkflowStep.DESTROY,
+    ],
+    WorkflowType.ACCOUNT_EXPLORER: [
+        WorkflowStep.FETCH,
+        WorkflowStep.EXPLORE,
+    ],
+    WorkflowType.JOBS_AS_CODE: [
+        WorkflowStep.FETCH,
+        WorkflowStep.EXPLORE,
+        WorkflowStep.MAP,
+        WorkflowStep.DEPLOY,
+    ],
+    WorkflowType.IMPORT_ADOPT: [
+        WorkflowStep.FETCH,
+        WorkflowStep.EXPLORE,
+        WorkflowStep.MAP,
+        WorkflowStep.MATCH_TARGET,
+        WorkflowStep.TARGET,
+        WorkflowStep.DEPLOY,
+        WorkflowStep.DESTROY,
+    ],
+}
+
+WORKFLOW_STEP_NAMES = {
+    WorkflowType.MIGRATION: {
+        WorkflowStep.MAP: "Scope",
+    },
 }
 
 
@@ -179,6 +238,7 @@ class DeployState:
     apply_complete: bool = False
     last_apply_output: str = ""  # Output from terraform apply
     apply_results: Optional[dict] = None
+    destroy_complete: bool = False
 
 
 @dataclass
@@ -187,6 +247,7 @@ class AppState:
 
     current_step: WorkflowStep = WorkflowStep.HOME
     theme: str = "dark"  # "dark" or "light"
+    workflow: WorkflowType = WorkflowType.MIGRATION
 
     source_credentials: SourceCredentials = field(default_factory=SourceCredentials)
     target_credentials: TargetCredentials = field(default_factory=TargetCredentials)
@@ -205,6 +266,8 @@ class AppState:
 
     def step_is_complete(self, step: WorkflowStep) -> bool:
         """Check if a workflow step has been completed."""
+        if step != WorkflowStep.HOME and step not in self.workflow_steps():
+            return False
         if step == WorkflowStep.HOME:
             return True
         elif step == WorkflowStep.FETCH:
@@ -217,10 +280,16 @@ class AppState:
             return self.target_credentials.is_complete()
         elif step == WorkflowStep.DEPLOY:
             return self.deploy.apply_complete
+        elif step == WorkflowStep.DESTROY:
+            return self.deploy.destroy_complete
+        elif step == WorkflowStep.MATCH_TARGET:
+            return False
         return False
 
     def step_is_accessible(self, step: WorkflowStep) -> bool:
         """Check if a workflow step can be accessed."""
+        if step != WorkflowStep.HOME and step not in self.workflow_steps():
+            return False
         if step == WorkflowStep.HOME:
             return True
         elif step == WorkflowStep.FETCH:
@@ -232,14 +301,38 @@ class AppState:
         elif step == WorkflowStep.TARGET:
             return self.map.normalize_complete
         elif step == WorkflowStep.DEPLOY:
-            return self.map.normalize_complete and self.target_credentials.is_complete()
+            requires_target = WorkflowStep.TARGET in self.workflow_steps()
+            if requires_target:
+                return self.map.normalize_complete and self.target_credentials.is_complete()
+            return self.map.normalize_complete
+        elif step == WorkflowStep.DESTROY:
+            return self.deploy.terraform_initialized
+        elif step == WorkflowStep.MATCH_TARGET:
+            return self.map.normalize_complete
         return False
+
+    def workflow_steps(self) -> list[WorkflowStep]:
+        """Get workflow steps for the active workflow."""
+        return WORKFLOW_STEPS.get(self.workflow, WORKFLOW_STEPS[WorkflowType.MIGRATION])
+
+    def get_step_label(self, step: WorkflowStep) -> str:
+        """Get the workflow-specific label for a step."""
+        override = WORKFLOW_STEP_NAMES.get(self.workflow, {})
+        return override.get(step, STEP_NAMES.get(step, step.name.title()))
+
+    def get_step_number(self, step: WorkflowStep) -> Optional[int]:
+        """Get the 1-based step number within the active workflow."""
+        steps = self.workflow_steps()
+        if step in steps:
+            return steps.index(step) + 1
+        return None
 
     def to_dict(self) -> dict:
         """Convert state to dictionary for storage."""
         return {
             "current_step": self.current_step.value,
             "theme": self.theme,
+            "workflow": self.workflow.value,
             "source_credentials": {
                 "host_url": self.source_credentials.host_url,
                 "account_id": self.source_credentials.account_id,
@@ -301,6 +394,11 @@ class AppState:
             state.current_step = WorkflowStep(data["current_step"])
         if "theme" in data:
             state.theme = data["theme"]
+        if "workflow" in data:
+            try:
+                state.workflow = WorkflowType(data["workflow"])
+            except Exception:
+                state.workflow = WorkflowType.MIGRATION
 
         if "source_credentials" in data:
             sc = data["source_credentials"]

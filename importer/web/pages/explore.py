@@ -306,13 +306,13 @@ def _create_navigation(state: AppState, on_step_change: Callable[[WorkflowStep],
     """Create navigation buttons."""
     with ui.row().classes("w-full justify-between mt-4"):
         ui.button(
-            f"Back to {STEP_NAMES[WorkflowStep.FETCH]}",
+            f"Back to {state.get_step_label(WorkflowStep.FETCH)}",
             icon="arrow_back",
             on_click=lambda: on_step_change(WorkflowStep.FETCH),
         ).props("outline")
         
         ui.button(
-            f"Continue to {STEP_NAMES[WorkflowStep.MAP]}",
+            f"Continue to {state.get_step_label(WorkflowStep.MAP)}",
             icon="arrow_forward",
             on_click=lambda: on_step_change(WorkflowStep.MAP),
         ).style(f"background-color: {DBT_ORANGE};")
