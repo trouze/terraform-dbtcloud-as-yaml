@@ -18,6 +18,14 @@ class WorkflowStep(IntEnum):
     CONFIGURE = 7
     DEPLOY = 8
     DESTROY = 9
+    # Jobs as Code Generator steps
+    JAC_SELECT = 10  # Select sub-workflow: Adopt vs Clone
+    JAC_FETCH = 11   # Fetch jobs from source
+    JAC_JOBS = 12    # Select jobs
+    JAC_TARGET = 13  # Configure target (Clone only)
+    JAC_MAPPING = 14 # Map environments/projects (Clone only)
+    JAC_CONFIG = 15  # Configure jobs (rename, triggers)
+    JAC_GENERATE = 16  # Preview and export
 
 
 class WorkflowType(str, Enum):
@@ -40,6 +48,14 @@ STEP_NAMES = {
     WorkflowStep.CONFIGURE: "Configure Migration",
     WorkflowStep.DEPLOY: "Deploy",
     WorkflowStep.DESTROY: "Destroy",
+    # Jobs as Code Generator steps
+    WorkflowStep.JAC_SELECT: "Select Workflow",
+    WorkflowStep.JAC_FETCH: "Fetch Jobs",
+    WorkflowStep.JAC_JOBS: "Select Jobs",
+    WorkflowStep.JAC_TARGET: "Target Account",
+    WorkflowStep.JAC_MAPPING: "Map Resources",
+    WorkflowStep.JAC_CONFIG: "Configure Jobs",
+    WorkflowStep.JAC_GENERATE: "Generate YAML",
 }
 
 STEP_ICONS = {
@@ -53,6 +69,14 @@ STEP_ICONS = {
     WorkflowStep.CONFIGURE: "settings",
     WorkflowStep.DEPLOY: "rocket_launch",
     WorkflowStep.DESTROY: "delete_forever",
+    # Jobs as Code Generator steps
+    WorkflowStep.JAC_SELECT: "alt_route",
+    WorkflowStep.JAC_FETCH: "cloud_download",
+    WorkflowStep.JAC_JOBS: "checklist",
+    WorkflowStep.JAC_TARGET: "flight_land",
+    WorkflowStep.JAC_MAPPING: "swap_horiz",
+    WorkflowStep.JAC_CONFIG: "tune",
+    WorkflowStep.JAC_GENERATE: "code",
 }
 
 
@@ -80,10 +104,11 @@ WORKFLOW_STEPS = {
         WorkflowStep.EXPLORE_SOURCE,
     ],
     WorkflowType.JOBS_AS_CODE: [
-        WorkflowStep.FETCH_SOURCE,
-        WorkflowStep.EXPLORE_SOURCE,
-        WorkflowStep.SCOPE,
-        WorkflowStep.DEPLOY,
+        WorkflowStep.JAC_SELECT,
+        WorkflowStep.JAC_FETCH,
+        WorkflowStep.JAC_JOBS,
+        WorkflowStep.JAC_CONFIG,
+        WorkflowStep.JAC_GENERATE,
     ],
     WorkflowType.IMPORT_ADOPT: [
         WorkflowStep.FETCH_SOURCE,
@@ -196,6 +221,19 @@ class ExploreState:
 
 
 @dataclass
+class CloneConfig:
+    """Configuration for cloning a resource."""
+    
+    source_key: str = ""  # Key of the source resource to clone
+    new_name: str = ""  # Name for the cloned resource
+    include_dependents: list = field(default_factory=list)  # Keys of dependents to include
+    dependent_names: dict = field(default_factory=dict)  # source_key -> new_name for dependents
+    include_env_values: bool = True  # Whether to copy environment variable values
+    include_triggers: bool = False  # Whether to copy job triggers/schedules
+    include_credentials: bool = False  # Whether to copy connection credentials
+
+
+@dataclass
 class MapState:
     """State for the map step."""
 
@@ -260,6 +298,9 @@ class MapState:
     mapping_file_path: Optional[str] = None
     mapping_file_valid: bool = False
     mapping_validation_errors: list = field(default_factory=list)
+    
+    # Resource cloning state
+    cloned_resources: list = field(default_factory=list)  # List of CloneConfig
 
 
 @dataclass
@@ -317,6 +358,109 @@ class DeployState:
         return len(self.import_results) > 0 and not self.import_completed
 
 
+class JACSubWorkflow(str, Enum):
+    """Jobs as Code sub-workflow types."""
+    
+    ADOPT = "adopt"  # Take existing jobs under jobs-as-code management
+    CLONE = "clone"  # Clone/migrate jobs to different environment
+
+
+class JACOutputFormat(str, Enum):
+    """Output format options for Jobs as Code generation."""
+    
+    TEMPLATED = "templated"  # Use Jinja variables
+    HARDCODED = "hardcoded"  # Use actual IDs
+
+
+@dataclass
+class JACJobConfig:
+    """Configuration for a single job in Jobs as Code workflow."""
+    
+    job_id: int = 0
+    original_name: str = ""
+    new_name: str = ""  # For clone workflow
+    identifier: str = ""  # YAML key identifier
+    selected: bool = True
+    is_managed: bool = False  # Already has [[identifier]] in name
+
+
+@dataclass
+class JACProjectMapping:
+    """Mapping from source project to target project."""
+    
+    source_id: int = 0
+    source_name: str = ""
+    target_id: Optional[int] = None
+    target_name: str = ""
+
+
+@dataclass
+class JACEnvironmentMapping:
+    """Mapping from source environment to target environment."""
+    
+    source_id: int = 0
+    source_name: str = ""
+    source_project_id: int = 0
+    target_id: Optional[int] = None
+    target_name: str = ""
+
+
+@dataclass
+class JobsAsCodeState:
+    """State for the Jobs as Code Generator workflow."""
+    
+    # Sub-workflow selection
+    sub_workflow: JACSubWorkflow = JACSubWorkflow.ADOPT
+    
+    # Source data
+    source_jobs: list = field(default_factory=list)  # List of job dicts from API
+    source_projects: dict = field(default_factory=dict)  # project_id -> project_name
+    source_environments: dict = field(default_factory=dict)  # env_id -> env_name
+    
+    # Job selection and configuration
+    job_configs: list = field(default_factory=list)  # List of JACJobConfig
+    selected_job_ids: set = field(default_factory=set)
+    
+    # Fetch state
+    is_fetching: bool = False
+    fetch_complete: bool = False
+    fetch_error: Optional[str] = None
+    
+    # Target data (clone workflow only)
+    target_same_account: bool = True
+    target_jobs: list = field(default_factory=list)
+    target_projects: dict = field(default_factory=dict)  # project_id -> project_name  
+    target_environments: dict = field(default_factory=dict)  # env_id -> env_name
+    target_fetch_complete: bool = False
+    
+    # Mapping (clone workflow only)
+    project_mappings: list = field(default_factory=list)  # List of JACProjectMapping
+    environment_mappings: list = field(default_factory=list)  # List of JACEnvironmentMapping
+    
+    # Trigger settings (clone workflow)
+    disable_schedule: bool = True
+    disable_github_webhook: bool = True
+    disable_git_provider_webhook: bool = True
+    disable_on_merge: bool = True
+    
+    # Output format
+    output_format: JACOutputFormat = JACOutputFormat.HARDCODED
+    variable_prefix: str = ""  # e.g., "prod_" for {{ prod_project_id }}
+    
+    # Generation state
+    generated_yaml: str = ""
+    generated_vars_yaml: str = ""  # For templated output
+    generation_complete: bool = False
+    validation_errors: list = field(default_factory=list)
+    
+    # Identifier warnings (auto-renamed duplicates)
+    identifier_warnings: list = field(default_factory=list)  # List of warning strings
+    
+    # Bulk rename settings
+    name_prefix: str = ""
+    name_suffix: str = ""
+
+
 @dataclass
 class AppState:
     """Complete application state."""
@@ -342,6 +486,9 @@ class AppState:
     explore: ExploreState = field(default_factory=ExploreState)
     map: MapState = field(default_factory=MapState)
     deploy: DeployState = field(default_factory=DeployState)
+    
+    # Jobs as Code Generator state
+    jobs_as_code: JobsAsCodeState = field(default_factory=JobsAsCodeState)
 
     # Raw account data from fetch
     account_data: Optional[dict] = None
@@ -373,6 +520,21 @@ class AppState:
             return self.deploy.apply_complete
         elif step == WorkflowStep.DESTROY:
             return self.deploy.destroy_complete
+        # Jobs as Code Generator steps
+        elif step == WorkflowStep.JAC_SELECT:
+            return True  # Always complete (just a selection)
+        elif step == WorkflowStep.JAC_FETCH:
+            return self.jobs_as_code.fetch_complete
+        elif step == WorkflowStep.JAC_JOBS:
+            return len(self.jobs_as_code.selected_job_ids) > 0
+        elif step == WorkflowStep.JAC_TARGET:
+            return self.jobs_as_code.target_fetch_complete
+        elif step == WorkflowStep.JAC_MAPPING:
+            return len(self.jobs_as_code.project_mappings) > 0
+        elif step == WorkflowStep.JAC_CONFIG:
+            return len(self.jobs_as_code.job_configs) > 0
+        elif step == WorkflowStep.JAC_GENERATE:
+            return self.jobs_as_code.generation_complete
         return False
 
     def step_is_accessible(self, step: WorkflowStep) -> bool:
@@ -404,6 +566,25 @@ class AppState:
             return self.deploy.files_generated
         elif step == WorkflowStep.DESTROY:
             return self.deploy.has_state_file()
+        # Jobs as Code Generator steps
+        elif step == WorkflowStep.JAC_SELECT:
+            return True  # Always accessible
+        elif step == WorkflowStep.JAC_FETCH:
+            return True  # Always accessible (credentials checked on fetch)
+        elif step == WorkflowStep.JAC_JOBS:
+            return self.jobs_as_code.fetch_complete
+        elif step == WorkflowStep.JAC_TARGET:
+            # Only for clone workflow
+            return (self.jobs_as_code.sub_workflow == JACSubWorkflow.CLONE 
+                    and len(self.jobs_as_code.selected_job_ids) > 0)
+        elif step == WorkflowStep.JAC_MAPPING:
+            # Only for clone workflow
+            return (self.jobs_as_code.sub_workflow == JACSubWorkflow.CLONE 
+                    and self.jobs_as_code.target_fetch_complete)
+        elif step == WorkflowStep.JAC_CONFIG:
+            return len(self.jobs_as_code.selected_job_ids) > 0
+        elif step == WorkflowStep.JAC_GENERATE:
+            return len(self.jobs_as_code.job_configs) > 0
         return False
 
     def workflow_steps(self) -> list[WorkflowStep]:
@@ -499,6 +680,36 @@ class AppState:
                 "import_completed": self.deploy.import_completed,
                 "import_mode": self.deploy.import_mode,
                 "terraform_version": self.deploy.terraform_version,
+            },
+            "jobs_as_code": {
+                "sub_workflow": self.jobs_as_code.sub_workflow.value,
+                "fetch_complete": self.jobs_as_code.fetch_complete,
+                "source_jobs": self.jobs_as_code.source_jobs,
+                "source_projects": self.jobs_as_code.source_projects,
+                "source_environments": self.jobs_as_code.source_environments,
+                "selected_job_ids": list(self.jobs_as_code.selected_job_ids),
+                "job_configs": [
+                    {
+                        "job_id": c.job_id,
+                        "original_name": c.original_name,
+                        "new_name": c.new_name,
+                        "identifier": c.identifier,
+                        "selected": c.selected,
+                        "is_managed": c.is_managed,
+                    }
+                    for c in self.jobs_as_code.job_configs
+                ],
+                "target_same_account": self.jobs_as_code.target_same_account,
+                "target_fetch_complete": self.jobs_as_code.target_fetch_complete,
+                "disable_schedule": self.jobs_as_code.disable_schedule,
+                "disable_github_webhook": self.jobs_as_code.disable_github_webhook,
+                "disable_git_provider_webhook": self.jobs_as_code.disable_git_provider_webhook,
+                "disable_on_merge": self.jobs_as_code.disable_on_merge,
+                "output_format": self.jobs_as_code.output_format.value,
+                "variable_prefix": self.jobs_as_code.variable_prefix,
+                "generation_complete": self.jobs_as_code.generation_complete,
+                "name_prefix": self.jobs_as_code.name_prefix,
+                "name_suffix": self.jobs_as_code.name_suffix,
             },
         }
 
@@ -607,5 +818,46 @@ class AppState:
             state.deploy.import_completed = d.get("import_completed", False)
             state.deploy.import_mode = d.get("import_mode", "modern")
             state.deploy.terraform_version = d.get("terraform_version")
+
+        if "jobs_as_code" in data:
+            jac = data["jobs_as_code"]
+            try:
+                state.jobs_as_code.sub_workflow = JACSubWorkflow(jac.get("sub_workflow", "adopt"))
+            except Exception:
+                state.jobs_as_code.sub_workflow = JACSubWorkflow.ADOPT
+            state.jobs_as_code.fetch_complete = jac.get("fetch_complete", False)
+            state.jobs_as_code.source_jobs = jac.get("source_jobs", [])
+            state.jobs_as_code.source_projects = jac.get("source_projects", {})
+            state.jobs_as_code.source_environments = jac.get("source_environments", {})
+            state.jobs_as_code.selected_job_ids = set(jac.get("selected_job_ids", []))
+            
+            # Restore job configs
+            job_configs_data = jac.get("job_configs", [])
+            state.jobs_as_code.job_configs = [
+                JACJobConfig(
+                    job_id=c.get("job_id"),
+                    original_name=c.get("original_name", ""),
+                    new_name=c.get("new_name", ""),
+                    identifier=c.get("identifier", ""),
+                    selected=c.get("selected", False),
+                    is_managed=c.get("is_managed", False),
+                )
+                for c in job_configs_data
+            ]
+            
+            state.jobs_as_code.target_same_account = jac.get("target_same_account", True)
+            state.jobs_as_code.target_fetch_complete = jac.get("target_fetch_complete", False)
+            state.jobs_as_code.disable_schedule = jac.get("disable_schedule", True)
+            state.jobs_as_code.disable_github_webhook = jac.get("disable_github_webhook", True)
+            state.jobs_as_code.disable_git_provider_webhook = jac.get("disable_git_provider_webhook", True)
+            state.jobs_as_code.disable_on_merge = jac.get("disable_on_merge", True)
+            try:
+                state.jobs_as_code.output_format = JACOutputFormat(jac.get("output_format", "hardcoded"))
+            except Exception:
+                state.jobs_as_code.output_format = JACOutputFormat.HARDCODED
+            state.jobs_as_code.variable_prefix = jac.get("variable_prefix", "")
+            state.jobs_as_code.generation_complete = jac.get("generation_complete", False)
+            state.jobs_as_code.name_prefix = jac.get("name_prefix", "")
+            state.jobs_as_code.name_suffix = jac.get("name_suffix", "")
 
         return state

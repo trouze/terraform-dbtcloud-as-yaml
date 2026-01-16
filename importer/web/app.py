@@ -20,6 +20,15 @@ from importer.web.pages.deploy import create_deploy_page
 from importer.web.pages.destroy import create_destroy_page
 from importer.web.env_manager import load_account_info_from_env
 
+# Jobs as Code Generator workflow pages
+from importer.web.workflows.jobs_as_code.pages.select import create_jac_select_page
+from importer.web.workflows.jobs_as_code.pages.fetch import create_jac_fetch_page
+from importer.web.workflows.jobs_as_code.pages.jobs import create_jac_jobs_page
+from importer.web.workflows.jobs_as_code.pages.target import create_jac_target_page
+from importer.web.workflows.jobs_as_code.pages.mapping import create_jac_mapping_page
+from importer.web.workflows.jobs_as_code.pages.config import create_jac_config_page
+from importer.web.workflows.jobs_as_code.pages.generate import create_jac_generate_page
+
 # Static files directory
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -145,6 +154,21 @@ def create_page_content(state: AppState) -> None:
         create_deploy_page(state, navigate_to_step, save_state)
     elif step == WorkflowStep.DESTROY:
         create_destroy_page(state, navigate_to_step, save_state)
+    # Jobs as Code Generator workflow steps
+    elif step == WorkflowStep.JAC_SELECT:
+        create_jac_select_page(state, navigate_to_step, save_state)
+    elif step == WorkflowStep.JAC_FETCH:
+        create_jac_fetch_page(state, navigate_to_step, save_state)
+    elif step == WorkflowStep.JAC_JOBS:
+        create_jac_jobs_page(state, navigate_to_step, save_state)
+    elif step == WorkflowStep.JAC_TARGET:
+        create_jac_target_page(state, navigate_to_step, save_state)
+    elif step == WorkflowStep.JAC_MAPPING:
+        create_jac_mapping_page(state, navigate_to_step, save_state)
+    elif step == WorkflowStep.JAC_CONFIG:
+        create_jac_config_page(state, navigate_to_step, save_state)
+    elif step == WorkflowStep.JAC_GENERATE:
+        create_jac_generate_page(state, navigate_to_step, save_state)
 
 
 def _create_placeholder_page(title: str, description: str, state: AppState) -> None:
@@ -324,6 +348,98 @@ def requirements_page() -> None:
 
     with ui.column().classes("w-full"):
         create_requirements_page(state)
+
+
+# Jobs as Code Generator workflow routes
+@ui.page("/jac_select")
+def jac_select_page() -> None:
+    """Jobs as Code Generator - Select workflow page."""
+    state = get_state()
+    state.current_step = WorkflowStep.JAC_SELECT
+    save_state()
+    setup_page(state)
+
+    with ui.column().classes("w-full"):
+        create_progress_header(state)
+        create_page_content(state)
+
+
+@ui.page("/jac_fetch")
+def jac_fetch_page() -> None:
+    """Jobs as Code Generator - Fetch jobs page."""
+    state = get_state()
+    state.current_step = WorkflowStep.JAC_FETCH
+    save_state()
+    setup_page(state)
+
+    with ui.column().classes("w-full"):
+        create_progress_header(state)
+        create_page_content(state)
+
+
+@ui.page("/jac_jobs")
+def jac_jobs_page() -> None:
+    """Jobs as Code Generator - Select jobs page."""
+    state = get_state()
+    state.current_step = WorkflowStep.JAC_JOBS
+    save_state()
+    setup_page(state)
+
+    with ui.column().classes("w-full"):
+        create_progress_header(state)
+        create_page_content(state)
+
+
+@ui.page("/jac_target")
+def jac_target_page() -> None:
+    """Jobs as Code Generator - Target config page (clone only)."""
+    state = get_state()
+    state.current_step = WorkflowStep.JAC_TARGET
+    save_state()
+    setup_page(state)
+
+    with ui.column().classes("w-full"):
+        create_progress_header(state)
+        create_page_content(state)
+
+
+@ui.page("/jac_mapping")
+def jac_mapping_page() -> None:
+    """Jobs as Code Generator - Resource mapping page (clone only)."""
+    state = get_state()
+    state.current_step = WorkflowStep.JAC_MAPPING
+    save_state()
+    setup_page(state)
+
+    with ui.column().classes("w-full"):
+        create_progress_header(state)
+        create_page_content(state)
+
+
+@ui.page("/jac_config")
+def jac_config_page() -> None:
+    """Jobs as Code Generator - Job configuration page."""
+    state = get_state()
+    state.current_step = WorkflowStep.JAC_CONFIG
+    save_state()
+    setup_page(state)
+
+    with ui.column().classes("w-full"):
+        create_progress_header(state)
+        create_page_content(state)
+
+
+@ui.page("/jac_generate")
+def jac_generate_page() -> None:
+    """Jobs as Code Generator - Generate and export page."""
+    state = get_state()
+    state.current_step = WorkflowStep.JAC_GENERATE
+    save_state()
+    setup_page(state)
+
+    with ui.column().classes("w-full"):
+        create_progress_header(state)
+        create_page_content(state)
 
 
 def run_app(

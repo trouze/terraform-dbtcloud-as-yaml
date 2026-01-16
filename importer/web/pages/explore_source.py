@@ -396,37 +396,6 @@ def _create_erd_tab(report_items: list, state: AppState) -> None:
     """Create the ERD tab with interactive graph visualization."""
     from importer.web.components.erd_viewer import create_erd_viewer
     from importer.web.components.entity_table import show_entity_detail_dialog
-
-    # #region agent log
-    import json as _json
-    import time as _time
-
-    def _log_debug(message: str, data: dict) -> None:
-        with open(
-            "/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug.log",
-            "a",
-            encoding="utf-8",
-        ) as _f:
-            _f.write(
-                _json.dumps(
-                    {
-                        "sessionId": "debug-session",
-                        "runId": "run1",
-                        "hypothesisId": "H7",
-                        "location": "explore_source.py:_create_erd_tab",
-                        "message": message,
-                        "data": data,
-                        "timestamp": int(_time.time() * 1000),
-                    }
-                )
-                + "\n"
-            )
-
-    _log_debug(
-        "ERD tab render",
-        {"report_items_count": len(report_items), "has_items": bool(report_items)},
-    )
-    # #endregion
     
     def on_node_click(node_data: dict):
         """Handle node click to show entity details."""
@@ -445,22 +414,13 @@ def _create_erd_tab(report_items: list, state: AppState) -> None:
         "overflow: hidden;"
     ):
         if not report_items:
-            # #region agent log
-            _log_debug("ERD tab empty state", {})
-            # #endregion
             with ui.card().classes("w-full p-6 text-center"):
                 ui.icon("account_tree", size="2rem").classes("text-slate-400")
                 ui.label("No entity data available for ERD").classes("text-slate-500 mt-2")
                 ui.label("Run the Fetch step to load account entities.").classes("text-sm text-slate-400")
             return
         
-        # #region agent log
-        _log_debug("ERD viewer create start", {})
-        # #endregion
         create_erd_viewer(report_items, on_node_click=on_node_click, is_target=False)
-        # #region agent log
-        _log_debug("ERD viewer create end", {})
-        # #endregion
 
 
 def _create_navigation(state: AppState, on_step_change: Callable[[WorkflowStep], None]) -> None:

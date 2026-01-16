@@ -616,6 +616,17 @@ async def _run_fetch(
         
         # Store raw account data
         state.target_account_data = payload
+        
+        # Reset match-related state since target data has changed
+        # This ensures the Match page shows fresh data, not stale mappings
+        state.map.confirmed_mappings = []
+        state.map.suggested_matches = []
+        state.map.rejected_suggestions = set()
+        state.map.mapping_file_valid = False
+        state.map.mapping_file_path = None
+        
+        # Reset deployment option - it should be set at deployment time, not affect matching
+        state.deploy.disable_job_triggers = False
 
         save_state()
         fetch_complete["value"] = True

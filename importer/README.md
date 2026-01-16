@@ -299,6 +299,68 @@ This ensures:
 
 ---
 
+## State-Aware Orchestration (SAO) Support
+
+The importer supports dbt Cloud's State-Aware Orchestration (SAO) features through the following job fields:
+
+### SAO Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `force_node_selection` | `boolean \| null` | **(Deprecated)** Controls SAO. `true` = disabled, `false`/`null` = enabled. Omit for CI/Merge jobs. |
+| `cost_optimization_features` | `string[]` | New preferred method. Include `"state_aware_orchestration"` to enable SAO. |
+
+### CI/Merge Job Handling
+
+**Important**: The dbt Cloud API rejects explicit `force_node_selection` values for CI and Merge jobs. The importer automatically handles this by:
+
+1. **Detection**: CI/Merge jobs are identified by:
+   - `triggers.github_webhook = true`
+   - `triggers.git_provider_webhook = true`
+   - `triggers.on_merge = true`
+   - `job_type = "ci"` or `"merge"`
+
+2. **Automatic Omission**: When normalizing or generating YAML, `force_node_selection` is automatically set to `null` for CI/Merge jobs to prevent API errors.
+
+### SAO Prerequisites
+
+To enable SAO, jobs must:
+- Use `dbt_version: "latest-fusion"` (or equivalent Fusion-enabled version)
+- Run on `staging` or `production` deployment type environments (for `run_compare_changes`)
+- Have `deferring_environment_key` set to a different environment (for comparison features)
+
+### Example Configuration
+
+```yaml
+jobs:
+  - key: daily_build
+    name: Daily Build
+    environment_key: production
+    dbt_version: "latest-fusion"
+    cost_optimization_features:
+      - state_aware_orchestration
+    execute_steps:
+      - dbt build
+    triggers:
+      schedule: true
+```
+
+### Migration Guide
+
+If you have existing jobs using `force_node_selection`:
+
+1. **For SAO-enabled jobs**: Replace `force_node_selection: false` with:
+   ```yaml
+   cost_optimization_features:
+     - state_aware_orchestration
+   ```
+
+2. **For SAO-disabled jobs**: Keep `force_node_selection: true` (still supported but deprecated)
+
+3. **For CI/Merge jobs**: Remove `force_node_selection` entirely (will be ignored anyway)
+
+---
+
 ## Implementation Notes
 
 - API access is performed via `httpx` with separate clients for v2 (`Token`) and v3 (`Bearer`) authentication styles. See `importer/client.py`.
