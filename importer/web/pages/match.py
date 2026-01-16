@@ -12,6 +12,7 @@ from importer.web.components.target_matcher import (
     MatchSuggestion,
     generate_match_suggestions,
 )
+from importer.web.components.selection_manager import SelectionManager
 from importer.web.utils.mapping_file import (
     TargetResourceMapping,
     save_mapping_file,
@@ -64,10 +65,10 @@ def create_match_page(
             return
         
         # Load source and target report items
-        source_items = _load_report_items(state, target=False)
+        all_source_items = _load_report_items(state, target=False)
         target_items = _load_report_items(state, target=True)
         
-        if not source_items:
+        if not all_source_items:
             _create_no_data_message("No source data available", on_step_change)
             return
         
@@ -75,14 +76,44 @@ def create_match_page(
             _create_no_data_message("No target data available", on_step_change)
             return
         
-        # Row 2: Main content
-        with ui.element("div").style(
-            "width: 100%; height: 100%; overflow: auto;"
-        ):
-            _create_matching_content(state, source_items, target_items, save_state)
+        # Filter source items by selection from Select Source step
+        selection_manager = SelectionManager(
+            account_id=state.source_account.account_id or "unknown",
+            base_url=state.source_account.host_url,
+        )
+        selection_manager.load()
+        selected_ids = selection_manager.get_selected_ids()
         
-        # Row 3: Navigation
-        _create_navigation(state, on_step_change, save_state)
+        # Filter to only selected items
+        source_items = [
+            item for item in all_source_items 
+            if item.get("element_mapping_id") in selected_ids
+        ]
+        
+        total_source_count = len(all_source_items)
+        selected_source_count = len(source_items)
+        
+        if not source_items:
+            _create_no_selected_message(
+                total_source_count,
+                on_step_change,
+            )
+            return
+        
+        # Row 2: Main content - flex container that allows grid to grow
+        # Note: Navigation is created inside _create_matching_content so it has access
+        # to the grid data for accurate status display
+        with ui.element("div").classes("flex flex-col").style(
+            "width: 100%; height: 100%; overflow: auto; display: flex; flex-direction: column;"
+        ):
+            _create_matching_content(
+                state, 
+                source_items, 
+                target_items, 
+                save_state, 
+                total_source_count,
+                on_step_change,
+            )
 
 
 def _create_header(state: AppState) -> None:
@@ -149,6 +180,27 @@ def _create_no_data_message(message: str, on_step_change: Callable[[WorkflowStep
         ui.label(message).classes("text-xl font-bold mt-4")
 
 
+def _create_no_selected_message(
+    total_count: int,
+    on_step_change: Callable[[WorkflowStep], None],
+) -> None:
+    """Show message when no items are selected."""
+    with ui.card().classes("w-full p-8 text-center"):
+        ui.icon("filter_list_off", size="3rem").classes("text-amber-500 mx-auto")
+        ui.label("No Resources Selected").classes("text-xl font-bold mt-4")
+        ui.label(
+            f"{total_count} resources are available, but none are selected for matching."
+        ).classes("text-slate-600 dark:text-slate-400 mt-2")
+        ui.label(
+            "Go to Select Source to choose which resources to include."
+        ).classes("text-slate-500 dark:text-slate-400")
+        ui.button(
+            "Adjust Selection",
+            icon="tune",
+            on_click=lambda: on_step_change(WorkflowStep.SCOPE),
+        ).classes("mt-4")
+
+
 def _load_report_items(state: AppState, target: bool = False) -> list:
     """Load report items from source or target fetch."""
     if target:
@@ -174,6 +226,8 @@ def _create_matching_content(
     source_items: list,
     target_items: list,
     save_state: Callable[[], None],
+    total_source_count: int = 0,
+    on_step_change: Optional[Callable[[WorkflowStep], None]] = None,
 ) -> None:
     """Create the main matching interface with editable grid."""
     from importer.web.components.match_grid import (
@@ -182,14 +236,19 @@ def _create_matching_content(
         create_grid_toolbar,
         export_mappings_to_csv,
     )
+    from importer.web.components.clone_dialog import show_clone_dialog
+    from importer.web.state import CloneConfig
     
     # Build grid data from source/target items and existing mappings
     rejected_keys = state.map.rejected_suggestions if isinstance(state.map.rejected_suggestions, set) else set(state.map.rejected_suggestions)
+    clone_configs = getattr(state.map, "cloned_resources", [])
+    
     grid_row_data = build_grid_data(
         source_items,
         target_items,
         state.map.confirmed_mappings,
         rejected_keys,
+        clone_configs,
     )
     
     # Stats from grid data
@@ -198,12 +257,27 @@ def _create_matching_content(
     create_new = sum(1 for r in grid_row_data if r.get("action") == "create_new")
     skipped = sum(1 for r in grid_row_data if r.get("action") == "skip")
     
-    with ui.row().classes("w-full gap-4 mb-4"):
+    # Stat cards with selection info
+    with ui.row().classes("w-full gap-4 mb-4 items-center"):
         _create_stat_card("Pending", pending, "text-amber-600", "hourglass_empty")
         _create_stat_card("Confirmed", confirmed, "text-green-600", "check_circle")
         _create_stat_card("Create New", create_new, "text-orange-500", "add_circle")
         _create_stat_card("Skip", skipped, "text-slate-500", "block")
-        _create_stat_card("Source Items", len(source_items), "text-blue-600", "upload")
+        
+        # Selected source items with total count - consistent sizing with other stat cards
+        with ui.card().classes("p-3 min-w-[120px]"):
+            with ui.row().classes("items-center gap-2"):
+                ui.icon("upload", size="sm").classes("text-blue-600")
+                ui.label(f"{len(source_items)} of {total_source_count}").classes("text-2xl font-bold text-blue-600")
+            with ui.row().classes("items-center gap-2"):
+                ui.label("Selected Sources").classes("text-xs text-slate-500")
+                if on_step_change and total_source_count > len(source_items):
+                    ui.button(
+                        "Adjust",
+                        icon="tune",
+                        on_click=lambda: on_step_change(WorkflowStep.SCOPE),
+                    ).props("flat dense size=xs")
+        
         _create_stat_card("Target Items", len(target_items), f"color: {DBT_TEAL}", "download")
     
     # Store grid row data in a mutable container for callbacks
@@ -249,7 +323,7 @@ def _create_matching_content(
                 })
         save_state()
         ui.navigate.reload()
-    
+                    
     def reject_all_pending():
         """Reject all pending matches - set them to create new."""
         for row in grid_data_ref["data"]:
@@ -261,7 +335,7 @@ def _create_matching_content(
                     state.map.rejected_suggestions.add(row.get("source_key"))
         save_state()
         ui.navigate.reload()
-    
+                    
     async def export_csv():
         """Export current mappings to CSV."""
         csv_content = export_mappings_to_csv(grid_data_ref["data"])
@@ -315,7 +389,7 @@ def _create_matching_content(
                         "match_type": "manual",
                     })
                     row["status"] = "confirmed"
-                break
+                    break
         save_state()
         ui.navigate.reload()
     
@@ -337,6 +411,47 @@ def _create_matching_content(
             from importer.web.components.entity_table import show_entity_detail_dialog
             show_entity_detail_dialog(source_item, state)
     
+    def on_configure_clone(source_key: str):
+        """Configure clone for a resource set to Create New."""
+        # Find the source item
+        source_item = next((s for s in source_items if s.get("key") == source_key), None)
+        if not source_item:
+            ui.notify(f"Source resource not found: {source_key}", type="negative")
+            return
+        
+        # Check for existing config
+        existing_config = None
+        cloned_resources = getattr(state.map, "cloned_resources", [])
+        for config in cloned_resources:
+            if config.source_key == source_key:
+                existing_config = config
+                break
+        
+        def save_clone_config(config: CloneConfig):
+            """Save clone configuration to state."""
+            # Initialize cloned_resources if needed
+            if not hasattr(state.map, "cloned_resources"):
+                state.map.cloned_resources = []
+            
+            # Remove existing config if present
+            state.map.cloned_resources = [
+                c for c in state.map.cloned_resources 
+                if c.source_key != config.source_key
+            ]
+            
+            # Add new config
+            state.map.cloned_resources.append(config)
+            save_state()
+            ui.navigate.reload()
+        
+        show_clone_dialog(
+            source_item=source_item,
+            all_source_items=source_items,
+            state=state,
+            on_save=save_clone_config,
+            existing_config=existing_config,
+        )
+    
     # Info banner with Reset button
     with ui.card().classes("w-full p-3 mb-4").style(f"border-left: 4px solid {DBT_TEAL};"):
         with ui.row().classes("w-full items-start justify-between"):
@@ -349,12 +464,12 @@ def _create_matching_content(
                         "Match = import existing, Create New = create fresh, Skip = exclude from migration."
                     ).classes("text-xs text-slate-500")
             
-            # Reset All Mappings button
+            # Reset All Mappings button - use flat with explicit color for dark mode
             ui.button(
                 "Reset All Mappings",
                 icon="refresh",
                 on_click=reset_all_mappings,
-            ).props("outline color=negative size=sm").tooltip(
+            ).props("flat text-color=orange-6 size=sm").tooltip(
                 "Clear all mappings and regenerate suggestions"
             )
     
@@ -367,8 +482,8 @@ def _create_matching_content(
         on_export_csv=export_csv,
     )
     
-    # Main grid in a card
-    with ui.card().classes("w-full p-4").style("height: 400px;"):
+    # Main grid in a card - flex container that grows to fill available space
+    with ui.card().classes("w-full p-4 flex flex-col flex-grow").style("min-height: 350px;"):
         grid, _ = create_match_grid(
             source_items,
             target_items,
@@ -378,6 +493,8 @@ def _create_matching_content(
             on_accept=on_accept,
             on_reject=on_reject,
             on_view_details=on_view_details,
+            clone_configs=clone_configs,
+            on_configure_clone=on_configure_clone,
         )
     
     # Save mapping file section (show if there are any confirmed or pending matches)
@@ -472,6 +589,15 @@ def _create_matching_content(
                             icon="visibility",
                             on_click=view_mapping_file,
                         ).props("outline")
+    
+    # Navigation section - placed inside _create_matching_content to access grid data
+    _create_navigation_with_grid_data(
+        state, 
+        on_step_change, 
+        save_state,
+        confirmed_count=confirmed_count,
+        has_unsaved_confirmed=confirmed_count > 0 and not state.map.mapping_file_valid,
+    )
 
 
 def _create_stat_card(label: str, value: int, color_class: str, icon_name: str) -> None:
@@ -483,12 +609,22 @@ def _create_stat_card(label: str, value: int, color_class: str, icon_name: str) 
         ui.label(label).classes("text-xs text-slate-500")
 
 
-def _create_navigation(
+def _create_navigation_with_grid_data(
     state: AppState,
     on_step_change: Callable[[WorkflowStep], None],
     save_state: Callable[[], None],
+    confirmed_count: int = 0,
+    has_unsaved_confirmed: bool = False,
 ) -> None:
-    """Create navigation buttons."""
+    """Create navigation buttons with grid-aware logic.
+    
+    Args:
+        state: Application state
+        on_step_change: Step change callback
+        save_state: State save callback  
+        confirmed_count: Number of confirmed mappings in current grid
+        has_unsaved_confirmed: True if there are confirmed mappings that need saving
+    """
     with ui.row().classes("w-full justify-between mt-4"):
         ui.button(
             f"Back to {state.get_step_label(WorkflowStep.EXPLORE_TARGET)}",
@@ -498,16 +634,19 @@ def _create_navigation(
         
         # Show mapping status and continue button
         with ui.row().classes("items-center gap-4"):
-            if state.map.mapping_file_valid:
+            if state.map.mapping_file_valid and confirmed_count > 0:
                 with ui.row().classes("items-center gap-2"):
                     ui.icon("check_circle", size="sm").classes("text-green-500")
                     ui.label("Mapping saved").classes("text-green-600 text-sm")
-            elif state.map.confirmed_mappings:
+            elif has_unsaved_confirmed:
                 with ui.row().classes("items-center gap-2"):
                     ui.icon("warning", size="sm").classes("text-amber-500")
                     ui.label("Save mapping file to continue").classes("text-amber-600 text-sm")
             
-            continue_enabled = state.map.mapping_file_valid or not state.map.confirmed_mappings
+            # Allow continue if:
+            # - Mapping file is saved and valid, OR
+            # - There are no confirmed mappings that need saving (all create-new)
+            continue_enabled = state.map.mapping_file_valid or not has_unsaved_confirmed
             
             btn = ui.button(
                 f"Continue to {state.get_step_label(WorkflowStep.CONFIGURE)}",

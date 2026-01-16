@@ -1061,6 +1061,48 @@ def _create_navigation_section(
                 ui.label("Deployment Complete!").classes("text-green-500 font-semibold")
 
 
+def _disable_job_triggers_in_yaml(yaml_file: str, output_dir: str) -> str:
+    """Disable all job triggers in a YAML file.
+    
+    Sets schedule, on_merge, and git_provider_webhook to false for all jobs
+    while keeping them active (is_active=true).
+    
+    Args:
+        yaml_file: Path to the YAML file
+        output_dir: Output directory for the modified file
+        
+    Returns:
+        Path to the modified YAML file
+    """
+    import yaml as yaml_lib
+    
+    yaml_path = Path(yaml_file)
+    with open(yaml_path, "r", encoding="utf-8") as f:
+        data = yaml_lib.safe_load(f)
+    
+    # Process projects to find jobs
+    for project in data.get("projects", []):
+        for job in project.get("jobs", []):
+            # Disable triggers but keep job active
+            if "triggers" in job:
+                job["triggers"]["schedule"] = False
+                job["triggers"]["on_merge"] = False
+                job["triggers"]["git_provider_webhook"] = False
+            else:
+                job["triggers"] = {
+                    "schedule": False,
+                    "on_merge": False,
+                    "git_provider_webhook": False,
+                }
+    
+    # Write to output directory
+    output_path = Path(output_dir) / "dbt-cloud-config.yml"
+    with open(output_path, "w", encoding="utf-8") as f:
+        yaml_lib.dump(data, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
+    
+    return str(output_path)
+
+
 # Terraform operation handlers
 
 async def _run_generate(
@@ -1142,6 +1184,52 @@ async def _run_generate(
 
         terminal.info(f"Source YAML: {yaml_file}")
         terminal.info(f"Output directory: {output_path}")
+        terminal.info("")
+        
+        # Handle clone configurations if any
+        cloned_resources = getattr(state.map, "cloned_resources", [])
+        if cloned_resources:
+            terminal.info(f"Processing {len(cloned_resources)} clone configuration(s)...")
+            try:
+                from importer.web.utils.clone_generator import augment_yaml_with_clones
+                
+                # Get report items for clone generation
+                report_items = []
+                if state.fetch.last_report_items_file:
+                    report_items_path = Path(state.fetch.last_report_items_file)
+                    if report_items_path.exists():
+                        import json
+                        with open(report_items_path, "r") as f:
+                            report_items = json.load(f)
+                
+                # Create augmented YAML with clones in output directory
+                augmented_yaml = output_path / "dbt-cloud-config-with-clones.yml"
+                shutil.copy2(yaml_file, augmented_yaml)
+                yaml_file = await asyncio.to_thread(
+                    augment_yaml_with_clones,
+                    str(augmented_yaml),
+                    cloned_resources,
+                    report_items,
+                    str(augmented_yaml),
+                )
+                terminal.info(f"  Added clones to YAML configuration")
+            except Exception as e:
+                terminal.warning(f"  Clone processing failed: {e}")
+                terminal.info("  Proceeding with original YAML file")
+        
+        # Handle job trigger disable setting
+        if state.deploy.disable_job_triggers:
+            terminal.info("Job triggers will be disabled in generated configuration")
+            try:
+                yaml_file = await asyncio.to_thread(
+                    _disable_job_triggers_in_yaml,
+                    yaml_file,
+                    str(output_path),
+                )
+                terminal.info("  Job triggers disabled in YAML")
+            except Exception as e:
+                terminal.warning(f"  Failed to disable job triggers: {e}")
+        
         terminal.info("")
 
         # Generate the Terraform files using the converter

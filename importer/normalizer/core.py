@@ -1091,6 +1091,29 @@ def _normalize_jobs(
         job_data["run_compare_changes"] = job.settings.get("run_compare_changes", False)
         job_data["compare_changes_flags"] = job.settings.get("compare_changes_flags") or None
 
+        # SAO (State-Aware Orchestration) fields
+        # Detect CI/Merge jobs: force_node_selection must be omitted for these job types
+        # as the dbt Cloud API rejects explicit values for CI/Merge jobs
+        is_ci_merge = False
+        if isinstance(job.triggers, dict):
+            is_ci_merge = (
+                job.triggers.get("github_webhook", False) or
+                job.triggers.get("git_provider_webhook", False) or
+                job.triggers.get("on_merge", False) or
+                job.settings.get("job_type") in ("ci", "merge")
+            )
+        
+        # force_node_selection: Only include for non-CI/Merge jobs
+        if not is_ci_merge:
+            force_node_sel = job.settings.get("force_node_selection")
+            job_data["force_node_selection"] = force_node_sel  # Include even if None for consistency
+        else:
+            job_data["force_node_selection"] = None
+        
+        # cost_optimization_features: Include if present (applies to all job types)
+        cost_opt = job.settings.get("cost_optimization_features")
+        job_data["cost_optimization_features"] = cost_opt if cost_opt else None
+
         # Job completion trigger condition (job chaining)
         # Source API represents this as:
         #   job.settings.job_completion_trigger_condition.condition = { job_id, project_id, statuses: [10,20,30] }

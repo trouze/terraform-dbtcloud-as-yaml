@@ -78,9 +78,10 @@ class YamlToTerraformConverter:
         output_path = Path(output_dir).resolve()
         output_path.mkdir(parents=True, exist_ok=True)
 
-        # Copy YAML file to output directory
+        # Copy YAML file to output directory (skip if already there)
         yaml_dest = output_path / "dbt-cloud-config.yml"
-        shutil.copy2(yaml_path, yaml_dest)
+        if yaml_path != yaml_dest:
+            shutil.copy2(yaml_path, yaml_dest)
 
         # Load connection keys from YAML to determine which credentials are needed
         connection_keys = self._extract_connection_keys(yaml_path)

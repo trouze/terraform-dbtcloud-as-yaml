@@ -1,8 +1,8 @@
 # Importer Implementation Status & Tracking
 
-**Last Updated:** 2026-01-15  
-**Current Importer Version:** 0.9.1  
-**Status:** Phase 3 Complete + Interactive Mode + Web UI + E2E Testing Infrastructure + Destroy Workflow + Target Match Feature
+**Last Updated:** 2026-01-16  
+**Current Importer Version:** 0.11.0  
+**Status:** Phase 3 Complete + Interactive Mode + Web UI + E2E Testing Infrastructure + Destroy Workflow + Target Match Feature + Jobs as Code Generator + dbt-jobs-as-code Validation + SAO Support
 
 > **⚠️ IMPORTANT: Keep This Document Updated**
 > 
@@ -420,9 +420,9 @@ Before starting end-to-end testing with a real account, verify:
 ## Version Tracking
 
 ### Importer Version
-- **Current:** 0.7.9
+- **Current:** 0.11.0
 - **File:** `importer/VERSION`
-- **Last Updated:** 2026-01-14
+- **Last Updated:** 2026-01-16
 
 ### Terraform Module Version
 - **Current:** Supports v1 and v2 schemas
@@ -666,6 +666,15 @@ The following items require API endpoint research before implementation can begi
 ---
 
 ## Change Log
+
+### 2026-01-16 (v0.11.0)
+- **Version:** Incremented to 0.11.0 (minor release - SAO Support)
+- **SAO Support**: Added `force_node_selection` and `cost_optimization_features` fields to job normalization
+- **SAO Support**: Automatic CI/Merge job detection to omit `force_node_selection` (API requirement)
+- **Terraform Module**: Updated `jobs.tf` with SAO attribute handling and CI/Merge job detection
+- **YAML Schema**: Updated v2 schema with SAO field definitions
+- **Jobs as Code Generator**: Extended `_build_job_dict()` to include SAO fields with CI/Merge job handling
+- **Documentation**: Added SAO section in `importer/README.md` with migration guide
 
 ### 2026-01-15 (v0.9.1)
 - **Version:** Incremented to 0.9.1 (patch release - Bug fixes)
@@ -1047,6 +1056,31 @@ The following items require API endpoint research before implementation can begi
   - Injects provider_config into YAML before prompting user, reducing manual configuration
   - Checks both project root `.env` and test-specific `.env` files
   - Skips interactive prompts if configs are already available
+
+### 2026-01-16 (v0.10.1)
+- **Version:** Incremented to 0.10.1 (patch release - feature enhancement)
+- **dbt-jobs-as-code Validation**: Optional integration with `dbt-jobs-as-code` for native schema validation
+  - Runtime detection of package availability
+  - "Validate with dbt-jobs-as-code" button on Generate page
+  - Structured validation results with job count and detailed errors
+  - Fallback UI with install instructions when package not available
+- **Auto-deduplication**: Automatic identifier deduplication for duplicate job names
+  - Appends numeric suffixes (_2, _3, etc.) to duplicate identifiers
+  - Non-blocking warnings in amber banner on Generate page
+- **Bug Fix**: Fixed NiceGUI ObservableDict/ObservableList leaking into YAML output
+
+### 2026-01-16 (v0.10.0)
+- **Version:** Incremented to 0.10.0 (minor release - new feature)
+- **Jobs as Code Generator Workflow**: New web UI workflow for generating `dbt-jobs-as-code` compatible YAML files
+  - Workflow Selection Page with "Adopt Existing Jobs" and "Clone / Migrate Jobs" options
+  - Fetch Jobs Page for entering dbt Cloud credentials
+  - Select Jobs Page with interactive job selection grid
+  - Configure Jobs Page for job naming and output format settings
+  - Generate YAML Page with preview, validation, and export
+- **State Management**: Added `JobsAsCodeState` dataclass with full serialization/deserialization
+- **Utility Modules**: Created job_fetcher.py, yaml_generator.py, and validator.py
+- **UI Components**: Created job_grid.py, mapping_table.py, and yaml_preview.py
+- **Bug Fix**: Fixed workflow selection cards not updating visually when clicked
 
 ### 2026-01-13 (v0.7.2)
 - **Version:** Incremented to 0.7.2 (patch release)

@@ -12,3 +12,7 @@ InquirerPy>=0.3.0,<0.4
 nicegui>=2.0,<3
 pandas>=2.0,<3
 plotly>=5.0,<6
+
+# Optional: For enhanced validation in Jobs as Code Generator
+# Uncomment to enable validation using dbt-jobs-as-code's native schemas
+# dbt-jobs-as-code>=0.10.0

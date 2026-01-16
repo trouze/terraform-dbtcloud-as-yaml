@@ -20,28 +20,6 @@ from importer.web.utils.erd_graph_builder import (
 DBT_ORANGE = "#FF694A"
 DBT_TEAL = "#047377"
 
-# #region agent log
-def _log_debug(location: str, message: str, data: dict, hypothesis_id: str) -> None:
-    import json as _json
-    import time as _time
-    with open("/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug.log", "a") as _f:
-        _f.write(
-            _json.dumps(
-                {
-                    "sessionId": "debug-session",
-                    "runId": "run1",
-                    "hypothesisId": hypothesis_id,
-                    "location": location,
-                    "message": message,
-                    "data": data,
-                    "timestamp": int(_time.time() * 1000),
-                }
-            )
-            + "\n"
-        )
-
-# #endregion
-
 
 def create_erd_viewer(
     report_items: list[dict],
@@ -55,12 +33,6 @@ def create_erd_viewer(
         on_node_click: Callback when a node is clicked
         is_target: Whether this is for target account (uses teal accent)
     """
-    # #region agent log - Entry point
-    import json as _json
-    with open("/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug.log", "a") as _f:
-        _f.write(_json.dumps({"hypothesisId": "B", "location": "erd_viewer.py:entry", "message": "create_erd_viewer called", "data": {"report_items_count": len(report_items) if report_items else 0, "is_target": is_target}, "timestamp": __import__("time").time()}) + "\n")
-    # #endregion
-    
     accent_color = DBT_TEAL if is_target else DBT_ORANGE
     
     if not report_items:
@@ -76,25 +48,8 @@ def create_erd_viewer(
     style = build_cytoscape_style()
     stats = get_graph_stats(report_items)
     
-    # #region agent log - Hypothesis B: Check if elements are being built
-    import json as _json
-    _log_path = "/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug.log"
-    _node_count = len(graph_data.get("nodes", []))
-    _edge_count = len(graph_data.get("edges", []))
-    with open(_log_path, "a") as _f:
-        _f.write(_json.dumps({"hypothesisId": "B", "location": "erd_viewer.py:build_elements", "message": "Elements built", "data": {"report_items_count": len(report_items), "total_elements": len(elements), "node_count": _node_count, "edge_count": _edge_count}, "timestamp": __import__("time").time()}) + "\n")
-    # #endregion
-    
     # Generate unique container ID for this instance (use underscore, not hyphen, for JS compatibility)
     container_id = f"cy_{uuid.uuid4().hex[:8]}"
-    # #region agent log
-    _log_debug(
-        "erd_viewer.py:container_id",
-        "Container ID created",
-        {"container_id": container_id},
-        "H4",
-    )
-    # #endregion
     
     # State for filters
     filter_state = {
@@ -220,117 +175,8 @@ def create_erd_viewer(
             
             async def init_cytoscape():
                 """Initialize Cytoscape after the component is mounted."""
-                # Use timeout=10 for CDN load
                 try:
-                    # #region agent log
-                    _log_debug(
-                        "erd_viewer.py:init_cytoscape:ping",
-                        "init_cytoscape ping start",
-                        {"container_id": container_id},
-                        "H5",
-                    )
-                    # #endregion
-                    try:
-                        await ui.run_javascript(
-                            '''
-                            fetch('http://127.0.0.1:7242/ingest/3378e01c-6039-4e68-9042-b84fcc458b5b',{
-                                method:'POST',
-                                headers:{'Content-Type':'application/json'},
-                                body:JSON.stringify({
-                                    hypothesisId:'H5',
-                                    location:'erd_viewer.js',
-                                    message:'ping',
-                                    data:{ok:true},
-                                    timestamp:Date.now()
-                                })
-                            }).catch(()=>{});
-                            ''',
-                            timeout=2.0,
-                        )
-                        # #region agent log
-                        _log_debug(
-                            "erd_viewer.py:init_cytoscape:ping",
-                            "init_cytoscape ping ok",
-                            {"container_id": container_id},
-                            "H5",
-                        )
-                        # #endregion
-                    except TimeoutError:
-                        # #region agent log
-                        _log_debug(
-                            "erd_viewer.py:init_cytoscape:ping",
-                            "init_cytoscape ping timeout",
-                            {"container_id": container_id},
-                            "H5",
-                        )
-                        # #endregion
-                    # #region agent log
-                    _log_debug(
-                        "erd_viewer.py:init_cytoscape:probe",
-                        "init_cytoscape size probe start",
-                        {"container_id": container_id},
-                        "H6",
-                    )
-                    # #endregion
-                    try:
-                        await ui.run_javascript(
-                            f'''
-                            (function() {{
-                                const LOG_URL = 'http://127.0.0.1:7242/ingest/3378e01c-6039-4e68-9042-b84fcc458b5b';
-                                const el = document.getElementById('{container_id}');
-                                const parent = el ? el.parentElement : null;
-                                fetch(LOG_URL,{{
-                                    method:'POST',
-                                    headers:{{'Content-Type':'application/json'}},
-                                    body:JSON.stringify({{
-                                        hypothesisId:'H6',
-                                        location:'erd_viewer.js',
-                                        message:'container probe',
-                                        data:{{
-                                            found: !!el,
-                                            size: el ? {{w: el.offsetWidth, h: el.offsetHeight}} : null,
-                                            parentSize: parent ? {{w: parent.offsetWidth, h: parent.offsetHeight}} : null,
-                                            parentTag: parent ? parent.tagName : null
-                                        }},
-                                        timestamp:Date.now()
-                                    }})
-                                }}).catch(()=>{{}});
-                            }})();
-                            ''',
-                            timeout=2.0,
-                        )
-                        # #region agent log
-                        _log_debug(
-                            "erd_viewer.py:init_cytoscape:probe",
-                            "init_cytoscape size probe ok",
-                            {"container_id": container_id},
-                            "H6",
-                        )
-                        # #endregion
-                    except TimeoutError:
-                        # #region agent log
-                        _log_debug(
-                            "erd_viewer.py:init_cytoscape:probe",
-                            "init_cytoscape size probe timeout",
-                            {"container_id": container_id},
-                            "H6",
-                        )
-                        # #endregion
-                    # #region agent log
-                    _log_debug(
-                        "erd_viewer.py:init_cytoscape:entry",
-                        "init_cytoscape entry",
-                        {
-                            "container_id": container_id,
-                            "elements_count": len(elements),
-                            "style_count": len(style),
-                            "elements_b64_len": len(elements_b64),
-                        },
-                        "H4",
-                    )
-                    # #endregion
                     # Build JavaScript code using string concatenation to avoid escaping issues
-                    # Use base64 encoding for safe data transmission
                     cy_var = f"cy_{container_id}"
                     js_code = (
                         "(function() {\n"
@@ -377,34 +223,9 @@ def create_erd_viewer(
                         "})();"
                     )
                     await ui.run_javascript(js_code, timeout=10.0)
-                    # #region agent log
-                    _log_debug(
-                        "erd_viewer.py:init_cytoscape:exit",
-                        "init_cytoscape run_javascript completed",
-                        {"container_id": container_id},
-                        "H4",
-                    )
-                    # #endregion
                 except TimeoutError:
-                    # #region agent log
-                    _log_debug(
-                        "erd_viewer.py:init_cytoscape:timeout",
-                        "init_cytoscape run_javascript timed out",
-                        {"container_id": container_id},
-                        "H4",
-                    )
-                    # #endregion
                     # Graph initialization is async, timeout is expected
                     pass
-                except Exception as exc:  # pylint: disable=broad-except
-                    # #region agent log
-                    _log_debug(
-                        "erd_viewer.py:init_cytoscape:error",
-                        "init_cytoscape run_javascript error",
-                        {"container_id": container_id, "error": str(exc)},
-                        "H4",
-                    )
-                    # #endregion
             
             # Schedule initialization after a small delay
             # Wire up the load button to init the graph
@@ -465,11 +286,6 @@ def create_erd_viewer(
             
             # Search handler
             async def on_search_change(e):
-                # #region agent log - Hypothesis E: Event args structure
-                with open("/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug.log", "a") as _f:
-                    import json as _json
-                    _f.write(_json.dumps({"hypothesisId": "E", "location": "erd_viewer.py:on_search_change", "message": "Event received", "data": {"type": str(type(e)), "has_value": hasattr(e, 'value'), "has_args": hasattr(e, 'args'), "args": str(getattr(e, 'args', None))[:100]}, "timestamp": __import__("time").time()}) + "\n")
-                # #endregion
                 # NiceGUI's update:model-value passes value in e.args
                 search_term = e.args if isinstance(e.args, str) else (e.args or "")
                 filter_state["search"] = search_term
@@ -503,11 +319,6 @@ def create_erd_viewer(
             
             # Layout change handler
             async def on_layout_change(e):
-                # #region agent log - Hypothesis E: Layout event args structure
-                with open("/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug.log", "a") as _f:
-                    import json as _json
-                    _f.write(_json.dumps({"hypothesisId": "E", "location": "erd_viewer.py:on_layout_change", "message": "Event received", "data": {"type": str(type(e)), "has_value": hasattr(e, 'value'), "has_args": hasattr(e, 'args'), "args": str(getattr(e, 'args', None))[:100]}, "timestamp": __import__("time").time()}) + "\n")
-                # #endregion
                 # NiceGUI's update:model-value passes value in e.args
                 layout = e.args if isinstance(e.args, str) else "cose"
                 filter_state["layout"] = layout

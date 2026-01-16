@@ -424,6 +424,31 @@
         "deferring_environment_key": {
           "$ref": "#/$defs/slug"
         },
+        "force_node_selection": {
+          "type": ["boolean", "null"],
+          "description": "(Deprecated) Controls SAO. true=disabled, false/null=enabled. Omit for CI/Merge jobs. Use cost_optimization_features instead.",
+          "default": null
+        },
+        "cost_optimization_features": {
+          "type": ["array", "null"],
+          "items": {
+            "type": "string",
+            "enum": ["state_aware_orchestration"]
+          },
+          "description": "Cost optimization features. Include 'state_aware_orchestration' to enable SAO. Requires dbt_version='latest-fusion'.",
+          "default": null
+        },
+        "job_type": {
+          "type": ["string", "null"],
+          "enum": ["scheduled", "ci", "merge", "other", null],
+          "description": "Job type for categorization. CI and merge jobs cannot use force_node_selection.",
+          "default": null
+        },
+        "compare_changes_flags": {
+          "type": ["string", "null"],
+          "description": "Flags to pass to dbt when comparing changes (for run_compare_changes).",
+          "default": "--select state:modified"
+        },
         "notification_keys": {
           "type": "array",
           "items": { "$ref": "#/$defs/slug" },

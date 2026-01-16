@@ -9,6 +9,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-01-16
+
+### Added
+- **State-Aware Orchestration (SAO) Support**: Full support for SAO fields across all job-related workflows
+  - Added `force_node_selection` and `cost_optimization_features` fields to job normalization
+  - Automatic CI/Merge job detection to omit `force_node_selection` (API requirement)
+  - Updated Terraform module (`jobs.tf`) with SAO attribute handling
+  - Updated v2 YAML schema with SAO field definitions
+  - Added SAO documentation section in `importer/README.md` with migration guide
+
+### Changed
+- **Jobs as Code Generator**: Extended `_build_job_dict()` to include SAO fields with CI/Merge job handling
+- **Normalizer**: Enhanced `_normalize_jobs()` to extract and properly handle SAO fields from API responses
+
+## [0.10.1] - 2026-01-16
+
+### Added
+- **dbt-jobs-as-code Validation**: Optional integration with `dbt-jobs-as-code` for native schema validation
+  - Runtime detection of `dbt-jobs-as-code` package availability
+  - "Validate with dbt-jobs-as-code" button on Generate page (enabled when package installed)
+  - Structured validation results with job count and detailed error messages
+  - Fallback UI with install instructions when package not available
+- **Auto-deduplication**: Automatic identifier deduplication for jobs with duplicate names
+  - Appends numeric suffixes (`_2`, `_3`, etc.) to duplicate identifiers
+  - Non-blocking warnings displayed in amber banner on Generate page
+  - Expandable section showing which identifiers were auto-renamed
+
+### Fixed
+- **YAML Generator**: Fixed NiceGUI `ObservableDict`/`ObservableList` objects leaking into YAML output
+  - Added `_to_plain_python()` recursive conversion before serialization
+  - Ensures clean YAML that passes dbt-jobs-as-code validation
+
+## [0.10.0] - 2026-01-16
+
+### Added
+- **Jobs as Code Generator Workflow**: New web UI workflow for generating `dbt-jobs-as-code` compatible YAML files
+  - **Workflow Selection Page**: Choose between "Adopt Existing Jobs" (with `linked_id`) or "Clone / Migrate Jobs" (templated)
+  - **Fetch Jobs Page**: Enter dbt Cloud credentials to fetch all jobs from source account
+  - **Select Jobs Page**: Interactive job selection grid with search, filter, and bulk selection
+  - **Configure Jobs Page**: Configure job naming (prefix/suffix), triggers, and output format
+  - **Generate YAML Page**: Preview and export generated YAML with validation
+- **State Management**: New `JobsAsCodeState` dataclass with full serialization/deserialization support
+- **Utility Modules**: Job fetcher (`job_fetcher.py`), YAML generator (`yaml_generator.py`), and validator (`validator.py`)
+- **UI Components**: Job selection grid (`job_grid.py`), mapping table (`mapping_table.py`), and YAML preview (`yaml_preview.py`)
+- **Workflow Navigation**: 5-step workflow integrated into sidebar with step locking and progress tracking
+
+### Changed
+- **Web UI**: Added "Jobs as Code Generator" to workflow dropdown menu
+- **State Module**: Extended `WorkflowStep` enum with JAC workflow steps (JAC_SELECT through JAC_GENERATE)
+- **App Routes**: Added routes for all Jobs as Code Generator pages
+
+### Fixed
+- **Select Page**: Fixed workflow selection cards not updating visually when clicked (moved state read inside `@ui.refreshable` function)
+
 ## [0.9.1] - 2026-01-15
 
 ### Fixed

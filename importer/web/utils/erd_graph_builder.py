@@ -1,33 +1,6 @@
 """Build Cytoscape.js graph data from dbt Cloud resource data."""
 
-import json
-import time
 from typing import Any
-
-# #region agent log
-_LOG_PATH = "/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug.log"
-
-
-def _log_debug(
-    location: str,
-    message: str,
-    data: dict,
-    hypothesis_id: str,
-    run_id: str = "run1",
-) -> None:
-    payload = {
-        "sessionId": "debug-session",
-        "runId": run_id,
-        "hypothesisId": hypothesis_id,
-        "location": location,
-        "message": message,
-        "data": data,
-        "timestamp": int(time.time() * 1000),
-    }
-    with open(_LOG_PATH, "a", encoding="utf-8") as log_file:
-        log_file.write(json.dumps(payload) + "\n")
-
-# #endregion
 
 
 # Node styles by resource type
@@ -72,18 +45,6 @@ def build_cytoscape_elements(report_items: list[dict]) -> dict:
     Returns:
         Dictionary with 'nodes' and 'edges' lists for Cytoscape.js
     """
-    # #region agent log
-    _log_debug(
-        "erd_graph_builder.py:build_cytoscape_elements:entry",
-        "build_cytoscape_elements entry",
-        {
-            "report_items_count": len(report_items),
-            "none_key_count": sum(1 for item in report_items if item.get("key") is None),
-        },
-        "H2",
-    )
-    # #endregion
-
     nodes = []
     edges = []
     
@@ -210,21 +171,6 @@ def build_cytoscape_elements(report_items: list[dict]) -> dict:
             if children:
                 child_summary = ", ".join(f"{count} {t}" for t, count in sorted(children.items()))
                 node["data"]["childSummary"] = child_summary
-    
-    # #region agent log
-    _log_debug(
-        "erd_graph_builder.py:build_cytoscape_elements:exit",
-        "build_cytoscape_elements exit",
-        {
-            "node_count": len(nodes),
-            "edge_count": len(edges),
-            "nodes_without_id": sum(
-                1 for node in nodes if not node.get("data", {}).get("id")
-            ),
-        },
-        "H2",
-    )
-    # #endregion
 
     return {"nodes": nodes, "edges": edges}
 
@@ -329,18 +275,6 @@ def export_to_mermaid(report_items: list[dict]) -> str:
     Returns:
         Mermaid diagram string
     """
-    # #region agent log
-    _log_debug(
-        "erd_graph_builder.py:export_to_mermaid:entry",
-        "export_to_mermaid entry",
-        {
-            "report_items_count": len(report_items),
-            "none_key_count": sum(1 for item in report_items if item.get("key") is None),
-        },
-        "H3",
-    )
-    # #endregion
-
     lines = ["```mermaid", "flowchart TD"]
     
     # Build lookup
@@ -354,19 +288,6 @@ def export_to_mermaid(report_items: list[dict]) -> str:
         if not item.get("parent_key")
         and item.get("element_type_code") not in ("PRJ", "ACC")
     ]
-    # #region agent log
-    _log_debug(
-        "erd_graph_builder.py:export_to_mermaid:globals",
-        "export_to_mermaid globals computed",
-        {
-            "globals_count": len(globals_items),
-            "globals_none_key_count": sum(
-                1 for item in globals_items if item.get("key") is None
-            ),
-        },
-        "H3",
-    )
-    # #endregion
     
     # Subgraph for each project
     for project in projects:
@@ -405,17 +326,6 @@ def export_to_mermaid(report_items: list[dict]) -> str:
         lines.append("    end")
     
     # Add edges
-    # #region agent log
-    _log_debug(
-        "erd_graph_builder.py:export_to_mermaid:edges",
-        "export_to_mermaid building edges",
-        {
-            "report_items_count": len(report_items),
-        },
-        "H3",
-    )
-    # #endregion
-
     for item in report_items:
         item_key = (item.get("key") or "").replace(":", "_").replace("-", "_")
         item_type = item.get("element_type_code") or ""

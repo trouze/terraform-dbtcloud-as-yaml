@@ -83,18 +83,16 @@ locals {
     )
   }
 
-  # Gate job creation when deployment_type is not set on the target environment.
-  # We intentionally do NOT infer deployment_type from the environment name:
-  # deployment_type must come from the source snapshot/mapping.
+  # Note on deployment_type:
+  # dbt Cloud allows only ONE environment per project to be "production" and ONE to be "staging".
+  # All other deployment environments are "general" (deployment_type = null).
+  # 
+  # Jobs CAN be created on general environments, but SAO features (run_compare_changes,
+  # cross-environment deferral) require staging or production deployment_type.
+  # The validate_run_compare_changes logic below properly gates SAO features.
   #
-  # Runtime evidence: dbt Cloud job creation can return SAO-related 405s for jobs
-  # targeting environments where deployment_type is null.
-  env_has_deployment_type = {
-    for key, item in local.jobs_map :
-    key => (
-      local.env_deployment_type_by_job[key] != null && local.env_deployment_type_by_job[key] != ""
-    )
-  }
+  # We previously gated ALL job creation on deployment_type, but this was too restrictive.
+  # Jobs on general environments are valid - they just can't use SAO.
 
   # Schedule field mutual exclusivity:
   # Provider enforces that schedule_cron cannot be combined with schedule_interval or schedule_hours.
@@ -124,10 +122,27 @@ locals {
     )
   }
 
-  jobs_creatable_map = {
+  # All jobs can be created - SAO features are gated separately by validate_run_compare_changes
+  jobs_creatable_map = local.jobs_map
+
+  # SAO (State-Aware Orchestration) field handling
+  # Detect CI/Merge jobs: force_node_selection must be omitted for these job types
+  # as the dbt Cloud API rejects explicit values for CI/Merge jobs
+  is_ci_or_merge_job = {
     for key, item in local.jobs_map :
-    key => item
-    if local.env_has_deployment_type[key]
+    key => (
+      try(item.job_data.triggers.github_webhook, false) == true ||
+      try(item.job_data.triggers.git_provider_webhook, false) == true ||
+      try(item.job_data.triggers.on_merge, false) == true ||
+      contains(["ci", "merge"], try(item.job_data.job_type, "scheduled"))
+    )
+  }
+
+  # force_node_selection: null for CI/Merge jobs, configured value otherwise
+  # Note: This field is deprecated in favor of cost_optimization_features
+  force_node_selection_effective = {
+    for key, item in local.jobs_map :
+    key => local.is_ci_or_merge_job[key] ? null : try(item.job_data.force_node_selection, null)
   }
 
 }
@@ -177,6 +192,14 @@ resource "dbtcloud_job" "jobs" {
   self_deferring = (
     try(each.value.job_data.deferring_environment_key, null) == null
   ) ? try(each.value.job_data.self_deferring, null) : null
+
+  # SAO (State-Aware Orchestration) fields
+  # force_node_selection: Controls SAO. null for CI/Merge jobs (API rejects explicit values)
+  # Deprecated in favor of cost_optimization_features
+  force_node_selection = local.force_node_selection_effective[each.key]
+  # cost_optimization_features: New preferred method for SAO control
+  # Include "state_aware_orchestration" to enable SAO (requires dbt_version="latest-fusion")
+  cost_optimization_features = try(each.value.job_data.cost_optimization_features, null)
 
   lifecycle {
     ignore_changes = [
