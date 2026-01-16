@@ -256,7 +256,7 @@ def _load_run_and_navigate(
     ui.notify(f"Loaded run {run_id}", type="positive")
     
     # Navigate to Explore
-    on_step_change(WorkflowStep.EXPLORE)
+    on_step_change(WorkflowStep.EXPLORE_SOURCE)
 
 
 def _load_recent_runs(output_dir: str) -> list:

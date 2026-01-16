@@ -9,7 +9,7 @@ from typing import Callable, Optional
 
 from nicegui import ui
 
-from importer.web.state import AppState, WorkflowStep, DeployState
+from importer.web.state import AppState, WorkflowStep, DeployState, ImportResult
 from importer.web.components.terminal_output import TerminalOutput
 from importer.web.utils.yaml_viewer import (
     create_state_viewer_dialog,
@@ -22,11 +22,30 @@ from importer.web.components.backend_config import (
     write_backend_tf,
 )
 from importer.web.components.folder_picker import create_folder_picker_dialog
+from importer.web.utils.terraform_import import (
+    detect_terraform_version,
+    supports_import_blocks,
+    generate_import_blocks,
+    generate_import_commands,
+    write_import_blocks_file,
+    run_import_batch,
+    ImportSummary,
+)
+from importer.web.components.import_progress import (
+    ImportProgressTable,
+    create_import_summary_card,
+    create_import_errors_expansion,
+)
+from importer.web.utils.mapping_file import (
+    load_mapping_file,
+    validate_mapping_file,
+)
 
 
 # dbt brand colors
 DBT_ORANGE = "#FF694A"
 DBT_NAVY = "#192847"
+DBT_TEAL = "#047377"
 
 # Status colors for buttons
 STATUS_SUCCESS = "#22C55E"  # green-500
@@ -88,6 +107,10 @@ def create_deploy_page(
                 backend_config=deploy_state["backend_config"],
             )
 
+        # Import existing resources section (only shown if mappings exist)
+        if state.map.target_matching_enabled and state.map.confirmed_mappings:
+            _create_import_section(state, terminal, save_state, deploy_state)
+
         # Tiles: 2x3 grid
         with ui.element("div").classes("w-full").style(
             "display: grid; "
@@ -121,10 +144,10 @@ def _check_prerequisites(state: AppState, on_step_change: Callable[[WorkflowStep
     errors = []
 
     if not state.map.normalize_complete:
-        errors.append(("Map step not completed", WorkflowStep.MAP))
+        errors.append(("Map step not completed", WorkflowStep.SCOPE))
     
     if not state.target_credentials.is_complete():
-        errors.append(("Target credentials not configured", WorkflowStep.TARGET))
+        errors.append(("Target credentials not configured", WorkflowStep.CONFIGURE))
 
     if errors:
         with ui.card().classes("w-full p-6 border-l-4 border-yellow-500"):
@@ -316,6 +339,266 @@ def _create_output_directories_section(state: AppState, deploy_state: dict) -> N
                     state_path_display.value = f"{e.value}/terraform.tfstate"
             
             tf_dir_input.on("change", on_tf_dir_change)
+
+
+def _create_import_section(
+    state: AppState,
+    terminal: TerminalOutput,
+    save_state: Callable[[], None],
+    deploy_state: dict,
+) -> None:
+    """Create the import existing resources section.
+    
+    This section appears when there are confirmed target mappings and allows
+    importing existing target resources into Terraform state before plan/apply.
+    """
+    num_mappings = len(state.map.confirmed_mappings)
+    is_initialized = state.deploy.terraform_initialized
+    is_imported = state.deploy.import_completed
+    
+    with ui.expansion(
+        f"Import Existing Resources ({num_mappings} mappings)",
+        icon="import_export",
+        value=not is_imported,  # Expand if not yet imported
+    ).classes("w-full").style(f"border-left: 3px solid {DBT_TEAL};"):
+        
+        # Info banner
+        with ui.card().classes("w-full p-3 mb-3"):
+            with ui.row().classes("items-start gap-2"):
+                ui.icon("info", size="sm").style(f"color: {DBT_TEAL};")
+                with ui.column().classes("gap-1"):
+                    ui.label(
+                        "These resources will be imported into Terraform state before planning."
+                    ).classes("text-sm")
+                    ui.label(
+                        "This prevents Terraform from creating duplicates of existing resources."
+                    ).classes("text-xs text-slate-500")
+        
+        # Status indicator
+        if is_imported:
+            with ui.row().classes("w-full items-center gap-2 mb-3"):
+                ui.icon("check_circle", size="sm").classes("text-green-500")
+                ui.label("Imports completed successfully").classes("text-sm text-green-600")
+        elif not is_initialized:
+            with ui.row().classes("w-full items-center gap-2 mb-3"):
+                ui.icon("warning", size="sm").classes("text-amber-500")
+                ui.label("Run 'terraform init' first to enable imports").classes("text-sm text-amber-600")
+        
+        # Mapping summary
+        ui.label("Resources to Import:").classes("font-semibold text-sm mb-2")
+        
+        # Group by resource type
+        by_type: dict[str, list] = {}
+        for mapping in state.map.confirmed_mappings:
+            rtype = mapping.get("resource_type", "unknown")
+            if rtype not in by_type:
+                by_type[rtype] = []
+            by_type[rtype].append(mapping)
+        
+        with ui.row().classes("w-full gap-2 flex-wrap mb-3"):
+            for rtype, items in by_type.items():
+                type_labels = {
+                    "PRJ": "Projects",
+                    "ENV": "Environments",
+                    "JOB": "Jobs",
+                    "CON": "Connections",
+                    "REP": "Repositories",
+                    "TOK": "Service Tokens",
+                    "GRP": "Groups",
+                    "NOT": "Notifications",
+                }
+                label = type_labels.get(rtype, rtype)
+                ui.badge(f"{len(items)} {label}").props("dense")
+        
+        # Import mode selector
+        with ui.row().classes("w-full items-center gap-4 mb-3"):
+            ui.label("Import Method:").classes("text-sm")
+            
+            def on_mode_change(e):
+                state.deploy.import_mode = e.value
+                save_state()
+            
+            ui.radio(
+                options=["modern", "legacy"],
+                value=state.deploy.import_mode,
+                on_change=on_mode_change,
+            ).props("inline").classes("text-sm")
+            
+            with ui.column().classes("gap-0"):
+                ui.label(
+                    "Modern: Use TF 1.5+ import blocks (recommended)"
+                    if state.deploy.import_mode == "modern"
+                    else "Legacy: Run terraform import commands sequentially"
+                ).classes("text-xs text-slate-500")
+        
+        # Action buttons
+        with ui.row().classes("w-full gap-2"):
+            if is_imported:
+                # Already imported - show re-import option
+                ui.button(
+                    "Re-run Imports",
+                    icon="refresh",
+                    on_click=lambda: _run_imports(state, terminal, save_state, deploy_state),
+                ).props("outline")
+            else:
+                import_btn = ui.button(
+                    "Run Imports",
+                    icon="import_export",
+                    on_click=lambda: _run_imports(state, terminal, save_state, deploy_state),
+                ).style(f"background-color: {DBT_TEAL};")
+                
+                if not is_initialized:
+                    import_btn.disable()
+            
+            # Generate import file button
+            ui.button(
+                "Generate Import File",
+                icon="description",
+                on_click=lambda: _generate_import_file(state, terminal, deploy_state),
+            ).props("outline")
+
+
+async def _run_imports(
+    state: AppState,
+    terminal: TerminalOutput,
+    save_state: Callable[[], None],
+    deploy_state: dict,
+) -> None:
+    """Run the import operation for confirmed mappings."""
+    tf_dir = deploy_state.get("terraform_dir") or state.deploy.terraform_dir or "deployments/migration"
+    
+    terminal.set_title("Output — IMPORT")
+    terminal.clear()
+    terminal.info("Starting resource imports...")
+    terminal.info(f"Import mode: {state.deploy.import_mode}")
+    terminal.info(f"Terraform directory: {tf_dir}")
+    terminal.info("")
+    
+    try:
+        # Check Terraform version
+        version, err = await detect_terraform_version(tf_dir)
+        if err:
+            terminal.error(f"Terraform version check failed: {err}")
+            ui.notify(f"Error: {err}", type="negative")
+            return
+        
+        terminal.info(f"Terraform version: {'.'.join(map(str, version))}")
+        state.deploy.terraform_version = ".".join(map(str, version))
+        
+        # Decide import mode
+        use_modern = state.deploy.import_mode == "modern" and supports_import_blocks(version)
+        
+        if state.deploy.import_mode == "modern" and not supports_import_blocks(version):
+            terminal.warning(f"TF version {'.'.join(map(str, version))} doesn't support import blocks. Using legacy mode.")
+            use_modern = False
+        
+        mappings = state.map.confirmed_mappings
+        
+        if use_modern:
+            # Generate and write import blocks file
+            terminal.info("Using modern import blocks (TF 1.5+)")
+            file_path, err = write_import_blocks_file(mappings, tf_dir)
+            if err:
+                terminal.error(f"Failed to write import file: {err}")
+                ui.notify(f"Error: {err}", type="negative")
+                return
+            
+            terminal.info(f"Generated import blocks: {file_path}")
+            terminal.info("")
+            terminal.info("Import blocks will be processed during 'terraform plan'")
+            terminal.info("The imports.tf file has been created in your terraform directory.")
+            
+            state.deploy.imports_file_generated = True
+            state.deploy.import_completed = True
+            save_state()
+            
+            ui.notify("Import blocks generated. Run 'terraform plan' to process.", type="positive")
+            
+        else:
+            # Legacy mode: run terraform import commands
+            terminal.info("Using legacy terraform import commands")
+            terminal.info(f"Processing {len(mappings)} imports...")
+            terminal.info("")
+            
+            import_commands = generate_import_commands(mappings)
+            
+            # Initialize results
+            state.deploy.import_results = []
+            for addr, tid, skey, rtype in import_commands:
+                result = ImportResult(
+                    resource_address=addr,
+                    target_id=tid,
+                    source_key=skey,
+                    resource_type=rtype,
+                    status="pending",
+                )
+                state.deploy.import_results.append(result)
+            
+            def on_output(line: str):
+                terminal.info(line.rstrip())
+            
+            def on_progress(result):
+                terminal.info(f"  {result.status.upper()}: {result.resource_address}")
+            
+            # Run imports
+            from importer.web.utils.terraform_import import run_import_batch
+            summary = await run_import_batch(
+                import_commands,
+                tf_dir,
+                on_progress=on_progress,
+                on_output=on_output,
+            )
+            
+            # Update state
+            state.deploy.import_completed = summary.failed == 0
+            state.deploy.last_import_output = f"Success: {summary.success}, Failed: {summary.failed}"
+            save_state()
+            
+            terminal.info("")
+            if summary.failed == 0:
+                terminal.success(f"━━━ IMPORT COMPLETE ━━━")
+                terminal.info(f"  Imported: {summary.success} resources")
+                terminal.info(f"  Duration: {summary.duration_ms}ms")
+                ui.notify("All imports successful!", type="positive")
+            else:
+                terminal.warning(f"━━━ IMPORT COMPLETED WITH ERRORS ━━━")
+                terminal.info(f"  Success: {summary.success}")
+                terminal.error(f"  Failed: {summary.failed}")
+                ui.notify(f"{summary.failed} imports failed", type="warning")
+        
+        # Reload to update UI
+        ui.navigate.reload()
+        
+    except Exception as e:
+        terminal.error(f"Import failed: {e}")
+        ui.notify(f"Import error: {e}", type="negative")
+
+
+def _generate_import_file(
+    state: AppState,
+    terminal: TerminalOutput,
+    deploy_state: dict,
+) -> None:
+    """Generate import blocks file without running imports."""
+    tf_dir = deploy_state.get("terraform_dir") or state.deploy.terraform_dir or "deployments/migration"
+    
+    terminal.info("Generating import blocks file...")
+    
+    try:
+        mappings = state.map.confirmed_mappings
+        file_path, err = write_import_blocks_file(mappings, tf_dir)
+        
+        if err:
+            terminal.error(f"Failed: {err}")
+            ui.notify(f"Error: {err}", type="negative")
+        else:
+            terminal.success(f"Generated: {file_path}")
+            ui.notify(f"Import file created: {file_path}", type="positive")
+            state.deploy.imports_file_generated = True
+            
+    except Exception as e:
+        terminal.error(f"Error: {e}")
+        ui.notify(f"Error: {e}", type="negative")
 
 
 def _create_generate_section(
@@ -766,9 +1049,9 @@ def _create_navigation_section(
     with ui.row().classes("w-full justify-between mt-6"):
         # Back button
         ui.button(
-            f"Back to {state.get_step_label(WorkflowStep.TARGET)}",
+            f"Back to {state.get_step_label(WorkflowStep.CONFIGURE)}",
             icon="arrow_back",
-            on_click=lambda: on_step_change(WorkflowStep.TARGET),
+            on_click=lambda: on_step_change(WorkflowStep.CONFIGURE),
         ).props("outline")
 
         # Status

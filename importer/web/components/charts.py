@@ -8,8 +8,12 @@ from nicegui import ui
 from importer.web.state import AppState
 
 
-# dbt brand-inspired color palette
-CHART_COLORS = [
+# dbt brand colors
+DBT_ORANGE = "#FF694A"
+DBT_TEAL = "#047377"
+
+# dbt brand-inspired color palette for source (orange-based)
+CHART_COLORS_SOURCE = [
     "#FF694A",  # dbt orange
     "#3B82F6",  # blue
     "#10B981",  # green
@@ -21,6 +25,23 @@ CHART_COLORS = [
     "#14B8A6",  # teal
     "#F97316",  # orange
 ]
+
+# dbt brand-inspired color palette for target (teal-based)
+CHART_COLORS_TARGET = [
+    "#047377",  # dbt teal
+    "#3B82F6",  # blue
+    "#10B981",  # green
+    "#F59E0B",  # amber
+    "#8B5CF6",  # purple
+    "#EC4899",  # pink
+    "#06B6D4",  # cyan
+    "#EF4444",  # red
+    "#FF694A",  # dbt orange
+    "#F97316",  # orange
+]
+
+# Backwards compatibility
+CHART_COLORS = CHART_COLORS_SOURCE
 
 # Type display names
 TYPE_NAMES = {
@@ -39,8 +60,16 @@ TYPE_NAMES = {
 }
 
 
-def create_charts(report_items: list, state: AppState) -> None:
-    """Create all chart visualizations."""
+def create_charts(report_items: list, state: AppState, is_target: bool = False) -> None:
+    """Create all chart visualizations.
+    
+    Args:
+        report_items: List of entity items to visualize
+        state: Application state
+        is_target: If True, use target color palette; otherwise use source palette
+    """
+    # Select color palette based on mode
+    colors = CHART_COLORS_TARGET if is_target else CHART_COLORS_SOURCE
     
     # Calculate data for charts
     type_counts = Counter(item.get("element_type_code", "UNK") for item in report_items)
@@ -58,19 +87,19 @@ def create_charts(report_items: list, state: AppState) -> None:
         # Bar chart - Resource distribution
         with ui.card().classes("flex-1 min-w-[400px] p-4"):
             ui.label("Resource Distribution by Type").classes("text-lg font-semibold mb-2")
-            _create_bar_chart(type_counts)
+            _create_bar_chart(type_counts, colors)
         
         # Pie chart - Connection types (if any connections)
         if connection_types:
             with ui.card().classes("flex-1 min-w-[400px] p-4"):
                 ui.label("Connection Types").classes("text-lg font-semibold mb-2")
-                _create_pie_chart(connection_types)
+                _create_pie_chart(connection_types, colors)
     
     # Treemap - Jobs by project (if any jobs)
     if project_job_counts:
         with ui.card().classes("w-full p-4 mt-4"):
             ui.label("Jobs by Project").classes("text-lg font-semibold mb-2")
-            _create_treemap(project_job_counts)
+            _create_treemap(project_job_counts, colors)
     
     # Include/Exclude breakdown
     include_counts = _get_include_breakdown(report_items)
@@ -138,22 +167,30 @@ def _get_include_breakdown(report_items: list) -> dict:
     return breakdown
 
 
-def _create_bar_chart(type_counts: Counter) -> None:
-    """Create a bar chart of resource counts by type."""
+def _create_bar_chart(type_counts: Counter, colors: list = None) -> None:
+    """Create a bar chart of resource counts by type.
+    
+    Args:
+        type_counts: Counter of entity type codes
+        colors: Color palette to use (defaults to CHART_COLORS_SOURCE)
+    """
     import plotly.graph_objects as go
+    
+    if colors is None:
+        colors = CHART_COLORS_SOURCE
     
     # Sort by count descending
     sorted_items = sorted(type_counts.items(), key=lambda x: x[1], reverse=True)
     
     labels = [TYPE_NAMES.get(t, t) for t, _ in sorted_items]
     values = [v for _, v in sorted_items]
-    colors = CHART_COLORS[:len(labels)]
+    bar_colors = colors[:len(labels)]
     
     fig = go.Figure(data=[
         go.Bar(
             x=labels,
             y=values,
-            marker_color=colors,
+            marker_color=bar_colors,
             text=values,
             textposition="outside",
             textfont=dict(color="white"),
@@ -174,9 +211,17 @@ def _create_bar_chart(type_counts: Counter) -> None:
     ui.plotly(fig).classes("w-full")
 
 
-def _create_pie_chart(type_counts: dict) -> None:
-    """Create a pie chart of connection types."""
+def _create_pie_chart(type_counts: dict, colors: list = None) -> None:
+    """Create a pie chart of connection types.
+    
+    Args:
+        type_counts: Dict of type names to counts
+        colors: Color palette to use (defaults to CHART_COLORS_SOURCE)
+    """
     import plotly.graph_objects as go
+    
+    if colors is None:
+        colors = CHART_COLORS_SOURCE
     
     labels = list(type_counts.keys())
     values = list(type_counts.values())
@@ -186,7 +231,7 @@ def _create_pie_chart(type_counts: dict) -> None:
             labels=labels,
             values=values,
             hole=0.4,
-            marker_colors=CHART_COLORS[:len(labels)],
+            marker_colors=colors[:len(labels)],
             textinfo="label+percent",
             textposition="outside",
             textfont=dict(color="white"),
@@ -212,9 +257,17 @@ def _create_pie_chart(type_counts: dict) -> None:
     ui.plotly(fig).classes("w-full")
 
 
-def _create_treemap(project_job_counts: dict) -> None:
-    """Create a treemap of jobs grouped by project."""
+def _create_treemap(project_job_counts: dict, colors: list = None) -> None:
+    """Create a treemap of jobs grouped by project.
+    
+    Args:
+        project_job_counts: Dict of project names to job counts
+        colors: Color palette to use (defaults to CHART_COLORS_SOURCE)
+    """
     import plotly.express as px
+    
+    if colors is None:
+        colors = CHART_COLORS_SOURCE
     
     # Build data for treemap
     labels = []
@@ -236,7 +289,7 @@ def _create_treemap(project_job_counts: dict) -> None:
         names=labels,
         parents=parents,
         values=values,
-        color_discrete_sequence=CHART_COLORS,
+        color_discrete_sequence=colors,
     )
     
     fig.update_layout(

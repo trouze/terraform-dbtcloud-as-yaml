@@ -85,8 +85,8 @@ def create_nav_drawer(
         show_target = state.workflow != WorkflowType.ACCOUNT_EXPLORER
         create_account_cards(
             state=state,
-            on_configure_source=lambda: on_step_change(WorkflowStep.FETCH),
-            on_configure_target=lambda: on_step_change(WorkflowStep.TARGET),
+            on_configure_source=lambda: on_step_change(WorkflowStep.FETCH_SOURCE),
+            on_configure_target=lambda: on_step_change(WorkflowStep.FETCH_TARGET),
             show_target=show_target,
         )
 

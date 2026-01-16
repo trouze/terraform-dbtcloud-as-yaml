@@ -9,10 +9,13 @@ from importer.web.state import AppState, WorkflowStep, WorkflowType, STEP_NAMES
 from importer.web.components.stepper import create_nav_drawer, create_progress_header, DBT_NAVY
 from importer.web.pages.home import create_home_page
 from importer.web.pages.requirements import create_requirements_page
-from importer.web.pages.fetch import create_fetch_page
-from importer.web.pages.explore import create_explore_page
-from importer.web.pages.mapping import create_mapping_page
-from importer.web.pages.target import create_target_page
+from importer.web.pages.fetch_source import create_fetch_source_page
+from importer.web.pages.explore_source import create_explore_source_page
+from importer.web.pages.scope import create_scope_page
+from importer.web.pages.fetch_target import create_fetch_target_page
+from importer.web.pages.explore_target import create_explore_target_page
+from importer.web.pages.match import create_match_page
+from importer.web.pages.configure import create_configure_page
 from importer.web.pages.deploy import create_deploy_page
 from importer.web.pages.destroy import create_destroy_page
 from importer.web.env_manager import load_account_info_from_env
@@ -124,24 +127,24 @@ def create_page_content(state: AppState) -> None:
 
     if step == WorkflowStep.HOME:
         create_home_page(state, navigate_to_step, set_workflow)
-    elif step == WorkflowStep.FETCH:
-        create_fetch_page(state, navigate_to_step, save_state)
-    elif step == WorkflowStep.EXPLORE:
-        create_explore_page(state, navigate_to_step, save_state)
-    elif step == WorkflowStep.MAP:
-        create_mapping_page(state, navigate_to_step, save_state)
-    elif step == WorkflowStep.TARGET:
-        create_target_page(state, navigate_to_step, save_state)
+    elif step == WorkflowStep.FETCH_SOURCE:
+        create_fetch_source_page(state, navigate_to_step, save_state)
+    elif step == WorkflowStep.EXPLORE_SOURCE:
+        create_explore_source_page(state, navigate_to_step, save_state)
+    elif step == WorkflowStep.SCOPE:
+        create_scope_page(state, navigate_to_step, save_state)
+    elif step == WorkflowStep.FETCH_TARGET:
+        create_fetch_target_page(state, navigate_to_step, save_state)
+    elif step == WorkflowStep.EXPLORE_TARGET:
+        create_explore_target_page(state, navigate_to_step, save_state)
+    elif step == WorkflowStep.MATCH:
+        create_match_page(state, navigate_to_step, save_state)
+    elif step == WorkflowStep.CONFIGURE:
+        create_configure_page(state, navigate_to_step, save_state)
     elif step == WorkflowStep.DEPLOY:
         create_deploy_page(state, navigate_to_step, save_state)
     elif step == WorkflowStep.DESTROY:
         create_destroy_page(state, navigate_to_step, save_state)
-    elif step == WorkflowStep.MATCH_TARGET:
-        _create_placeholder_page(
-            "Match Target",
-            "Coming soon: match existing target resources to avoid duplicates.",
-            state,
-        )
 
 
 def _create_placeholder_page(title: str, description: str, state: AppState) -> None:
@@ -196,11 +199,11 @@ def home_page() -> None:
         create_page_content(state)
 
 
-@ui.page("/fetch")
-def fetch_page() -> None:
-    """Fetch step page route."""
+@ui.page("/fetch_source")
+def fetch_source_page() -> None:
+    """Fetch Source step page route."""
     state = get_state()
-    state.current_step = WorkflowStep.FETCH
+    state.current_step = WorkflowStep.FETCH_SOURCE
     save_state()
     setup_page(state)
 
@@ -209,11 +212,11 @@ def fetch_page() -> None:
         create_page_content(state)
 
 
-@ui.page("/explore")
-def explore_page() -> None:
-    """Explore step page route."""
+@ui.page("/explore_source")
+def explore_source_page() -> None:
+    """Explore Source step page route."""
     state = get_state()
-    state.current_step = WorkflowStep.EXPLORE
+    state.current_step = WorkflowStep.EXPLORE_SOURCE
     save_state()
     setup_page(state)
 
@@ -222,11 +225,11 @@ def explore_page() -> None:
         create_page_content(state)
 
 
-@ui.page("/map")
-def map_page() -> None:
-    """Map step page route."""
+@ui.page("/scope")
+def scope_page() -> None:
+    """Scope step page route."""
     state = get_state()
-    state.current_step = WorkflowStep.MAP
+    state.current_step = WorkflowStep.SCOPE
     save_state()
     setup_page(state)
 
@@ -235,11 +238,50 @@ def map_page() -> None:
         create_page_content(state)
 
 
-@ui.page("/target")
-def target_page() -> None:
-    """Target step page route."""
+@ui.page("/fetch_target")
+def fetch_target_page() -> None:
+    """Fetch Target step page route."""
     state = get_state()
-    state.current_step = WorkflowStep.TARGET
+    state.current_step = WorkflowStep.FETCH_TARGET
+    save_state()
+    setup_page(state)
+
+    with ui.column().classes("w-full"):
+        create_progress_header(state)
+        create_page_content(state)
+
+
+@ui.page("/explore_target")
+def explore_target_page() -> None:
+    """Explore Target step page route."""
+    state = get_state()
+    state.current_step = WorkflowStep.EXPLORE_TARGET
+    save_state()
+    setup_page(state)
+
+    with ui.column().classes("w-full"):
+        create_progress_header(state)
+        create_page_content(state)
+
+
+@ui.page("/match")
+def match_page() -> None:
+    """Match step page route."""
+    state = get_state()
+    state.current_step = WorkflowStep.MATCH
+    save_state()
+    setup_page(state)
+
+    with ui.column().classes("w-full"):
+        create_progress_header(state)
+        create_page_content(state)
+
+
+@ui.page("/configure")
+def configure_page() -> None:
+    """Configure Migration step page route."""
+    state = get_state()
+    state.current_step = WorkflowStep.CONFIGURE
     save_state()
     setup_page(state)
 
@@ -266,19 +308,6 @@ def destroy_page() -> None:
     """Destroy step page route."""
     state = get_state()
     state.current_step = WorkflowStep.DESTROY
-    save_state()
-    setup_page(state)
-
-    with ui.column().classes("w-full"):
-        create_progress_header(state)
-        create_page_content(state)
-
-
-@ui.page("/match_target")
-def match_target_page() -> None:
-    """Match Target step page route (placeholder)."""
-    state = get_state()
-    state.current_step = WorkflowStep.MATCH_TARGET
     save_state()
     setup_page(state)
 

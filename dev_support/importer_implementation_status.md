@@ -1,8 +1,8 @@
 # Importer Implementation Status & Tracking
 
 **Last Updated:** 2026-01-15  
-**Current Importer Version:** 0.9.0  
-**Status:** Phase 3 Complete + Interactive Mode + Web UI + E2E Testing Infrastructure + Destroy Workflow
+**Current Importer Version:** 0.9.1  
+**Status:** Phase 3 Complete + Interactive Mode + Web UI + E2E Testing Infrastructure + Destroy Workflow + Target Match Feature
 
 > **⚠️ IMPORTANT: Keep This Document Updated**
 > 
@@ -666,6 +666,15 @@ The following items require API endpoint research before implementation can begi
 ---
 
 ## Change Log
+
+### 2026-01-15 (v0.9.1)
+- **Version:** Incremented to 0.9.1 (patch release - Bug fixes)
+- **Target Match Feature**: Added Source/Target toggle to Fetch page for target infrastructure fetching
+- **Target Match Feature**: New target_matcher.py component for exact name matching between source and target resources
+- **Target Match Feature**: New mapping_file.py utility for creating/loading target resource mapping files
+- **Target Match Feature**: New terraform_import.py utility for generating TF 1.5+ import blocks
+- **Test Suite Fix**: Fixed `test_name_collision_handling` - assertion was checking wrong dict level
+- **Python 3.9 Fix**: Changed `str | Path` union syntax to `Union[str, Path]` for compatibility
 
 ### 2026-01-15 (v0.8.1)
 - **Version:** Incremented to 0.8.1 (patch release - Deploy page UI polish)

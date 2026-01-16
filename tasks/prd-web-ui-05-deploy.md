@@ -2,7 +2,7 @@
 
 ## Introduction
 
-The Target and Deploy steps of the dbt Cloud Importer Web UI. Target configures destination credentials and connection providers. Deploy executes Terraform operations (init, plan, apply) to create resources in the target account.
+The Target and Deploy steps of the dbt Cloud Importer Web UI. Target configures destination credentials and connection providers. Deploy executes Terraform operations (init, plan, apply) to create resources in the target account. When migrating to an account with existing infrastructure, this step also handles **importing matched resources into Terraform state** before running plan/apply, preventing "resource already exists" errors.
 
 This is **Part 5 of 5** in the Web UI PRD series.  
 **Depends on:** Part 1 (Core Shell), Part 2 (Fetch), Part 3 (Explore), Part 4 (Map)
@@ -14,6 +14,9 @@ This is **Part 5 of 5** in the Web UI PRD series.
 - Support both "generate files only" and direct Terraform execution
 - Provide real-time streaming output for Terraform operations
 - Display deployment results and resource creation status
+- **Import existing target resources into Terraform state using mapping file**
+- **Execute `terraform import` for matched resources before plan/apply**
+- **Display import results and handle import failures gracefully**
 
 ## User Stories
 
@@ -208,6 +211,142 @@ This is **Part 5 of 5** in the Web UI PRD series.
 - [ ] Typecheck passes
 - [ ] Verify in browser
 
+---
+
+## Resource Import Sub-Flow
+
+When migrating to an account with existing infrastructure, resources defined in the mapping file must be imported into Terraform state before running plan/apply. This ensures Terraform knows about existing resources and won't try to create duplicates.
+
+### US-049: View Import Summary
+**Description:** As a user, I want to see a summary of resources that will be imported so that I understand what Terraform will take over.
+
+**Acceptance Criteria:**
+- [ ] Import summary panel shows resources from mapping file
+- [ ] Grouped by resource type with counts
+- [ ] Shows source name → target ID mapping for each resource
+- [ ] Warning if mapping file is missing or invalid
+- [ ] Warning if mapping file has changed since last validation
+- [ ] "Skip Import" option (with confirmation) if user wants to create all new
+- [ ] Typecheck passes
+- [ ] Verify in browser
+
+---
+
+### US-050: Generate Import Blocks
+**Description:** As a user, I want to generate Terraform import blocks so that I can use Terraform 1.5+ native import.
+
+**Acceptance Criteria:**
+- [ ] "Generate Import Blocks" button creates `imports.tf` file
+- [ ] Uses Terraform 1.5+ `import {}` block syntax
+- [ ] One import block per mapping entry
+- [ ] Import block includes resource address and target ID
+- [ ] Example output:
+  ```hcl
+  import {
+    to = module.dbt_cloud.dbtcloud_project.analytics_project
+    id = "98765"
+  }
+  ```
+- [ ] File saved alongside other generated Terraform files
+- [ ] Typecheck passes
+- [ ] Verify in browser
+
+---
+
+### US-051: Run Terraform Import
+**Description:** As a user, I want to run the import process so that existing resources are added to Terraform state.
+
+**Acceptance Criteria:**
+- [ ] "Import Resources" button triggers import process
+- [ ] Supports two modes:
+  - Modern: `terraform plan` with import blocks (Terraform 1.5+)
+  - Legacy: Sequential `terraform import` commands
+- [ ] Progress indicator showing X of Y resources imported
+- [ ] Real-time streaming output in terminal panel
+- [ ] Each resource shows status: pending, importing, imported, failed
+- [ ] Typecheck passes
+- [ ] Verify in browser
+
+---
+
+### US-052: View Import Progress
+**Description:** As a user, I want to see real-time progress during import so that I know which resources are being processed.
+
+**Acceptance Criteria:**
+- [ ] Progress table shows each resource being imported
+- [ ] Columns: Resource Type, Source Name, Target ID, Status, Duration
+- [ ] Status updates in real-time: Pending → Importing → Success/Failed
+- [ ] Failed imports show error message inline
+- [ ] Running total: "Imported 15 of 23 resources"
+- [ ] Estimated time remaining (based on average per resource)
+- [ ] Typecheck passes
+- [ ] Verify in browser
+
+---
+
+### US-053: Handle Import Errors
+**Description:** As a user, I want clear error handling when imports fail so that I can resolve issues and continue.
+
+**Acceptance Criteria:**
+- [ ] Failed imports don't stop the entire process (continue with others)
+- [ ] Failed imports collected and displayed at end
+- [ ] Common errors have specific guidance:
+  - "Resource not found": Target ID may be incorrect
+  - "Resource already in state": Already imported, can skip
+  - "Permission denied": Check API token permissions
+- [ ] "Retry Failed" button to retry just the failed imports
+- [ ] "Skip Failed" button to proceed without failed resources
+- [ ] Option to edit mapping file and re-validate
+- [ ] Typecheck passes
+- [ ] Verify in browser
+
+---
+
+### US-054: Import Before Plan Workflow
+**Description:** As a user, I want import to run automatically before plan so that I get an accurate plan output.
+
+**Acceptance Criteria:**
+- [ ] When mapping file exists, "Plan" button shows "Import & Plan"
+- [ ] Import runs automatically before plan if not already done
+- [ ] Import results displayed before plan starts
+- [ ] If import has failures, prompt to continue or abort
+- [ ] Plan output shows imported resources as "no changes" (in sync)
+- [ ] Plan output shows new resources as "will be created"
+- [ ] Typecheck passes
+- [ ] Verify in browser
+
+---
+
+### US-055: View Import Results
+**Description:** As a user, I want to see detailed results after import so that I can verify which resources were successfully imported.
+
+**Acceptance Criteria:**
+- [ ] Import results panel shows:
+  - Total resources attempted
+  - Successfully imported count
+  - Failed imports count
+  - List of each resource with status
+- [ ] Successfully imported resources show Terraform resource address
+- [ ] Failed resources show error details
+- [ ] "Export Results" button saves import log to file
+- [ ] Results persist in session for reference during plan/apply
+- [ ] Typecheck passes
+- [ ] Verify in browser
+
+---
+
+### US-056: Verify Imported State
+**Description:** As a user, I want to verify that imported resources match the expected configuration so that I catch drift before apply.
+
+**Acceptance Criteria:**
+- [ ] After import, option to run `terraform plan` in verify mode
+- [ ] Plan shows any differences between state and configuration
+- [ ] Differences highlighted (e.g., "job name will change from X to Y")
+- [ ] Option to accept drift (update config) or fix drift (update resource)
+- [ ] Warning if significant drift detected
+- [ ] Typecheck passes
+- [ ] Verify in browser
+
 ## Functional Requirements
 
 - **FR-1:** Target credentials must be stored separately from source credentials
@@ -217,6 +356,12 @@ This is **Part 5 of 5** in the Web UI PRD series.
 - **FR-5:** Apply must only be available after successful plan
 - **FR-6:** Errors must be parsed for user-friendly messaging
 - **FR-7:** Destroy must require explicit confirmation
+- **FR-8:** When mapping file exists, import blocks must be generated for matched resources
+- **FR-9:** Import must run before plan when matched resources exist
+- **FR-10:** Import progress must be displayed per-resource with real-time status updates
+- **FR-11:** Import failures must not block other imports (continue and report)
+- **FR-12:** Plan must show imported resources as "no changes" when state matches config
+- **FR-13:** Import results must be persisted in session for reference
 
 ## Non-Goals (Out of Scope)
 
@@ -225,6 +370,8 @@ This is **Part 5 of 5** in the Web UI PRD series.
 - Rolling back applies (use terraform manually)
 - Partial applies (applying subset of resources)
 - Terraform Cloud/Enterprise integration
+- Automatic drift remediation (show drift, but user decides action)
+- Import of resources not in mapping file (only explicit mappings)
 
 ## Technical Considerations
 
@@ -247,6 +394,101 @@ async def run_terraform(command: list[str], cwd: str, on_output: Callable[[str],
     
     await process.wait()
     return process.returncode
+```
+
+### Import Block Generation
+```python
+def generate_import_blocks(mapping_data: dict, resource_address_map: dict) -> str:
+    """Generate Terraform 1.5+ import blocks from mapping file.
+    
+    Args:
+        mapping_data: Parsed target_resource_mapping.yml content
+        resource_address_map: Maps source_key to Terraform resource address
+    
+    Returns:
+        Contents for imports.tf file
+    """
+    blocks = []
+    for mapping in mapping_data.get('mappings', []):
+        source_key = mapping['source_key']
+        target_id = mapping['target_id']
+        resource_type = mapping['resource_type']
+        
+        # Get the Terraform resource address for this source entity
+        tf_address = resource_address_map.get(source_key)
+        if not tf_address:
+            continue
+            
+        # Generate import block
+        block = f'''import {{
+  to = {tf_address}
+  id = "{target_id}"
+}}
+'''
+        blocks.append(block)
+    
+    return '\n'.join(blocks)
+
+# Example resource address mapping (generated from YAML)
+RESOURCE_ADDRESS_MAP = {
+    'project__analytics_project': 'module.dbt_cloud.dbtcloud_project.analytics_project',
+    'environment__analytics_project__production': 'module.dbt_cloud.dbtcloud_environment.analytics_project_production',
+    'global_connection__snowflake_prod': 'module.dbt_cloud.dbtcloud_global_connection.snowflake_prod',
+}
+```
+
+### Legacy Import Command Generation
+```python
+def generate_import_commands(mapping_data: dict, resource_address_map: dict) -> list[tuple[str, str]]:
+    """Generate terraform import commands for pre-1.5 Terraform.
+    
+    Returns:
+        List of (resource_address, import_id) tuples
+    """
+    commands = []
+    for mapping in mapping_data.get('mappings', []):
+        source_key = mapping['source_key']
+        target_id = mapping['target_id']
+        
+        tf_address = resource_address_map.get(source_key)
+        if tf_address:
+            commands.append((tf_address, str(target_id)))
+    
+    return commands
+
+async def run_legacy_imports(
+    commands: list[tuple[str, str]], 
+    cwd: str,
+    on_progress: Callable[[str, str, str], None]  # (address, id, status)
+):
+    """Run sequential terraform import commands."""
+    results = []
+    for address, import_id in commands:
+        on_progress(address, import_id, 'importing')
+        
+        returncode = await run_terraform(
+            ['import', address, import_id],
+            cwd=cwd,
+            on_output=lambda x: None  # Capture but don't stream
+        )
+        
+        status = 'success' if returncode == 0 else 'failed'
+        on_progress(address, import_id, status)
+        results.append({'address': address, 'id': import_id, 'status': status})
+    
+    return results
+```
+
+### Import with Plan (Terraform 1.5+)
+```python
+async def run_import_plan(cwd: str, on_output: Callable[[str], None]):
+    """Run terraform plan which will process import blocks."""
+    # Terraform 1.5+ processes import {} blocks during plan
+    return await run_terraform(
+        ['plan', '-generate-config-out=generated.tf'],
+        cwd=cwd,
+        on_output=on_output
+    )
 ```
 
 ### Provider Configuration Generation
@@ -292,11 +534,21 @@ importer/web/
     ├── credential_form.py    # (reused from fetch)
     ├── connection_config.py  # Connection provider forms
     ├── terminal_output.py    # (reused, enhanced for TF)
-    └── terraform_results.py  # Results display component
+    ├── terraform_results.py  # Results display component
+    ├── import_generator.py   # Import block/command generation
+    └── import_progress.py    # Import progress UI component
 ```
 
 ### State for Deploy Step
 ```python
+@dataclass
+class ImportResult:
+    resource_address: str
+    target_id: str
+    status: str  # 'pending', 'importing', 'success', 'failed'
+    error_message: Optional[str] = None
+    duration_ms: Optional[int] = None
+
 @dataclass
 class DeployState:
     target_credentials: dict = field(default_factory=dict)
@@ -305,6 +557,31 @@ class DeployState:
     last_plan_success: bool = False
     last_plan_output: str = ''
     apply_results: Optional[dict] = None
+    
+    # Import state
+    import_results: list[ImportResult] = field(default_factory=list)
+    import_completed: bool = False
+    import_mode: str = 'modern'  # 'modern' (TF 1.5+) or 'legacy'
+```
+
+### Terraform Version Detection
+```python
+async def detect_terraform_version(cwd: str) -> tuple[int, int, int]:
+    """Detect installed Terraform version."""
+    process = await asyncio.create_subprocess_exec(
+        'terraform', 'version', '-json',
+        cwd=cwd,
+        stdout=asyncio.subprocess.PIPE,
+    )
+    stdout, _ = await process.communicate()
+    data = json.loads(stdout)
+    version = data['terraform_version']
+    major, minor, patch = map(int, version.split('.'))
+    return (major, minor, patch)
+
+def supports_import_blocks(version: tuple[int, int, int]) -> bool:
+    """Check if Terraform version supports import {} blocks."""
+    return version >= (1, 5, 0)
 ```
 
 ## Success Metrics
@@ -313,6 +590,10 @@ class DeployState:
 - Plan of 100 resources displays within 10 seconds
 - Apply progress updates per-resource
 - Error messages are actionable
+- Import of 50 resources completes in under 2 minutes (legacy mode)
+- Import block generation completes in under 1 second
+- Import progress updates within 500ms of status change
+- Zero "resource already exists" errors when mapping file is properly configured
 
 ## Open Questions
 
@@ -320,3 +601,8 @@ class DeployState:
 2. Should we detect if terraform is installed and show install instructions?
 3. Should we support multiple target environments (dev/staging/prod)?
 4. Should apply results link directly to resources in dbt Cloud UI?
+5. Should we auto-detect Terraform version and choose import mode, or let user select?
+6. How should we handle partial imports (some succeed, some fail) before plan?
+7. Should we support importing resources that aren't in the mapping file (manual import)?
+8. Should we show a diff between imported state and expected config before apply?
+9. How should we handle resources that exist in target but are NOT in the mapping file?

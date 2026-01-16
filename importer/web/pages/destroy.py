@@ -10,6 +10,7 @@ Implements US-048 from PRD Part 5:
 
 import asyncio
 import json
+import re
 import subprocess
 from pathlib import Path
 from typing import Callable, Optional
@@ -83,7 +84,7 @@ def _check_prerequisites(
     
     # Check for target credentials
     if not state.target_credentials.is_complete():
-        errors.append(("Target credentials not configured", WorkflowStep.TARGET))
+        errors.append(("Target credentials not configured", WorkflowStep.CONFIGURE))
     
     # Check if state file exists (allows destroy even if apply wasn't done in this session)
     state_path = _get_state_file_path(state, destroy_state)
@@ -173,7 +174,7 @@ def _create_target_info_panel(
                 ui.label("Target").classes("font-semibold")
             ui.button(
                 icon="settings",
-                on_click=lambda: on_step_change(WorkflowStep.TARGET),
+                on_click=lambda: on_step_change(WorkflowStep.CONFIGURE),
             ).props("flat dense round size=sm").tooltip("Target Configuration")
         
         with ui.column().classes("gap-1"):
@@ -204,7 +205,8 @@ def _create_resource_table(state: AppState, destroy_state: dict) -> None:
         with ui.row().classes("w-full items-center justify-between mb-2"):
             with ui.row().classes("items-center gap-2"):
                 ui.label("Select Resources").classes("font-semibold")
-                ui.badge(f"{len(managed_resources)} managed").props("color=primary outline")
+                resource_badge = ui.badge(f"{len(managed_resources)} managed").props("color=primary outline")
+                destroy_state["resource_badge"] = resource_badge
             ui.button(
                 "Refresh",
                 icon="refresh",
@@ -585,6 +587,11 @@ def _refresh_resources(state: AppState, destroy_state: dict) -> None:
     table.rows.extend(managed_resources)
     table.selected.clear()
     table.update()
+    
+    # Update the resource count badge
+    resource_badge = destroy_state.get("resource_badge")
+    if resource_badge:
+        resource_badge.set_text(f"{len(managed_resources)} managed")
     
     destroy_state["selected"] = set()
     ui.notify(f"Refreshed: {len(managed_resources)} managed resources", type="info")
@@ -1048,14 +1055,16 @@ async def _run_terraform_destroy_all(
 ) -> None:
     """Run terraform destroy for ALL resources (US-048)."""
     tf_dir = state.deploy.terraform_dir or "deployments/migration"
-    resources = _load_state_resources(state, destroy_state)
+    all_resources = _load_state_resources(state, destroy_state)
+    # Filter out data sources - only count managed resources
+    managed_resources = [r for r in all_resources if r.get("mode") != "data"]
 
     terminal.clear()
     terminal.set_title("Output — DESTROY ALL")
     terminal.error("━━━ TERRAFORM DESTROY ALL ━━━")
     terminal.error("")
     terminal.warning("⚠️  DESTROYING ALL RESOURCES IN TARGET ACCOUNT")
-    terminal.warning(f"    Total resources: {len(resources)}")
+    terminal.warning(f"    Total resources: {len(managed_resources)}")
     terminal.info("")
 
     env = _get_terraform_env(state)
@@ -1071,26 +1080,37 @@ async def _run_terraform_destroy_all(
 
     # Track destroyed resources for summary
     destroyed_resources = []
+    destroy_count = 0
 
     for line in result.stdout.split("\n"):
         if line.strip():
             if "Destroy complete!" in line:
                 terminal.success(line)
-            elif "destroyed" in line.lower():
+                # Parse count from "Destroy complete! Resources: X destroyed."
+                match = re.search(r'Resources:\s*(\d+)\s*destroyed', line)
+                if match:
+                    destroy_count = int(match.group(1))
+            elif "Destruction complete" in line:
+                # Individual resource destruction line like "module.x.resource.y: Destruction complete after 2s"
                 terminal.warning(line)
-                # Extract resource address if present
                 if ":" in line:
                     destroyed_resources.append(line.split(":")[0].strip())
+            elif "Destroying..." in line:
+                # Resource being destroyed
+                terminal.warning(line)
             else:
                 terminal.info_auto(line)
     for line in result.stderr.split("\n"):
         if line.strip():
             terminal.warning(line)
 
+    # Use destroy_count from summary if we didn't capture individual resources
+    final_count = destroy_count if destroy_count > 0 else len(destroyed_resources)
+
     if result.returncode == 0:
         terminal.success("")
         terminal.success("━━━ DESTROY ALL SUMMARY ━━━")
-        terminal.success(f"Successfully destroyed {len(destroyed_resources)} resource(s)")
+        terminal.success(f"Successfully destroyed {final_count} resource(s)")
         if destroyed_resources:
             terminal.info("")
             terminal.info("Destroyed resources:")
@@ -1104,7 +1124,7 @@ async def _run_terraform_destroy_all(
         state.deploy.last_plan_success = False
         state.deploy.destroy_complete = True
         save_state()
-        ui.notify(f"Destroyed all {len(destroyed_resources)} resources", type="positive")
+        ui.notify(f"Destroyed all {final_count} resources", type="positive")
         
         # Refresh the resource table to reflect destroyed resources
         _refresh_resources(state, destroy_state)

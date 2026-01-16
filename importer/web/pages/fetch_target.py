@@ -1,4 +1,4 @@
-"""Fetch step page for configuring source/target credentials and fetching account data."""
+"""Fetch Target step page - configure target credentials and fetch target account data."""
 
 import asyncio
 import json
@@ -10,9 +10,8 @@ from typing import Callable, Optional
 
 from nicegui import ui
 
-from importer.web.state import AppState, WorkflowStep, FetchMode
+from importer.web.state import AppState, WorkflowStep
 from importer.web.components.credential_form import (
-    create_source_credential_form,
     create_target_credential_form,
     validate_credentials,
 )
@@ -24,9 +23,6 @@ from importer.web.components.terminal_output import (
 )
 from importer.web.components.progress_tree import ProgressTree
 from importer.web.env_manager import (
-    load_source_credentials,
-    load_source_credentials_from_content,
-    save_source_credentials,
     load_target_credentials,
     load_target_credentials_from_content,
     save_target_credentials,
@@ -38,15 +34,15 @@ from importer.element_ids import apply_element_ids
 
 # dbt brand colors
 DBT_ORANGE = "#FF694A"
-DBT_TEAL = "#047377"  # Color for target mode
+DBT_TEAL = "#047377"  # Primary color for target pages
 
 
-def create_fetch_page(
+def create_fetch_target_page(
     state: AppState,
     on_step_change: Callable[[WorkflowStep], None],
     save_state: Callable[[], None],
 ) -> None:
-    """Create the fetch step page content.
+    """Create the Fetch Target step page content.
 
     Args:
         state: Current application state
@@ -59,98 +55,49 @@ def create_fetch_page(
     # Progress tree for structured hierarchy
     progress_tree = ProgressTree()
     
-    # State for tracking fetch progress (used by current mode)
+    # State for tracking fetch progress
     fetch_in_progress = {"value": False}
     cancel_event = {"event": None}  # Will hold threading.Event during fetch
-    
-    # Determine current mode
-    is_target_mode = state.active_fetch_mode == FetchMode.TARGET
-    current_fetch_state = state.target_fetch if is_target_mode else state.fetch
-    fetch_complete = {"value": current_fetch_state.fetch_complete}
-    
-    # Mode colors
-    mode_color = DBT_TEAL if is_target_mode else DBT_ORANGE
+    fetch_complete = {"value": state.target_fetch.fetch_complete}
     
     with ui.column().classes("w-full max-w-6xl mx-auto p-6 gap-4"):
-        # Page header with mode toggle
-        with ui.row().classes("w-full items-center justify-between"):
-            with ui.row().classes("items-center gap-4"):
-                ui.icon("cloud_download", size="2rem").style(f"color: {mode_color};")
-                header_text = "Fetch Target Account" if is_target_mode else "Fetch Source Account"
-                ui.label(header_text).classes("text-2xl font-bold")
-            
-            # Mode toggle tabs
-            with ui.row().classes("gap-2"):
-                source_btn = ui.button(
-                    "Source",
-                    icon="upload",
-                    on_click=lambda: _switch_fetch_mode(state, FetchMode.SOURCE, save_state),
-                ).props("flat" if is_target_mode else "").style(
-                    f"background-color: {DBT_ORANGE};" if not is_target_mode else ""
-                )
-                if state.fetch.fetch_complete:
-                    source_btn.props("icon-right=check_circle")
-                
-                target_btn = ui.button(
-                    "Target",
-                    icon="download",
-                    on_click=lambda: _switch_fetch_mode(state, FetchMode.TARGET, save_state),
-                ).props("flat" if not is_target_mode else "").style(
-                    f"background-color: {DBT_TEAL};" if is_target_mode else ""
-                )
-                if state.target_fetch.fetch_complete:
-                    target_btn.props("icon-right=check_circle")
+        # Page header
+        with ui.row().classes("w-full items-center gap-4"):
+            ui.icon("cloud_download", size="2rem").style(f"color: {DBT_TEAL};")
+            ui.label("Fetch Target Account").classes("text-2xl font-bold")
 
-        # Mode description
-        if is_target_mode:
-            ui.label(
-                "Fetch existing resources from your TARGET dbt Platform account for matching with source resources."
-            ).classes("text-slate-600 dark:text-slate-400")
-            
-            # Target mode info banner
-            with ui.card().classes("w-full p-3 border-l-4").style(f"border-color: {DBT_TEAL};"):
-                with ui.row().classes("items-center gap-2"):
-                    ui.icon("info", size="sm").style(f"color: {DBT_TEAL};")
-                    ui.label(
-                        "Target fetch is used to identify existing resources that can be imported into Terraform state "
-                        "instead of being created as duplicates."
-                    ).classes("text-sm")
-        else:
-            ui.label(
-                "Configure your source dbt Platform account credentials and fetch the account data."
-            ).classes("text-slate-600 dark:text-slate-400")
+        ui.label(
+            "Configure your target dbt Platform account credentials and fetch the existing infrastructure data."
+        ).classes("text-slate-600 dark:text-slate-400")
+        
+        # Info banner explaining target fetch purpose
+        with ui.card().classes("w-full p-3 border-l-4").style(f"border-color: {DBT_TEAL};"):
+            with ui.row().classes("items-center gap-2"):
+                ui.icon("info", size="sm").style(f"color: {DBT_TEAL};")
+                ui.label(
+                    "Target fetch retrieves existing resources from your target account. "
+                    "This enables matching source resources to existing targets for import into Terraform state."
+                ).classes("text-sm")
 
         # Two-column layout: Left credentials/options, Right actions/progress
         with ui.row().classes("w-full gap-6"):
             # Left column: Credentials and Options (1/3 width)
             with ui.column().classes("w-1/3 min-w-[300px] gap-4"):
-                if is_target_mode:
-                    # Target credential form
-                    create_target_credential_form(
-                        state=state,
-                        on_credentials_change=lambda creds: _on_credentials_change(state, save_state),
-                        on_load_env=lambda: _load_target_env_credentials(state, terminal, save_state),
-                        on_load_env_content=lambda content, filename: _load_target_env_from_upload(
-                            content, filename, state, terminal, save_state
-                        ),
-                        on_save_env=lambda: _save_target_env_credentials(state, terminal),
-                    )
-                else:
-                    # Source credential form
-                    create_source_credential_form(
-                        state=state,
-                        on_credentials_change=lambda creds: _on_credentials_change(state, save_state),
-                        on_load_env=lambda: _load_env_credentials(state, terminal, save_state),
-                        on_load_env_content=lambda content, filename: _load_env_from_upload(
-                            content, filename, state, terminal, save_state
-                        ),
-                        on_save_env=lambda: _save_env_credentials(state, terminal),
-                    )
+                # Target credential form
+                create_target_credential_form(
+                    state=state,
+                    on_credentials_change=lambda creds: _on_credentials_change(state, save_state),
+                    on_load_env=lambda: _load_env_credentials(state, terminal, save_state),
+                    on_load_env_content=lambda content, filename: _load_env_from_upload(
+                        content, filename, state, terminal, save_state
+                    ),
+                    on_save_env=lambda: _save_env_credentials(state, terminal),
+                )
 
-                # Fetch Options (uses current mode's fetch state)
-                _create_fetch_options(state, save_state, is_target_mode)
+                # Fetch Options
+                _create_fetch_options(state, save_state)
 
-            # Right column: Actions/Progress combined, and Fetch Complete (2/3 width)
+            # Right column: Actions/Progress combined (2/3 width)
             with ui.column().classes("flex-grow gap-4"):
                 # Combined Actions + Progress card
                 with ui.card().classes("w-full p-4"):
@@ -162,7 +109,7 @@ def create_fetch_page(
                         test_btn = ui.button(
                             "Test Connection",
                             icon="network_check",
-                            on_click=lambda: _test_connection(state, terminal, is_target_mode),
+                            on_click=lambda: _test_connection(state, terminal),
                         ).props("outline size=sm")
 
                     # Fetch button row
@@ -176,9 +123,9 @@ def create_fetch_page(
                 # Results section (Fetch Complete - shown after fetch completes)
                 results_container = ui.column().classes("w-full gap-4")
                 
-                if current_fetch_state.fetch_complete:
+                if state.target_fetch.fetch_complete:
                     with results_container:
-                        _create_results_section(state, on_step_change, is_target_mode)
+                        _create_results_section(state, on_step_change)
 
         # Terminal output (full width below the two columns)
         with ui.column().classes("w-full"):
@@ -187,9 +134,8 @@ def create_fetch_page(
         # Now add the fetch button with access to results_container
         with fetch_btn_container:
             with ui.row().classes("w-full gap-2"):
-                fetch_label = "Fetch Target Account Data" if is_target_mode else "Fetch Account Data"
                 fetch_btn = ui.button(
-                    fetch_label,
+                    "Fetch Target Account Data",
                     icon="cloud_download",
                     on_click=lambda: _run_fetch(
                         state,
@@ -203,9 +149,8 @@ def create_fetch_page(
                         on_step_change,
                         save_state,
                         results_container,
-                        is_target_mode,
                     ),
-                ).classes("flex-grow").style(f"background-color: {mode_color};")
+                ).classes("flex-grow").style(f"background-color: {DBT_TEAL};")
 
                 cancel_btn = ui.button(
                     "Cancel",
@@ -214,62 +159,41 @@ def create_fetch_page(
                 ).props("outline color=negative").classes("hidden")
 
 
-def _switch_fetch_mode(
-    state: AppState,
-    mode: FetchMode,
-    save_state: Callable[[], None],
-) -> None:
-    """Switch between source and target fetch modes."""
-    if state.active_fetch_mode != mode:
-        state.active_fetch_mode = mode
-        save_state()
-        ui.navigate.reload()
-
-
 def _create_fetch_options(
     state: AppState,
     save_state: Callable[[], None],
-    is_target_mode: bool = False,
 ) -> None:
     """Create fetch options card."""
-    # Get the appropriate fetch state
-    fetch_state = state.target_fetch if is_target_mode else state.fetch
-    
     with ui.card().classes("w-full"):
         ui.label("Fetch Options").classes("font-semibold mb-4")
 
         # Output directory
-        default_dir = "dev_support/samples/target" if is_target_mode else "dev_support/samples"
         ui.input(
             label="Output Directory",
-            value=fetch_state.output_dir,
-            placeholder=default_dir,
+            value=state.target_fetch.output_dir,
+            placeholder="dev_support/samples/target",
         ).classes("w-full").props('outlined').on(
             'update:model-value',
-            lambda e: _update_output_dir(state, e.args, save_state, is_target_mode)
+            lambda e: _update_output_dir(state, e.args, save_state)
         )
 
         # Auto-timestamp toggle
         ui.switch(
             "Auto-timestamp filenames",
-            value=fetch_state.auto_timestamp,
-            on_change=lambda e: _update_auto_timestamp(state, e.value, save_state, is_target_mode),
+            value=state.target_fetch.auto_timestamp,
+            on_change=lambda e: _update_auto_timestamp(state, e.value, save_state),
         ).classes("mt-4")
 
-        # Advanced options (expanded by default to align with Fetch Complete)
-        with ui.expansion("Advanced Options", icon="settings", value=True).classes("w-full mt-4"):
+        # Advanced options (collapsed by default)
+        with ui.expansion("Advanced Options", icon="settings", value=False).classes("w-full mt-4"):
             def _update_threads(e):
-                # For on("update:model-value"), value is in e.args
                 val = e.args if e.args is not None else 15
-                if is_target_mode:
-                    state.target_fetch.threads = int(val) if val else 15
-                else:
-                    state.fetch.threads = int(val) if val else 15
+                state.target_fetch.threads = int(val) if val else 15
                 save_state()
             
             ui.number(
                 label="Threads",
-                value=getattr(fetch_state, 'threads', 15) or 15,
+                value=getattr(state.target_fetch, 'threads', 15) or 15,
                 min=1,
                 max=20,
             ).classes("w-full").props('outlined').tooltip(
@@ -285,35 +209,24 @@ def _create_fetch_options(
 
             ui.number(
                 label="Max Retries",
-                value=5,
-                min=1,
+                value=3,
+                min=0,
                 max=10,
             ).classes("w-full mt-2").props('outlined')
-
-            ui.switch(
-                "Verify SSL",
-                value=True,
-            ).classes("mt-2")
 
 
 def _create_results_section(
     state: AppState,
     on_step_change: Callable[[WorkflowStep], None],
-    is_target_mode: bool = False,
 ) -> None:
     """Create the results section shown after successful fetch."""
-    # Get the appropriate fetch state
-    fetch_state = state.target_fetch if is_target_mode else state.fetch
-    mode_color = DBT_TEAL if is_target_mode else DBT_ORANGE
-    
     with ui.card().classes("w-full p-6 border-l-4 border-green-500"):
         with ui.row().classes("w-full items-center gap-3"):
             ui.icon("check_circle", size="lg").classes("text-green-500")
-            title = "Target Fetch Complete" if is_target_mode else "Fetch Complete"
-            ui.label(title).classes("text-xl font-semibold")
+            ui.label("Target Fetch Complete").classes("text-xl font-semibold")
 
         # Stats grid
-        counts = fetch_state.resource_counts
+        counts = state.target_fetch.resource_counts
         if counts:
             with ui.row().classes("w-full mt-4 gap-4 flex-wrap"):
                 for resource, count in counts.items():
@@ -322,38 +235,22 @@ def _create_results_section(
                         ui.label(resource.replace("_", " ").title()).classes("text-sm text-slate-500")
 
         # Account info
-        if fetch_state.account_name:
-            account_label = "Target Account" if is_target_mode else "Account"
-            ui.label(f"{account_label}: {fetch_state.account_name}").classes("mt-4 text-slate-600 dark:text-slate-400")
+        if state.target_fetch.account_name:
+            ui.label(f"Target Account: {state.target_fetch.account_name}").classes("mt-4 text-slate-600 dark:text-slate-400")
 
         # File paths
         with ui.column().classes("mt-4 gap-1"):
-            if fetch_state.last_fetch_file:
-                ui.label(f"Data: {fetch_state.last_fetch_file}").classes("text-xs text-slate-500 font-mono")
-            if fetch_state.last_summary_file:
-                ui.label(f"Summary: {fetch_state.last_summary_file}").classes("text-xs text-slate-500 font-mono")
+            if state.target_fetch.last_fetch_file:
+                ui.label(f"Data: {state.target_fetch.last_fetch_file}").classes("text-xs text-slate-500 font-mono")
+            if state.target_fetch.last_summary_file:
+                ui.label(f"Summary: {state.target_fetch.last_summary_file}").classes("text-xs text-slate-500 font-mono")
 
-        # Continue button (different actions for source vs target)
-        if is_target_mode:
-            # Target mode: suggest going back to source or continuing to Map
-            with ui.row().classes("mt-6 gap-2"):
-                ui.button(
-                    "Switch to Source",
-                    icon="swap_horiz",
-                    on_click=lambda: _switch_fetch_mode(state, FetchMode.SOURCE, lambda: None),
-                ).props("outline")
-                
-                ui.button(
-                    "Continue to Map",
-                    icon="arrow_forward",
-                    on_click=lambda: on_step_change(WorkflowStep.MAP),
-                ).style(f"background-color: {mode_color};")
-        else:
-            ui.button(
-                "Continue to Explore",
-                icon="arrow_forward",
-                on_click=lambda: on_step_change(WorkflowStep.EXPLORE),
-            ).classes("mt-6").style(f"background-color: {mode_color};")
+        # Continue button
+        ui.button(
+            "Continue to Explore Target",
+            icon="arrow_forward",
+            on_click=lambda: on_step_change(WorkflowStep.EXPLORE_TARGET),
+        ).classes("mt-6").style(f"background-color: {DBT_TEAL};")
 
 
 def _on_credentials_change(state: AppState, save_state: Callable[[], None]) -> None:
@@ -365,14 +262,9 @@ def _update_output_dir(
     state: AppState,
     value: str,
     save_state: Callable[[], None],
-    is_target_mode: bool = False,
 ) -> None:
     """Update output directory in state."""
-    default = "dev_support/samples/target" if is_target_mode else "dev_support/samples"
-    if is_target_mode:
-        state.target_fetch.output_dir = value if value else default
-    else:
-        state.fetch.output_dir = value if value else default
+    state.target_fetch.output_dir = value if value else "dev_support/samples/target"
     save_state()
 
 
@@ -380,137 +272,13 @@ def _update_auto_timestamp(
     state: AppState,
     value: bool,
     save_state: Callable[[], None],
-    is_target_mode: bool = False,
 ) -> None:
     """Update auto-timestamp setting."""
-    if is_target_mode:
-        state.target_fetch.auto_timestamp = value
-    else:
-        state.fetch.auto_timestamp = value
+    state.target_fetch.auto_timestamp = value
     save_state()
 
 
 def _load_env_credentials(
-    state: AppState,
-    terminal: TerminalOutput,
-    save_state: Callable[[], None],
-) -> None:
-    """Load credentials from default .env file."""
-    terminal.info("Loading credentials from default .env file...")
-    
-    try:
-        creds = load_source_credentials()
-        
-        if not creds.get("account_id") and not creds.get("api_token"):
-            terminal.warning("No source credentials found in .env file")
-            ui.notify("No credentials found in .env", type="warning")
-            return
-
-        # Update state
-        state.source_credentials.host_url = creds.get("host_url", "https://cloud.getdbt.com")
-        state.source_credentials.account_id = creds.get("account_id", "")
-        state.source_credentials.api_token = creds.get("api_token", "")
-        
-        # Also update account info
-        state.source_account = load_account_info_from_env("source")
-        
-        # Clear previous fetch results since credentials changed
-        state.fetch.fetch_complete = False
-        
-        save_state()
-        
-        terminal.success("Credentials loaded from .env")
-        ui.notify("Credentials loaded", type="positive")
-        
-        # Reload page to show new values
-        ui.navigate.reload()
-
-    except Exception as e:
-        terminal.error(f"Failed to load credentials: {e}")
-        ui.notify(f"Failed to load: {e}", type="negative")
-
-
-def _load_env_from_upload(
-    content: str,
-    filename: str,
-    state: AppState,
-    terminal: TerminalOutput,
-    save_state: Callable[[], None],
-) -> None:
-    """Load credentials from uploaded .env file content."""
-    terminal.info(f"Loading credentials from uploaded file: {filename}")
-    
-    try:
-        creds = load_source_credentials_from_content(content)
-        
-        if not creds.get("account_id") and not creds.get("api_token"):
-            terminal.warning(f"No source credentials found in {filename}")
-            ui.notify("No credentials found in uploaded file", type="warning")
-            return
-
-        # Update state
-        state.source_credentials.host_url = creds.get("host_url", "https://cloud.getdbt.com")
-        state.source_credentials.account_id = creds.get("account_id", "")
-        state.source_credentials.api_token = creds.get("api_token", "")
-        
-        # Try to fetch account name to update account info
-        if creds.get("account_id") and creds.get("api_token"):
-            success, result = fetch_account_name(
-                creds["host_url"],
-                creds["account_id"],
-                creds["api_token"],
-            )
-            if success:
-                state.source_account.account_name = result
-                state.source_account.is_verified = True
-            state.source_account.account_id = creds["account_id"]
-            state.source_account.host_url = creds["host_url"]
-            state.source_account.is_configured = True
-        
-        # Clear previous fetch results since credentials changed
-        state.fetch.fetch_complete = False
-        
-        save_state()
-        
-        terminal.success(f"Credentials loaded from {filename}")
-        ui.notify(f"Credentials loaded from {filename}", type="positive")
-        
-        # Reload page to show new values
-        ui.navigate.reload()
-
-    except Exception as e:
-        terminal.error(f"Failed to load credentials from {filename}: {e}")
-        ui.notify(f"Failed to load: {e}", type="negative")
-
-
-def _save_env_credentials(state: AppState, terminal: TerminalOutput) -> None:
-    """Save credentials to .env file."""
-    creds = state.source_credentials
-    
-    if not creds.account_id or not creds.api_token:
-        terminal.warning("Cannot save: Account ID and API Token are required")
-        ui.notify("Fill in credentials first", type="warning")
-        return
-
-    terminal.info("Saving credentials to .env file...")
-    
-    try:
-        path = save_source_credentials(
-            host_url=creds.host_url,
-            account_id=creds.account_id,
-            api_token=creds.api_token,
-        )
-        terminal.success(f"Credentials saved to {path}")
-        ui.notify("Credentials saved", type="positive")
-
-    except Exception as e:
-        terminal.error(f"Failed to save credentials: {e}")
-        ui.notify(f"Failed to save: {e}", type="negative")
-
-
-# Target credential helpers
-
-def _load_target_env_credentials(
     state: AppState,
     terminal: TerminalOutput,
     save_state: Callable[[], None],
@@ -551,7 +319,7 @@ def _load_target_env_credentials(
         ui.notify(f"Failed to load: {e}", type="negative")
 
 
-def _load_target_env_from_upload(
+def _load_env_from_upload(
     content: str,
     filename: str,
     state: AppState,
@@ -605,7 +373,7 @@ def _load_target_env_from_upload(
         ui.notify(f"Failed to load: {e}", type="negative")
 
 
-def _save_target_env_credentials(state: AppState, terminal: TerminalOutput) -> None:
+def _save_env_credentials(state: AppState, terminal: TerminalOutput) -> None:
     """Save target credentials to .env file."""
     creds = state.target_credentials
     
@@ -634,11 +402,9 @@ def _save_target_env_credentials(state: AppState, terminal: TerminalOutput) -> N
 async def _test_connection(
     state: AppState,
     terminal: TerminalOutput,
-    is_target_mode: bool = False,
 ) -> None:
-    """Test connection to dbt Platform API."""
-    creds = state.target_credentials if is_target_mode else state.source_credentials
-    mode_label = "target" if is_target_mode else "source"
+    """Test connection to target dbt Platform API."""
+    creds = state.target_credentials
     
     # Validate first
     is_valid, errors = validate_credentials(creds)
@@ -648,7 +414,7 @@ async def _test_connection(
         ui.notify("Invalid credentials", type="negative")
         return
 
-    terminal.info(f"Testing {mode_label} connection to {creds.host_url}...")
+    terminal.info(f"Testing target connection to {creds.host_url}...")
     
     try:
         from importer.web.env_manager import fetch_account_name
@@ -692,13 +458,10 @@ async def _run_fetch(
     on_step_change: Callable[[WorkflowStep], None],
     save_state: Callable[[], None],
     results_container: Optional[ui.column] = None,
-    is_target_mode: bool = False,
 ) -> None:
-    """Run the fetch operation."""
-    # Get appropriate credentials and fetch state based on mode
-    creds = state.target_credentials if is_target_mode else state.source_credentials
-    fetch_state = state.target_fetch if is_target_mode else state.fetch
-    mode_label = "target" if is_target_mode else "source"
+    """Run the target fetch operation."""
+    creds = state.target_credentials
+    fetch_state = state.target_fetch
     
     # Validate credentials
     is_valid, errors = validate_credentials(creds)
@@ -728,7 +491,7 @@ async def _run_fetch(
     terminal.clear()
     progress_tree.start()
     
-    terminal.info(f"Starting {mode_label} fetch operation...")
+    terminal.info("Starting target fetch operation...")
     terminal.info(f"Host: {creds.host_url}")
     terminal.info(f"Account ID: {creds.account_id}")
     terminal.info(f"Output: {fetch_state.output_dir}")
@@ -756,8 +519,7 @@ async def _run_fetch(
         output_dir = Path(fetch_state.output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
         
-        tracker_filename = "target_importer_runs.json" if is_target_mode else "importer_runs.json"
-        run_tracker = RunTracker(output_dir / tracker_filename)
+        run_tracker = RunTracker(output_dir / "target_importer_runs.json")
         run_id, timestamp = run_tracker.start_run(settings.account_id)
 
         terminal.info(f"Run ID: {run_id}, Timestamp: {timestamp}")
@@ -789,7 +551,7 @@ async def _run_fetch(
         fetch_duration = time.time() - fetch_start_time
 
         terminal.info("")
-        terminal.success("Fetch complete!")
+        terminal.success("Target fetch complete!")
 
         # Generate filenames
         json_filename = run_tracker.get_filename(
@@ -845,26 +607,21 @@ async def _run_fetch(
             "repositories": len(snapshot.globals.repositories),
         }
 
-        # Also update account info
-        account_info = state.target_account if is_target_mode else state.source_account
-        account_info.account_name = snapshot.account_name or ""
-        account_info.account_id = creds.account_id
-        account_info.host_url = creds.host_url
-        account_info.is_configured = True
-        account_info.is_verified = True
+        # Also update target account info
+        state.target_account.account_name = snapshot.account_name or ""
+        state.target_account.account_id = creds.account_id
+        state.target_account.host_url = creds.host_url
+        state.target_account.is_configured = True
+        state.target_account.is_verified = True
         
         # Store raw account data
-        if is_target_mode:
-            state.target_account_data = payload
-        else:
-            state.account_data = payload
+        state.target_account_data = payload
 
         save_state()
         fetch_complete["value"] = True
 
         terminal.info("")
-        complete_msg = "TARGET FETCH COMPLETE" if is_target_mode else "FETCH COMPLETE"
-        terminal.success(f"━━━ {complete_msg} ━━━")
+        terminal.success("━━━ TARGET FETCH COMPLETE ━━━")
         terminal.info(f"  Projects: {fetch_state.resource_counts.get('projects', 0)}")
         terminal.info(f"  Environments: {fetch_state.resource_counts.get('environments', 0)}")
         terminal.info(f"  Jobs: {fetch_state.resource_counts.get('jobs', 0)}")
@@ -875,17 +632,17 @@ async def _run_fetch(
         # Mark progress tree as complete
         progress_tree.complete()
         
-        ui.notify(f"{mode_label.title()} fetch completed successfully!", type="positive")
+        ui.notify("Target fetch completed successfully!", type="positive")
 
-        # Dynamically add results section (instead of reloading)
+        # Dynamically add results section
         if results_container is not None:
             results_container.clear()
             with results_container:
-                _create_results_section(state, on_step_change, is_target_mode)
+                _create_results_section(state, on_step_change)
 
     except FetchCancelledException:
         terminal.warning("")
-        terminal.warning("━━━ FETCH CANCELLED ━━━")
+        terminal.warning("━━━ TARGET FETCH CANCELLED ━━━")
         terminal.warning("The fetch operation was cancelled by the user.")
         
         # Mark progress tree as cancelled
@@ -895,7 +652,7 @@ async def _run_fetch(
 
     except Exception as e:
         terminal.error("")
-        terminal.error(f"Fetch failed: {e}")
+        terminal.error(f"Target fetch failed: {e}")
         
         # Mark progress tree as error
         progress_tree.error(f"Failed: {type(e).__name__}")

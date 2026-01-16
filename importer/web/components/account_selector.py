@@ -128,7 +128,7 @@ def create_compact_account_status(
                 account=state.source_account,
                 label="Source",
                 color="#3B82F6",
-                on_click=lambda: on_step_change(WorkflowStep.FETCH),
+                on_click=lambda: on_step_change(WorkflowStep.FETCH_SOURCE),
             )
 
         # Target account
@@ -137,7 +137,7 @@ def create_compact_account_status(
                 account=state.target_account,
                 label="Target",
                 color="#10B981",
-                on_click=lambda: on_step_change(WorkflowStep.TARGET),
+                on_click=lambda: on_step_change(WorkflowStep.FETCH_TARGET),
             )
 
 
