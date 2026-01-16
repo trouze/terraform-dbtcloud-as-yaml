@@ -13,15 +13,21 @@ from importer.web.state import AppState
 from importer.web.components.stepper import DBT_ORANGE
 
 
-def _load_full_data_for_type(state: AppState, type_code: str) -> List[Dict[str, Any]]:
+def _load_full_data_for_type(state: AppState, type_code: str, is_target: bool = False) -> List[Dict[str, Any]]:
     """Load full data from the JSON snapshot for a specific entity type.
     
     This provides ALL fields from the API, not just the simplified report_items.
+    
+    Args:
+        state: Application state
+        type_code: Entity type code (e.g., "JOB", "ENV")
+        is_target: If True, load from target_fetch state; otherwise from fetch state
     """
-    if not state.fetch.last_fetch_file:
+    fetch_state = state.target_fetch if is_target else state.fetch
+    if not fetch_state.last_fetch_file:
         return []
     
-    json_path = Path(state.fetch.last_fetch_file)
+    json_path = Path(fetch_state.last_fetch_file)
     if not json_path.exists():
         return []
     
@@ -202,13 +208,14 @@ def _add_sort_key(items: list) -> list:
     return items
 
 
-def _build_column_defs(visible_cols: list, type_filter: str, state: "AppState") -> list:
+def _build_column_defs(visible_cols: list, type_filter: str, state: "AppState", is_target: bool = False) -> list:
     """Build AG Grid column definitions based on visible columns and type filter.
     
     Args:
         visible_cols: List of column field names that should be visible
         type_filter: Current type filter ("all" or a specific type code)
         state: App state for loading full data
+        is_target: If True, load from target_fetch state
         
     Returns:
         List of AG Grid column definitions
@@ -348,7 +355,7 @@ def _build_column_defs(visible_cols: list, type_filter: str, state: "AppState") 
     
     # Add type-specific columns if a type is filtered
     if type_filter != "all":
-        full_data = _load_full_data_for_type(state, type_filter)
+        full_data = _load_full_data_for_type(state, type_filter, is_target)
         if full_data:
             # Discover additional keys from the data
             all_keys = set()
@@ -387,8 +394,16 @@ def create_entity_table(
     report_items: list,
     state: AppState,
     save_state: Callable[[], None],
+    is_target: bool = False,
 ) -> None:
-    """Create the entity table with filtering, sorting, and export."""
+    """Create the entity table with filtering, sorting, and export.
+    
+    Args:
+        report_items: List of entity items to display
+        state: Application state
+        save_state: Callback to save state changes
+        is_target: If True, use target_fetch/target_account state; otherwise use source state
+    """
     # Add sort keys to all items
     _add_sort_key(report_items)
     
@@ -429,7 +444,7 @@ def create_entity_table(
         else:
             # Load full data for specific type (with all fields)
             if full_data_cache["type"] != type_filter:
-                full_data = _load_full_data_for_type(state, type_filter)
+                full_data = _load_full_data_for_type(state, type_filter, is_target)
                 if full_data:
                     # Add sort keys and merge with report_items metadata
                     for item in full_data:
@@ -480,7 +495,7 @@ def create_entity_table(
         """Update grid with filtered data and column definitions."""
         if grid_ref["grid"]:
             # Build new column definitions for current filter/visibility
-            new_col_defs = _build_column_defs(state.explore.visible_columns, current_filter["type"], state)
+            new_col_defs = _build_column_defs(state.explore.visible_columns, current_filter["type"], state, is_target)
             # Use AG Grid's setGridOption API to properly replace columns
             try:
                 await grid_ref["grid"].run_grid_method("setGridOption", "columnDefs", new_col_defs)
@@ -529,7 +544,7 @@ def create_entity_table(
             export_data = filtered
         else:
             # For specific types, load FULL data from the JSON snapshot
-            full_data = _load_full_data_for_type(state, type_code)
+            full_data = _load_full_data_for_type(state, type_code, is_target)
             if not full_data:
                 # Fall back to report_items if full data not available
                 filtered = get_filtered_data()
@@ -563,10 +578,12 @@ def create_entity_table(
         
         # Generate filename
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        account_id = state.source_account.account_id or "unknown"
+        account_state = state.target_account if is_target else state.source_account
+        account_id = account_state.account_id or "unknown"
+        account_prefix = "target_" if is_target else ""
         type_suffix = f"_{type_code}" if type_code != "all" else ""
         type_name = RESOURCE_TYPES.get(type_code, {}).get("name", type_code) if type_code != "all" else "all"
-        filename = f"{type_name.lower().replace(' ', '_')}_{account_id}{type_suffix}_{timestamp}.csv"
+        filename = f"{account_prefix}{type_name.lower().replace(' ', '_')}_{account_id}{type_suffix}_{timestamp}.csv"
         
         # Trigger download using JavaScript
         ui.download(csv_content.encode("utf-8"), filename)
@@ -576,7 +593,7 @@ def create_entity_table(
         """Show detail dialog for clicked entity."""
         if e.args and "data" in e.args:
             row_data = e.args["data"]
-            show_entity_detail_dialog(row_data, state)
+            show_entity_detail_dialog(row_data, state, is_target)
     
     # Main container with grid layout to fill available space
     with ui.element("div").style(
@@ -630,7 +647,7 @@ def create_entity_table(
                 # Discover additional columns if a specific type is filtered
                 type_specific_columns = []
                 if current_filter["type"] != "all":
-                    full_data = _load_full_data_for_type(state, current_filter["type"])
+                    full_data = _load_full_data_for_type(state, current_filter["type"], is_target)
                     if full_data:
                         # Collect all unique keys from the data
                         all_keys = set()
@@ -697,7 +714,7 @@ def create_entity_table(
                                 
                                 # Update grid column visibility using AG Grid API
                                 if grid_ref["grid"]:
-                                    new_col_defs = _build_column_defs(new_visible, current_filter["type"], state)
+                                    new_col_defs = _build_column_defs(new_visible, current_filter["type"], state, is_target)
                                     try:
                                         await grid_ref["grid"].run_grid_method("setGridOption", "columnDefs", new_col_defs)
                                         ui.notify("Column visibility updated", type="positive")
@@ -735,16 +752,13 @@ def create_entity_table(
         def build_grid_in_container():
             """Build the AG Grid inside the container."""
             # Build column definitions based on current state
-            column_defs = _build_column_defs(state.explore.visible_columns, current_filter["type"], state)
+            column_defs = _build_column_defs(state.explore.visible_columns, current_filter["type"], state, is_target)
             
             # Get the current data
             row_data = get_filtered_data()
             
             # AGGrid table - Note: removed initialState.sortModel as it may create phantom columns
             # Use quartz theme for automatic dark mode support
-            # #region agent log
-            import json as _json; open('/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug.log','a').write(_json.dumps({"hypothesisId":"dark-mode","location":"entity_table.py:build_grid_in_container","message":"Creating AG Grid with quartz theme","timestamp":__import__('time').time()*1000})+'\n')
-            # #endregion
             grid = ui.aggrid({
                 "columnDefs": column_defs,
                 "rowData": row_data,
@@ -783,13 +797,19 @@ def create_entity_table(
             build_grid_in_container()
 
 
-def _get_full_entity_data(state: "AppState", row_data: dict) -> Optional[Dict[str, Any]]:
-    """Load full entity data from the JSON snapshot."""
+def _get_full_entity_data(state: "AppState", row_data: dict, is_target: bool = False) -> Optional[Dict[str, Any]]:
+    """Load full entity data from the JSON snapshot.
+    
+    Args:
+        state: Application state
+        row_data: Row data containing entity type and identifiers
+        is_target: If True, load from target_fetch state; otherwise from fetch state
+    """
     type_code = row_data.get("element_type_code", "")
     entity_id = row_data.get("dbt_id")
     entity_key = row_data.get("key")
     
-    full_data_list = _load_full_data_for_type(state, type_code)
+    full_data_list = _load_full_data_for_type(state, type_code, is_target)
     
     # Find matching entity
     for item in full_data_list:
@@ -824,17 +844,19 @@ SUMMARY_FIELDS = {
 }
 
 
-def show_entity_detail_dialog(row_data: dict, state: Optional["AppState"] = None) -> None:
-    """Show a dialog with entity details."""
-    # #region agent log
-    import json as _json; open('/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug.log','a').write(_json.dumps({"hypothesisId":"popup-width","location":"entity_table.py:show_entity_detail_dialog","message":"Opening entity dialog with max-w-6xl","timestamp":__import__('time').time()*1000})+'\n')
-    # #endregion
+def show_entity_detail_dialog(row_data: dict, state: Optional["AppState"] = None, is_target: bool = False) -> None:
+    """Show a dialog with entity details.
     
+    Args:
+        row_data: Row data containing entity information
+        state: Application state for loading full data
+        is_target: If True, load from target_fetch state; otherwise from fetch state
+    """
     type_code = row_data.get("element_type_code", "UNK")
     type_info = RESOURCE_TYPES.get(type_code, {"name": type_code, "code": type_code, "icon": "info", "color": "#6B7280"})
     
     # Load full data if state is available
-    full_data = _get_full_entity_data(state, row_data) if state else None
+    full_data = _get_full_entity_data(state, row_data, is_target) if state else None
     display_data = full_data if full_data else row_data
     
     with ui.dialog() as dialog, ui.card().classes("w-full max-w-6xl").style("height: 80vh;"):

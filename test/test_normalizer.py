@@ -361,8 +361,9 @@ def test_name_collision_handling(default_mapping_config):
     # Second should get suffix
     assert result["globals"]["connections"][1]["key"] == "prod_connection_2"
     
-    # Check collision was logged
-    assert "prod_connection" in context.collisions
+    # Check collision tracking - both keys should be tracked in the connections namespace
+    assert "connections" in context.collisions
+    assert "prod_connection" in context.collisions["connections"]
 
 
 def test_secret_handling_redacted(full_snapshot_dict):

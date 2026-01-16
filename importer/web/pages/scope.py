@@ -1,4 +1,4 @@
-"""Map step page - select entities for migration and run normalization."""
+"""Scope step page - select entities for migration and run normalization."""
 
 import asyncio
 import json
@@ -14,26 +14,6 @@ from importer.web.components.stepper import DBT_ORANGE
 from importer.web.components.selection_manager import SelectionManager
 from importer.web.components.hierarchy_index import HierarchyIndex, TYPE_DEPTH
 from importer.web.components.entity_table import show_entity_detail_dialog
-from importer.web.components.target_matcher import (
-    MatchSuggestion,
-    generate_match_suggestions,
-    create_suggestions_table,
-    create_confirmed_mappings_table,
-    create_manual_mapping_dialog,
-    get_unmatched_source_items,
-    get_unmatched_target_items,
-)
-from importer.web.utils.mapping_file import (
-    TargetResourceMapping,
-    load_mapping_file,
-    save_mapping_file,
-    validate_mapping_file,
-    create_mapping_from_confirmations,
-    get_mapping_summary,
-)
-
-# Color for target matching section
-DBT_TEAL = "#047377"
 
 # Resource type display info with new abbreviation codes
 RESOURCE_TYPES = {
@@ -52,12 +32,12 @@ RESOURCE_TYPES = {
 }
 
 
-def create_mapping_page(
+def create_scope_page(
     state: AppState,
     on_step_change: Callable[[WorkflowStep], None],
     save_state: Callable[[], None],
 ) -> None:
-    """Create the Map step page."""
+    """Create the Scope step page - select resources for migration."""
     
     # Main container
     with ui.element("div").classes("w-full max-w-7xl mx-auto p-4").style(
@@ -134,12 +114,10 @@ def create_mapping_page(
 
 def _create_header(state: AppState) -> None:
     """Create the page header."""
-    step_label = state.get_step_label(WorkflowStep.MAP)
-    title_prefix = "Scope" if step_label == "Scope" else "Map"
     with ui.card().classes("w-full p-4"):
         with ui.row().classes("w-full items-center justify-between"):
             with ui.column().classes("gap-1"):
-                ui.label(f"{title_prefix} Entities for Migration").classes("text-2xl font-bold")
+                ui.label("Scope Entities for Migration").classes("text-2xl font-bold")
                 ui.label(
                     "Select which entities to include in the Terraform configuration"
                 ).classes("text-slate-600 dark:text-slate-400")
@@ -155,13 +133,13 @@ def _create_no_data_message(on_step_change: Callable[[WorkflowStep], None]) -> N
     with ui.card().classes("w-full p-8 text-center"):
         ui.icon("warning", size="3rem").classes("text-amber-500 mx-auto")
         ui.label("No Data Available").classes("text-xl font-bold mt-4")
-        ui.label("Complete the Fetch step first to map entities.").classes(
+        ui.label("Complete the Fetch Source step first to scope entities.").classes(
             "text-slate-600 dark:text-slate-400 mt-2"
         )
         ui.button(
-            f"Go to {STEP_NAMES[WorkflowStep.FETCH]}",
+            f"Go to {STEP_NAMES[WorkflowStep.FETCH_SOURCE]}",
             icon="arrow_back",
-            on_click=lambda: on_step_change(WorkflowStep.FETCH),
+            on_click=lambda: on_step_change(WorkflowStep.FETCH_SOURCE),
         ).classes("mt-4")
 
 
@@ -1765,297 +1743,26 @@ def _create_results_display(state: AppState, on_step_change: Callable[[WorkflowS
             ui.icon("info", size="sm").classes("text-blue-500")
             ui.label(f"{state.map.exclusions_count} resources excluded").classes("text-sm")
     
-    # Target Matching Section
-    _create_target_matching_section(state)
-    
-    # Continue button
+    # Continue button - go to Fetch Target next
     ui.button(
-        f"Continue to {state.get_step_label(WorkflowStep.TARGET)}",
+        f"Continue to {state.get_step_label(WorkflowStep.FETCH_TARGET)}",
         icon="arrow_forward",
-        on_click=lambda: on_step_change(WorkflowStep.TARGET),
+        on_click=lambda: on_step_change(WorkflowStep.FETCH_TARGET),
     ).style(f"background-color: {DBT_ORANGE};").classes("w-full mt-4")
-
-
-def _create_target_matching_section(state: AppState) -> None:
-    """Create the target matching section for matching source entities to existing target resources."""
-    
-    # Only show if target fetch is complete
-    if not state.target_fetch.fetch_complete:
-        # Show hint to fetch target
-        with ui.expansion(
-            "Match Existing Target Resources",
-            icon="link",
-        ).classes("w-full mt-4").props("dense"):
-            with ui.card().classes("w-full p-3"):
-                ui.label("Target fetch required").classes("text-sm font-semibold text-amber-600")
-                ui.label(
-                    "To match source resources with existing target resources, "
-                    "first fetch the target account data in the Fetch step."
-                ).classes("text-xs text-slate-500 mt-1")
-                ui.label(
-                    "This allows you to import existing resources into Terraform state "
-                    "instead of creating duplicates."
-                ).classes("text-xs text-slate-500")
-        return
-    
-    # Load source and target report items
-    source_items = _load_report_items(state, target=False)
-    target_items = _load_report_items(state, target=True)
-    
-    if not source_items or not target_items:
-        return
-    
-    with ui.expansion(
-        "Match Existing Target Resources",
-        icon="link",
-        value=state.map.target_matching_enabled,
-    ).classes("w-full mt-4").style(f"border-left: 3px solid {DBT_TEAL};"):
-        
-        # Enable/disable toggle
-        with ui.row().classes("w-full items-center justify-between mb-3"):
-            with ui.column().classes("gap-0"):
-                ui.label("Enable Target Matching").classes("font-semibold")
-                ui.label(
-                    "Match source resources to existing target resources for import"
-                ).classes("text-xs text-slate-500")
-            
-            def on_toggle(e):
-                state.map.target_matching_enabled = e.value
-                ui.navigate.reload()
-            
-            ui.switch(
-                value=state.map.target_matching_enabled,
-                on_change=on_toggle,
-            )
-        
-        if not state.map.target_matching_enabled:
-            ui.label(
-                "Enable matching to import existing target resources into Terraform state."
-            ).classes("text-sm text-slate-500")
-            return
-        
-        ui.separator()
-        
-        # Generate suggestions if not already done
-        if not state.map.suggested_matches:
-            suggestions = generate_match_suggestions(source_items, target_items)
-            state.map.suggested_matches = [
-                {
-                    "source_name": s.source_name,
-                    "source_key": s.source_key,
-                    "source_type": s.source_type,
-                    "target_name": s.target_name,
-                    "target_id": s.target_id,
-                    "target_type": s.target_type,
-                    "confidence": s.confidence,
-                    "status": s.status,
-                }
-                for s in suggestions
-            ]
-        
-        # Convert suggested_matches back to MatchSuggestion objects
-        suggestions = [
-            MatchSuggestion(
-                source_name=s["source_name"],
-                source_key=s["source_key"],
-                source_type=s["source_type"],
-                target_name=s["target_name"],
-                target_id=s["target_id"],
-                target_type=s["target_type"],
-                confidence=s.get("confidence", "exact_match"),
-                status=s.get("status", "suggested"),
-            )
-            for s in state.map.suggested_matches
-        ]
-        
-        # Stats summary
-        pending = sum(1 for s in suggestions if s.status == "suggested")
-        confirmed = len(state.map.confirmed_mappings)
-        rejected = len(state.map.rejected_suggestions)
-        
-        with ui.row().classes("w-full gap-4 mb-3"):
-            with ui.card().classes("p-2 flex-1"):
-                ui.label(str(pending)).classes("text-lg font-bold text-amber-600")
-                ui.label("Pending").classes("text-xs text-slate-500")
-            with ui.card().classes("p-2 flex-1"):
-                ui.label(str(confirmed)).classes("text-lg font-bold text-green-600")
-                ui.label("Confirmed").classes("text-xs text-slate-500")
-            with ui.card().classes("p-2 flex-1"):
-                ui.label(str(rejected)).classes("text-lg font-bold text-slate-500")
-                ui.label("Rejected").classes("text-xs text-slate-500")
-        
-        # Pending suggestions table (simplified inline version)
-        if pending > 0:
-            ui.label("Suggested Matches").classes("text-sm font-semibold mt-2")
-            
-            with ui.card().classes("w-full p-2"):
-                for s in suggestions:
-                    if s.status != "suggested":
-                        continue
-                    
-                    with ui.row().classes("w-full items-center justify-between border-b py-1"):
-                        with ui.column().classes("gap-0 flex-1"):
-                            ui.label(s.source_name).classes("text-sm font-mono")
-                            ui.label(f"→ {s.target_name} (ID: {s.target_id})").classes("text-xs text-slate-500")
-                        
-                        with ui.row().classes("gap-1"):
-                            def confirm_suggestion(suggestion=s):
-                                # Move to confirmed
-                                state.map.confirmed_mappings.append({
-                                    "resource_type": suggestion.source_type,
-                                    "source_name": suggestion.source_name,
-                                    "source_key": suggestion.source_key,
-                                    "target_id": suggestion.target_id,
-                                    "target_name": suggestion.target_name,
-                                    "match_type": "auto",
-                                })
-                                # Update suggestion status
-                                for m in state.map.suggested_matches:
-                                    if m["source_key"] == suggestion.source_key:
-                                        m["status"] = "confirmed"
-                                        break
-                                ui.navigate.reload()
-                            
-                            def reject_suggestion(suggestion=s):
-                                state.map.rejected_suggestions.add(suggestion.source_key)
-                                for m in state.map.suggested_matches:
-                                    if m["source_key"] == suggestion.source_key:
-                                        m["status"] = "rejected"
-                                        break
-                                ui.navigate.reload()
-                            
-                            ui.button(
-                                icon="check",
-                                on_click=confirm_suggestion,
-                            ).props("size=sm color=positive flat round")
-                            ui.button(
-                                icon="close",
-                                on_click=reject_suggestion,
-                            ).props("size=sm color=negative flat round")
-            
-            # Bulk actions
-            with ui.row().classes("w-full gap-2 mt-2"):
-                def confirm_all():
-                    for s in suggestions:
-                        if s.status == "suggested":
-                            state.map.confirmed_mappings.append({
-                                "resource_type": s.source_type,
-                                "source_name": s.source_name,
-                                "source_key": s.source_key,
-                                "target_id": s.target_id,
-                                "target_name": s.target_name,
-                                "match_type": "auto",
-                            })
-                    for m in state.map.suggested_matches:
-                        if m["status"] == "suggested":
-                            m["status"] = "confirmed"
-                    ui.navigate.reload()
-                
-                ui.button(
-                    "Confirm All",
-                    icon="check",
-                    on_click=confirm_all,
-                ).props("size=sm color=positive outline")
-        
-        # Confirmed mappings
-        if state.map.confirmed_mappings:
-            ui.label("Confirmed Mappings").classes("text-sm font-semibold mt-4")
-            
-            with ui.card().classes("w-full p-2"):
-                for mapping in state.map.confirmed_mappings:
-                    with ui.row().classes("w-full items-center justify-between border-b py-1"):
-                        with ui.column().classes("gap-0 flex-1"):
-                            ui.label(mapping.get("source_name", "")).classes("text-sm font-mono")
-                            ui.label(
-                                f"→ {mapping.get('target_name', '')} (ID: {mapping.get('target_id', '')})"
-                            ).classes("text-xs text-slate-500")
-                        
-                        def remove_mapping(m=mapping):
-                            state.map.confirmed_mappings.remove(m)
-                            ui.navigate.reload()
-                        
-                        ui.button(
-                            icon="delete",
-                            on_click=remove_mapping,
-                        ).props("size=sm color=negative flat round")
-        
-        # Save mapping file button
-        if state.map.confirmed_mappings:
-            ui.separator().classes("my-3")
-            
-            def save_mappings():
-                try:
-                    mapping = create_mapping_from_confirmations(
-                        state.map.confirmed_mappings,
-                        state.source_account.account_id or "unknown",
-                        state.target_account.account_id or "unknown",
-                    )
-                    
-                    # Use the output dir from normalize or default
-                    output_dir = Path(state.fetch.output_dir)
-                    output_path = output_dir / "target_resource_mapping.yml"
-                    
-                    error = save_mapping_file(mapping, output_path)
-                    if error:
-                        ui.notify(f"Error saving: {error}", type="negative")
-                    else:
-                        state.map.mapping_file_path = str(output_path)
-                        state.map.mapping_file_valid = True
-                        ui.notify(f"Mapping saved to {output_path}", type="positive")
-                        
-                except Exception as e:
-                    ui.notify(f"Error: {e}", type="negative")
-            
-            ui.button(
-                "Save Mapping File",
-                icon="save",
-                on_click=save_mappings,
-            ).style(f"background-color: {DBT_TEAL};").classes("w-full")
-            
-            if state.map.mapping_file_path:
-                ui.label(f"Saved: {state.map.mapping_file_path}").classes("text-xs text-slate-500 mt-1")
-
-
-def _load_report_items(state: AppState, target: bool = False) -> list:
-    """Load report items from source or target fetch.
-    
-    Args:
-        state: Application state
-        target: If True, load target report items; otherwise source
-        
-    Returns:
-        List of report item dictionaries
-    """
-    if target:
-        report_file = state.target_fetch.last_report_items_file
-    else:
-        report_file = state.fetch.last_report_items_file
-    
-    if not report_file:
-        return []
-    
-    try:
-        report_path = Path(report_file)
-        if report_path.exists():
-            return json.loads(report_path.read_text(encoding="utf-8"))
-    except Exception as e:
-        logging.warning(f"Error loading report items: {e}")
-    
-    return []
 
 
 def _create_navigation(state: AppState, on_step_change: Callable[[WorkflowStep], None]) -> None:
     """Create navigation buttons."""
     with ui.row().classes("w-full justify-between mt-4"):
         ui.button(
-            f"Back to {state.get_step_label(WorkflowStep.EXPLORE)}",
+            f"Back to {state.get_step_label(WorkflowStep.EXPLORE_SOURCE)}",
             icon="arrow_back",
-            on_click=lambda: on_step_change(WorkflowStep.EXPLORE),
+            on_click=lambda: on_step_change(WorkflowStep.EXPLORE_SOURCE),
         ).props("outline")
         
         if state.map.normalize_complete:
             ui.button(
-                f"Continue to {state.get_step_label(WorkflowStep.TARGET)}",
+                f"Continue to {state.get_step_label(WorkflowStep.FETCH_TARGET)}",
                 icon="arrow_forward",
-                on_click=lambda: on_step_change(WorkflowStep.TARGET),
+                on_click=lambda: on_step_change(WorkflowStep.FETCH_TARGET),
             ).style(f"background-color: {DBT_ORANGE};")

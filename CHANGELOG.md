@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-01-15
+
+### Fixed
+- **Test Suite**: Fixed `test_name_collision_handling` assertion that was checking the wrong level of nested `collisions` dictionary structure
+- **Python 3.9 Compatibility**: Fixed `str | Path` union type syntax in `mapping_file.py` and `terraform_import.py` to use `Union[str, Path]` for Python 3.9 support
+
 ## [0.9.0] - 2026-01-15
 
 ### Added

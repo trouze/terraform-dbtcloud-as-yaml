@@ -9,13 +9,15 @@ class WorkflowStep(IntEnum):
     """Workflow steps in order."""
 
     HOME = 0
-    FETCH = 1
-    EXPLORE = 2
-    MAP = 3
-    TARGET = 4
-    DEPLOY = 5
-    DESTROY = 6
-    MATCH_TARGET = 7
+    FETCH_SOURCE = 1
+    EXPLORE_SOURCE = 2
+    SCOPE = 3
+    FETCH_TARGET = 4
+    EXPLORE_TARGET = 5
+    MATCH = 6
+    CONFIGURE = 7
+    DEPLOY = 8
+    DESTROY = 9
 
 
 class WorkflowType(str, Enum):
@@ -29,24 +31,28 @@ class WorkflowType(str, Enum):
 
 STEP_NAMES = {
     WorkflowStep.HOME: "Home",
-    WorkflowStep.FETCH: "Fetch",
-    WorkflowStep.EXPLORE: "Explore",
-    WorkflowStep.MAP: "Map",
-    WorkflowStep.TARGET: "Target Configuration",
+    WorkflowStep.FETCH_SOURCE: "Fetch Source",
+    WorkflowStep.EXPLORE_SOURCE: "Explore Source",
+    WorkflowStep.SCOPE: "Scope",
+    WorkflowStep.FETCH_TARGET: "Fetch Target",
+    WorkflowStep.EXPLORE_TARGET: "Explore Target",
+    WorkflowStep.MATCH: "Match",
+    WorkflowStep.CONFIGURE: "Configure Migration",
     WorkflowStep.DEPLOY: "Deploy",
     WorkflowStep.DESTROY: "Destroy",
-    WorkflowStep.MATCH_TARGET: "Match Target",
 }
 
 STEP_ICONS = {
     WorkflowStep.HOME: "home",
-    WorkflowStep.FETCH: "cloud_download",
-    WorkflowStep.EXPLORE: "search",
-    WorkflowStep.MAP: "tune",
-    WorkflowStep.TARGET: "settings",
+    WorkflowStep.FETCH_SOURCE: "cloud_download",
+    WorkflowStep.EXPLORE_SOURCE: "search",
+    WorkflowStep.SCOPE: "tune",
+    WorkflowStep.FETCH_TARGET: "cloud_download",
+    WorkflowStep.EXPLORE_TARGET: "manage_search",
+    WorkflowStep.MATCH: "link",
+    WorkflowStep.CONFIGURE: "settings",
     WorkflowStep.DEPLOY: "rocket_launch",
     WorkflowStep.DESTROY: "delete_forever",
-    WorkflowStep.MATCH_TARGET: "link",
 }
 
 
@@ -59,39 +65,41 @@ WORKFLOW_LABELS = {
 
 WORKFLOW_STEPS = {
     WorkflowType.MIGRATION: [
-        WorkflowStep.FETCH,
-        WorkflowStep.EXPLORE,
-        WorkflowStep.MAP,
-        WorkflowStep.TARGET,
+        WorkflowStep.FETCH_SOURCE,
+        WorkflowStep.EXPLORE_SOURCE,
+        WorkflowStep.SCOPE,
+        WorkflowStep.FETCH_TARGET,
+        WorkflowStep.EXPLORE_TARGET,
+        WorkflowStep.MATCH,
+        WorkflowStep.CONFIGURE,
         WorkflowStep.DEPLOY,
         WorkflowStep.DESTROY,
     ],
     WorkflowType.ACCOUNT_EXPLORER: [
-        WorkflowStep.FETCH,
-        WorkflowStep.EXPLORE,
+        WorkflowStep.FETCH_SOURCE,
+        WorkflowStep.EXPLORE_SOURCE,
     ],
     WorkflowType.JOBS_AS_CODE: [
-        WorkflowStep.FETCH,
-        WorkflowStep.EXPLORE,
-        WorkflowStep.MAP,
+        WorkflowStep.FETCH_SOURCE,
+        WorkflowStep.EXPLORE_SOURCE,
+        WorkflowStep.SCOPE,
         WorkflowStep.DEPLOY,
     ],
     WorkflowType.IMPORT_ADOPT: [
-        WorkflowStep.FETCH,
-        WorkflowStep.EXPLORE,
-        WorkflowStep.MAP,
-        WorkflowStep.MATCH_TARGET,
-        WorkflowStep.TARGET,
+        WorkflowStep.FETCH_SOURCE,
+        WorkflowStep.EXPLORE_SOURCE,
+        WorkflowStep.SCOPE,
+        WorkflowStep.FETCH_TARGET,
+        WorkflowStep.EXPLORE_TARGET,
+        WorkflowStep.MATCH,
+        WorkflowStep.CONFIGURE,
         WorkflowStep.DEPLOY,
         WorkflowStep.DESTROY,
     ],
 }
 
-WORKFLOW_STEP_NAMES = {
-    WorkflowType.MIGRATION: {
-        WorkflowStep.MAP: "Scope",
-    },
-}
+# No workflow-specific name overrides needed - all steps have descriptive names now
+WORKFLOW_STEP_NAMES: dict = {}
 
 
 @dataclass
@@ -134,7 +142,7 @@ class TargetCredentials:
 
 @dataclass
 class FetchState:
-    """State for the fetch step."""
+    """State for the source fetch step."""
 
     output_dir: str = "dev_support/samples"
     auto_timestamp: bool = True
@@ -147,6 +155,30 @@ class FetchState:
     last_report_items_file: Optional[str] = None
     account_name: Optional[str] = None
     resource_counts: dict = field(default_factory=dict)
+
+
+@dataclass
+class TargetFetchState:
+    """State for the target fetch step (fetching existing target infrastructure)."""
+
+    output_dir: str = "dev_support/samples/target"
+    auto_timestamp: bool = True
+    threads: int = 15
+    is_fetching: bool = False
+    fetch_complete: bool = False
+    last_fetch_file: Optional[str] = None
+    last_summary_file: Optional[str] = None
+    last_report_file: Optional[str] = None
+    last_report_items_file: Optional[str] = None
+    account_name: Optional[str] = None
+    resource_counts: dict = field(default_factory=dict)
+
+
+class FetchMode(str, Enum):
+    """Active fetch mode - source or target."""
+    
+    SOURCE = "source"
+    TARGET = "target"
 
 
 @dataclass
@@ -219,6 +251,28 @@ class MapState:
     last_exclusions_file: Optional[str] = None
     lookups_count: int = 0
     exclusions_count: int = 0
+    
+    # Target resource matching state
+    target_matching_enabled: bool = False
+    suggested_matches: list = field(default_factory=list)  # Auto-generated match suggestions
+    confirmed_mappings: list = field(default_factory=list)  # User-confirmed mappings
+    rejected_suggestions: set = field(default_factory=set)  # Source keys user rejected
+    mapping_file_path: Optional[str] = None
+    mapping_file_valid: bool = False
+    mapping_validation_errors: list = field(default_factory=list)
+
+
+@dataclass
+class ImportResult:
+    """Result of a single resource import operation."""
+    
+    resource_address: str = ""
+    target_id: str = ""
+    source_key: str = ""
+    resource_type: str = ""
+    status: str = "pending"  # "pending", "importing", "success", "failed"
+    error_message: Optional[str] = None
+    duration_ms: Optional[int] = None
 
 
 @dataclass
@@ -239,6 +293,14 @@ class DeployState:
     last_apply_output: str = ""  # Output from terraform apply
     apply_results: Optional[dict] = None
     destroy_complete: bool = False
+    
+    # Resource import state
+    import_results: list = field(default_factory=list)  # List of ImportResult
+    import_completed: bool = False
+    import_mode: str = "modern"  # "modern" (TF 1.5+ import blocks) or "legacy"
+    terraform_version: Optional[str] = None
+    imports_file_generated: bool = False
+    last_import_output: str = ""
 
     def has_state_file(self) -> bool:
         """Check if a Terraform state file exists."""
@@ -246,6 +308,10 @@ class DeployState:
         tf_dir = self.terraform_dir or "deployments/migration"
         state_path = Path(tf_dir) / "terraform.tfstate"
         return state_path.exists()
+    
+    def has_pending_imports(self) -> bool:
+        """Check if there are mappings that need to be imported."""
+        return len(self.import_results) > 0 and not self.import_completed
 
 
 @dataclass
@@ -263,13 +329,21 @@ class AppState:
     source_account: AccountInfo = field(default_factory=AccountInfo)
     target_account: AccountInfo = field(default_factory=AccountInfo)
 
+    # Source fetch state (primary)
     fetch: FetchState = field(default_factory=FetchState)
+    # Target fetch state (for matching existing infrastructure)
+    target_fetch: TargetFetchState = field(default_factory=TargetFetchState)
+    # Active fetch mode (which credentials/output to use)
+    active_fetch_mode: FetchMode = FetchMode.SOURCE
+    
     explore: ExploreState = field(default_factory=ExploreState)
     map: MapState = field(default_factory=MapState)
     deploy: DeployState = field(default_factory=DeployState)
 
     # Raw account data from fetch
     account_data: Optional[dict] = None
+    # Raw target account data from target fetch
+    target_account_data: Optional[dict] = None
 
     def step_is_complete(self, step: WorkflowStep) -> bool:
         """Check if a workflow step has been completed."""
@@ -277,20 +351,25 @@ class AppState:
             return False
         if step == WorkflowStep.HOME:
             return True
-        elif step == WorkflowStep.FETCH:
+        elif step == WorkflowStep.FETCH_SOURCE:
             return self.fetch.fetch_complete
-        elif step == WorkflowStep.EXPLORE:
+        elif step == WorkflowStep.EXPLORE_SOURCE:
             return self.fetch.fetch_complete  # Can explore once fetched
-        elif step == WorkflowStep.MAP:
+        elif step == WorkflowStep.SCOPE:
             return self.map.normalize_complete
-        elif step == WorkflowStep.TARGET:
-            return self.target_credentials.is_complete()
+        elif step == WorkflowStep.FETCH_TARGET:
+            return self.target_fetch.fetch_complete
+        elif step == WorkflowStep.EXPLORE_TARGET:
+            return self.target_fetch.fetch_complete
+        elif step == WorkflowStep.MATCH:
+            # Match is complete when mapping file is valid
+            return self.map.mapping_file_valid
+        elif step == WorkflowStep.CONFIGURE:
+            return self.deploy.files_generated
         elif step == WorkflowStep.DEPLOY:
             return self.deploy.apply_complete
         elif step == WorkflowStep.DESTROY:
             return self.deploy.destroy_complete
-        elif step == WorkflowStep.MATCH_TARGET:
-            return False
         return False
 
     def step_is_accessible(self, step: WorkflowStep) -> bool:
@@ -299,23 +378,29 @@ class AppState:
             return False
         if step == WorkflowStep.HOME:
             return True
-        elif step == WorkflowStep.FETCH:
+        elif step == WorkflowStep.FETCH_SOURCE:
             return True  # Always accessible
-        elif step == WorkflowStep.EXPLORE:
+        elif step == WorkflowStep.EXPLORE_SOURCE:
             return self.fetch.fetch_complete
-        elif step == WorkflowStep.MAP:
+        elif step == WorkflowStep.SCOPE:
             return self.fetch.fetch_complete
-        elif step == WorkflowStep.TARGET:
+        elif step == WorkflowStep.FETCH_TARGET:
+            return self.map.normalize_complete
+        elif step == WorkflowStep.EXPLORE_TARGET:
+            return self.target_fetch.fetch_complete
+        elif step == WorkflowStep.MATCH:
+            # Match requires both source scoped and target fetched
+            return self.map.normalize_complete and self.target_fetch.fetch_complete
+        elif step == WorkflowStep.CONFIGURE:
+            # Configure requires match complete (or skip if no target resources matched)
+            has_match = WorkflowStep.MATCH in self.workflow_steps()
+            if has_match:
+                return self.map.mapping_file_valid or len(self.map.confirmed_mappings) == 0
             return self.map.normalize_complete
         elif step == WorkflowStep.DEPLOY:
-            requires_target = WorkflowStep.TARGET in self.workflow_steps()
-            if requires_target:
-                return self.map.normalize_complete and self.target_credentials.is_complete()
-            return self.map.normalize_complete
+            return self.deploy.files_generated
         elif step == WorkflowStep.DESTROY:
             return self.deploy.has_state_file()
-        elif step == WorkflowStep.MATCH_TARGET:
-            return self.map.normalize_complete
         return False
 
     def workflow_steps(self) -> list[WorkflowStep]:
@@ -340,6 +425,7 @@ class AppState:
             "current_step": self.current_step.value,
             "theme": self.theme,
             "workflow": self.workflow.value,
+            "active_fetch_mode": self.active_fetch_mode.value,
             "source_credentials": {
                 "host_url": self.source_credentials.host_url,
                 "account_id": self.source_credentials.account_id,
@@ -375,6 +461,17 @@ class AppState:
                 "account_name": self.fetch.account_name,
                 "resource_counts": self.fetch.resource_counts,
             },
+            "target_fetch": {
+                "output_dir": self.target_fetch.output_dir,
+                "auto_timestamp": self.target_fetch.auto_timestamp,
+                "fetch_complete": self.target_fetch.fetch_complete,
+                "last_fetch_file": self.target_fetch.last_fetch_file,
+                "last_summary_file": self.target_fetch.last_summary_file,
+                "last_report_file": self.target_fetch.last_report_file,
+                "last_report_items_file": self.target_fetch.last_report_items_file,
+                "account_name": self.target_fetch.account_name,
+                "resource_counts": self.target_fetch.resource_counts,
+            },
             "explore": {
                 "visible_columns": self.explore.visible_columns,
             },
@@ -389,6 +486,16 @@ class AppState:
                 "last_exclusions_file": self.map.last_exclusions_file,
                 "lookups_count": self.map.lookups_count,
                 "exclusions_count": self.map.exclusions_count,
+                # Target matching state
+                "target_matching_enabled": self.map.target_matching_enabled,
+                "confirmed_mappings": self.map.confirmed_mappings,
+                "mapping_file_path": self.map.mapping_file_path,
+                "mapping_file_valid": self.map.mapping_file_valid,
+            },
+            "deploy": {
+                "import_completed": self.deploy.import_completed,
+                "import_mode": self.deploy.import_mode,
+                "terraform_version": self.deploy.terraform_version,
             },
         }
 
@@ -406,6 +513,11 @@ class AppState:
                 state.workflow = WorkflowType(data["workflow"])
             except Exception:
                 state.workflow = WorkflowType.MIGRATION
+        if "active_fetch_mode" in data:
+            try:
+                state.active_fetch_mode = FetchMode(data["active_fetch_mode"])
+            except Exception:
+                state.active_fetch_mode = FetchMode.SOURCE
 
         if "source_credentials" in data:
             sc = data["source_credentials"]
@@ -450,6 +562,18 @@ class AppState:
             state.fetch.account_name = f.get("account_name")
             state.fetch.resource_counts = f.get("resource_counts", {})
 
+        if "target_fetch" in data:
+            tf = data["target_fetch"]
+            state.target_fetch.output_dir = tf.get("output_dir", "dev_support/samples/target")
+            state.target_fetch.auto_timestamp = tf.get("auto_timestamp", True)
+            state.target_fetch.fetch_complete = tf.get("fetch_complete", False)
+            state.target_fetch.last_fetch_file = tf.get("last_fetch_file")
+            state.target_fetch.last_summary_file = tf.get("last_summary_file")
+            state.target_fetch.last_report_file = tf.get("last_report_file")
+            state.target_fetch.last_report_items_file = tf.get("last_report_items_file")
+            state.target_fetch.account_name = tf.get("account_name")
+            state.target_fetch.resource_counts = tf.get("resource_counts", {})
+
         if "explore" in data:
             e = data["explore"]
             if "visible_columns" in e:
@@ -469,5 +593,16 @@ class AppState:
             state.map.last_exclusions_file = m.get("last_exclusions_file")
             state.map.lookups_count = m.get("lookups_count", 0)
             state.map.exclusions_count = m.get("exclusions_count", 0)
+            # Target matching state
+            state.map.target_matching_enabled = m.get("target_matching_enabled", False)
+            state.map.confirmed_mappings = m.get("confirmed_mappings", [])
+            state.map.mapping_file_path = m.get("mapping_file_path")
+            state.map.mapping_file_valid = m.get("mapping_file_valid", False)
+
+        if "deploy" in data:
+            d = data["deploy"]
+            state.deploy.import_completed = d.get("import_completed", False)
+            state.deploy.import_mode = d.get("import_mode", "modern")
+            state.deploy.terraform_version = d.get("terraform_version")
 
         return state
