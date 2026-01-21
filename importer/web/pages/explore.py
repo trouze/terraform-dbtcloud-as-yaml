@@ -6,7 +6,7 @@ from typing import Callable, Optional
 
 from nicegui import ui
 
-from importer.web.state import AppState, WorkflowStep, STEP_NAMES
+from importer.web.state import AppState, WorkflowStep
 from importer.web.components.stepper import DBT_ORANGE
 
 
@@ -240,7 +240,7 @@ def _create_report_tab(content: str, state: AppState) -> None:
                 ui.icon("article", size="sm").style("color: #3B82F6;")  # Blue accent
                 ui.label("Detailed Report").classes("text-lg font-semibold")
             
-            search = ui.input(
+            ui.input(
                 placeholder="Search in report...",
             ).props("outlined dense").classes("flex-grow")
             

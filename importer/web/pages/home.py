@@ -1,7 +1,6 @@
 """Home/dashboard page for the web UI."""
 
 import json
-from datetime import datetime
 from pathlib import Path
 from typing import Callable, Optional
 

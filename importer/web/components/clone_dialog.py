@@ -281,7 +281,7 @@ def show_clone_dialog(
         
         with ui.row().classes("w-full items-center gap-2 my-3"):
             ui.icon("info", color="blue")
-            summary_label = ui.label(
+            ui.label(
                 f"Will create {total_count} new resource{'s' if total_count > 1 else ''}"
             ).classes("text-sm text-blue-700")
         

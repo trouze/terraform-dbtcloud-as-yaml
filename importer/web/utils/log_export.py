@@ -7,10 +7,10 @@ Provides functions to export logs from TerminalOutput or raw text in:
 
 import json
 from datetime import datetime, timezone
-from typing import Any, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from importer.web.components.terminal_output import LogMessage, LogLevel
+    from importer.web.components.terminal_output import LogMessage
 
 
 # OTLP Severity Number mapping (per OpenTelemetry spec)

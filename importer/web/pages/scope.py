@@ -2,8 +2,6 @@
 
 import asyncio
 import json
-import logging
-from datetime import datetime
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -12,7 +10,7 @@ from nicegui import ui
 from importer.web.state import AppState, WorkflowStep, STEP_NAMES
 from importer.web.components.stepper import DBT_ORANGE
 from importer.web.components.selection_manager import SelectionManager
-from importer.web.components.hierarchy_index import HierarchyIndex, TYPE_DEPTH
+from importer.web.components.hierarchy_index import HierarchyIndex
 from importer.web.components.entity_table import show_entity_detail_dialog
 
 # Resource type display info with new abbreviation codes
@@ -83,7 +81,7 @@ def create_scope_page(
         selection_manager.load()
         
         # Reconcile selections with current entities
-        reconcile_result = selection_manager.reconcile_with_entities(report_items_ordered)
+        selection_manager.reconcile_with_entities(report_items_ordered)
         
         # Update state counts
         counts = selection_manager.get_selection_counts()
@@ -1069,7 +1067,7 @@ def _create_action_panel(
         async def on_normalize():
             await _run_normalize(state, selection_manager, report_items, status_container, save_state)
         
-        normalize_btn = ui.button(
+        ui.button(
             "Generate Selected Source YAML",
             icon="settings_suggest",
             on_click=on_normalize,
@@ -1381,7 +1379,7 @@ async def _run_normalize(
     
     with status_container:
         ui.label("Normalizing...").classes("text-sm font-medium")
-        spinner = ui.spinner(size="sm")
+        ui.spinner(size="sm")
     
     state.map.normalize_running = True
     state.map.normalize_error = None
@@ -1463,7 +1461,6 @@ def _do_normalize(
         exclude_by_type: Dict mapping type_code -> list of mapping IDs to exclude
         output_dir: Directory for output files
     """
-    import yaml
     from pathlib import Path
     
     from importer.models import AccountSnapshot
@@ -1590,7 +1587,7 @@ def _create_results_display(state: AppState, on_step_change: Callable[[WorkflowS
                             ).props("outlined dense clearable").classes("flex-1")
                             
                             # Navigation buttons (hidden initially)
-                            with ui.row().classes("items-center gap-1") as nav_container:
+                            with ui.row().classes("items-center gap-1"):
                                 prev_btn = ui.button(icon="keyboard_arrow_up", on_click=lambda: None).props(
                                     "flat dense round size=sm"
                                 ).classes("hidden")
@@ -1602,8 +1599,8 @@ def _create_results_display(state: AppState, on_step_change: Callable[[WorkflowS
                             ui.label(f"{len(yaml_content)} chars").classes("text-xs text-slate-400")
                         
                         # YAML content with syntax highlighting
-                        with ui.scroll_area().classes("w-full").style("height: 50vh;") as scroll_area:
-                            code_element = ui.code(yaml_content, language="yaml").classes("w-full text-sm yaml-preview-code")
+                        with ui.scroll_area().classes("w-full").style("height: 50vh;"):
+                            ui.code(yaml_content, language="yaml").classes("w-full text-sm yaml-preview-code")
                         
                         # JavaScript for search highlighting
                         async def on_search(e):

@@ -337,7 +337,7 @@ def detect_circular_dependencies(
         return None
     
     # Check each job that's being cloned
-    clone_keys = {c.get("source_key") for c in clone_configs}
+    {c.get("source_key") for c in clone_configs}
     for config in clone_configs:
         source_key = config.get("source_key", "")
         source_item = items_by_key.get(source_key)

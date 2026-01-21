@@ -1,8 +1,6 @@
 """Utility for exporting content as Markdown files."""
 
 from datetime import datetime
-from pathlib import Path
-from typing import Optional
 
 
 def format_summary_as_markdown(

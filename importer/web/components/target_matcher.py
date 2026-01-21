@@ -1,6 +1,6 @@
 """Target resource matching component for matching source entities to existing target resources."""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Callable, Optional
 
 from nicegui import ui
@@ -380,7 +380,7 @@ def create_manual_mapping_dialog(
                 if item.get("element_type_code") == selected_type["value"]
             ]
         
-        source_select = ui.select(
+        ui.select(
             label="Source Resource",
             options=[],
         ).classes("w-full mb-4")
@@ -395,7 +395,7 @@ def create_manual_mapping_dialog(
                 if item.get("element_type_code") == selected_type["value"]
             ]
         
-        target_select = ui.select(
+        ui.select(
             label="Target Resource",
             options=[],
         ).classes("w-full mb-4")

@@ -338,7 +338,7 @@ def generate_backend_tf(backend_config: Dict[str, Any]) -> str:
         if region:
             lines.append(f'    region = "{region}"')
         if encrypt:
-            lines.append(f'    encrypt = true')
+            lines.append('    encrypt = true')
         if dynamodb_table:
             lines.append(f'    dynamodb_table = "{dynamodb_table}"')
         

@@ -117,10 +117,10 @@ def generate_import_blocks(
         
         # Add comment with human-readable info
         blocks.append(f"# {source_name} -> Target ID {target_id}")
-        blocks.append(f"import {{")
+        blocks.append("import {")
         blocks.append(f'  to = {tf_address}')
         blocks.append(f'  id = "{target_id}"')
-        blocks.append(f"}}")
+        blocks.append("}")
         blocks.append("")
     
     return "\n".join(blocks)
@@ -188,7 +188,7 @@ async def detect_terraform_version(cwd: Union[str, Path]) -> tuple[Optional[tupl
             match = re.search(r'v(\d+)\.(\d+)\.(\d+)', stdout2.decode())
             if match:
                 return (int(match.group(1)), int(match.group(2)), int(match.group(3))), None
-            return None, f"Could not parse Terraform version"
+            return None, "Could not parse Terraform version"
         
         data = json.loads(stdout.decode())
         version_str = data.get("terraform_version", "")

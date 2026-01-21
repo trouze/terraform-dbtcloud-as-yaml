@@ -415,7 +415,7 @@ def _create_jac_validation_section(yaml_content: str) -> None:
                 
                 with results_container:
                     with ui.row().classes("items-center gap-2 mb-2"):
-                        spinner = ui.spinner(size="sm")
+                        ui.spinner(size="sm")
                         ui.label("Validating...").classes("text-sm text-slate-500")
                 
                 # Run validation (this is sync but we await for UI update)

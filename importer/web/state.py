@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, field
 from enum import Enum, IntEnum
-from typing import Any, Optional
+from typing import Optional
 
 
 class WorkflowStep(IntEnum):

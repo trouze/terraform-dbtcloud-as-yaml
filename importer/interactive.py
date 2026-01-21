@@ -13,7 +13,7 @@ from InquirerPy import inquirer
 from InquirerPy.base.control import Choice
 from rich.console import Console
 
-from .config import get_settings, Settings, SOURCE_PREFIX, TARGET_PREFIX
+from .config import get_settings, SOURCE_PREFIX, TARGET_PREFIX
 
 
 def _strip_bracketed_paste_sequences(value: str) -> str:
@@ -52,7 +52,7 @@ def _strip_bracketed_paste_sequences(value: str) -> str:
         import sys
         log = logging.getLogger(__name__)
         # Also write to stderr for immediate visibility
-        print(f"\n[DEBUG] Stripped bracketed paste sequences:", file=sys.stderr)
+        print("\n[DEBUG] Stripped bracketed paste sequences:", file=sys.stderr)
         print(f"  Input: {repr(original_value)}", file=sys.stderr)
         print(f"  Output: {repr(result)}", file=sys.stderr)
         log.debug(f"Stripped bracketed paste sequences: {repr(original_value)} -> {repr(result)}")
@@ -692,14 +692,12 @@ def run_fetch_interactive() -> None:
     console.print("[dim]Navigation: Use arrow keys or Tab/Shift+Tab to move, Enter to confirm, Ctrl+C to cancel[/dim]\n")
 
     # Prompt for credentials if needed
-    credentials_entered = False
     try:
         get_settings()
         console.print("[green]✓[/green] Using credentials from environment variables")
     except RuntimeError:
         console.print("[yellow]⚠[/yellow] Some credentials missing, please provide them:")
         credentials = prompt_credentials()
-        credentials_entered = True
 
         # Temporarily set environment variables for this session (set both new and legacy for compatibility)
         os.environ[f"{SOURCE_PREFIX}HOST_URL"] = credentials["host_url"]
@@ -835,7 +833,7 @@ def prompt_connection_credentials(yaml_file: Path) -> dict[str, dict[str, str | 
     if not missing_configs:
         return {}
     
-    console.print(f"\n[bold cyan]Connection Provider Configuration[/bold cyan]")
+    console.print("\n[bold cyan]Connection Provider Configuration[/bold cyan]")
     console.print(f"[dim]Found {len(missing_configs)} connection(s) needing provider_config[/dim]\n")
     
     connection_configs = {}
@@ -959,7 +957,7 @@ def prompt_connection_credentials_legacy(yaml_file: Path) -> dict[str, dict[str,
     if not missing_configs:
         return {}
     
-    console.print(f"\n[bold cyan]Connection Provider Configuration[/bold cyan]")
+    console.print("\n[bold cyan]Connection Provider Configuration[/bold cyan]")
     console.print(f"[dim]Found {len(missing_configs)} connection(s) needing provider_config[/dim]\n")
     
     connection_configs = {}

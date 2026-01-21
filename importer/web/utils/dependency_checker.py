@@ -1,7 +1,6 @@
 """Dependency checker for verifying required tools and packages."""
 
 import importlib.util
-import os
 import re
 import subprocess
 import sys

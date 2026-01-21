@@ -1,7 +1,6 @@
 """Deploy step page for generating Terraform files and running deployment."""
 
 import asyncio
-import json
 import shutil
 import subprocess
 from pathlib import Path
@@ -9,11 +8,10 @@ from typing import Callable, Optional
 
 from nicegui import ui
 
-from importer.web.state import AppState, WorkflowStep, DeployState, ImportResult
+from importer.web.state import AppState, WorkflowStep, ImportResult
 from importer.web.components.terminal_output import TerminalOutput
 from importer.web.utils.yaml_viewer import (
     create_state_viewer_dialog,
-    create_text_viewer_dialog,
     create_yaml_viewer_dialog,
     get_yaml_stats,
 )
@@ -25,20 +23,8 @@ from importer.web.components.folder_picker import create_folder_picker_dialog
 from importer.web.utils.terraform_import import (
     detect_terraform_version,
     supports_import_blocks,
-    generate_import_blocks,
     generate_import_commands,
     write_import_blocks_file,
-    run_import_batch,
-    ImportSummary,
-)
-from importer.web.components.import_progress import (
-    ImportProgressTable,
-    create_import_summary_card,
-    create_import_errors_expansion,
-)
-from importer.web.utils.mapping_file import (
-    load_mapping_file,
-    validate_mapping_file,
 )
 
 
@@ -556,12 +542,12 @@ async def _run_imports(
             
             terminal.info("")
             if summary.failed == 0:
-                terminal.success(f"━━━ IMPORT COMPLETE ━━━")
+                terminal.success("━━━ IMPORT COMPLETE ━━━")
                 terminal.info(f"  Imported: {summary.success} resources")
                 terminal.info(f"  Duration: {summary.duration_ms}ms")
                 ui.notify("All imports successful!", type="positive")
             else:
-                terminal.warning(f"━━━ IMPORT COMPLETED WITH ERRORS ━━━")
+                terminal.warning("━━━ IMPORT COMPLETED WITH ERRORS ━━━")
                 terminal.info(f"  Success: {summary.success}")
                 terminal.error(f"  Failed: {summary.failed}")
                 ui.notify(f"{summary.failed} imports failed", type="warning")
@@ -1212,7 +1198,7 @@ async def _run_generate(
                     report_items,
                     str(augmented_yaml),
                 )
-                terminal.info(f"  Added clones to YAML configuration")
+                terminal.info("  Added clones to YAML configuration")
             except Exception as e:
                 terminal.warning(f"  Clone processing failed: {e}")
                 terminal.info("  Proceeding with original YAML file")

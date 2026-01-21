@@ -8,10 +8,7 @@ from typing import Any, Dict, List, Optional
 from ..models import (
     AccountSnapshot,
     Connection,
-    Environment,
-    EnvironmentVariable,
     Group,
-    Job,
     Notification,
     PrivateLinkEndpoint,
     Project,

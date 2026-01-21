@@ -3,7 +3,7 @@
 import json
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Callable, Set, Tuple
+from typing import Any, Dict, Optional, Callable, Set, Tuple
 
 import yaml
 from nicegui import ui
@@ -331,7 +331,6 @@ def parse_plan_stats(plan_output: str) -> Dict[str, int]:
     Returns:
         Dictionary with add/change/destroy counts
     """
-    import re
     
     stats = {"add": 0, "change": 0, "destroy": 0}
     

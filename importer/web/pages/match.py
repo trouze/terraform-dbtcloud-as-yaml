@@ -7,14 +7,9 @@ from typing import Callable, Optional
 
 from nicegui import ui
 
-from importer.web.state import AppState, WorkflowStep, STEP_NAMES
-from importer.web.components.target_matcher import (
-    MatchSuggestion,
-    generate_match_suggestions,
-)
+from importer.web.state import AppState, WorkflowStep
 from importer.web.components.selection_manager import SelectionManager
 from importer.web.utils.mapping_file import (
-    TargetResourceMapping,
     save_mapping_file,
     create_mapping_from_confirmations,
 )
@@ -91,7 +86,7 @@ def create_match_page(
         ]
         
         total_source_count = len(all_source_items)
-        selected_source_count = len(source_items)
+        len(source_items)
         
         if not source_items:
             _create_no_selected_message(
@@ -384,7 +379,7 @@ def _create_matching_content(
         """Handle row data changes from the grid."""
         source_key = row_data.get("source_key")
         action = row_data.get("action")
-        status = row_data.get("status")
+        row_data.get("status")
         
         # Update grid data ref
         for i, row in enumerate(grid_data_ref["data"]):

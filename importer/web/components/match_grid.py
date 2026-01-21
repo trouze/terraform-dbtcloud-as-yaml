@@ -1,10 +1,7 @@
 """Editable AG Grid component for resource matching."""
 
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Callable, Optional
-import json
-import logging
 
 from nicegui import ui
 
@@ -245,7 +242,7 @@ def build_grid_data(
                 trigger_key = f"{source_key}__trigger__completion"
                 trigger_row = {
                     "source_key": trigger_key,
-                    "source_name": f"  ↳ Completion Trigger",
+                    "source_name": "  ↳ Completion Trigger",
                     "source_type": "JCTG",  # Job Completion Trigger
                     "source_id": None,
                     "project_name": project_name,
@@ -353,7 +350,7 @@ def build_grid_data(
                         link_key = f"{source_key}__repo_link__{repo_source_key}"
                         link_row = {
                             "source_key": link_key,
-                            "source_name": f"    ↳ Link",  # Double indented under repo
+                            "source_name": "    ↳ Link",  # Double indented under repo
                             "source_type": "PREP",
                             "source_id": None,
                             "project_name": source_name,

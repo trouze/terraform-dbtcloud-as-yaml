@@ -1,6 +1,5 @@
 """Folder picker modal component for directory selection."""
 
-import os
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -68,7 +67,7 @@ def create_folder_picker_dialog(
                         part_path = Path(*parts[:i+1])
                         
                         # Make clickable
-                        btn = ui.button(
+                        ui.button(
                             part if part != "/" else "Root",
                             on_click=lambda p=part_path: navigate_to(p),
                         ).props("flat dense size=sm").classes("min-w-0")
