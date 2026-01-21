@@ -71,13 +71,12 @@ class YAMLWriter:
         account_id: int,
     ) -> Path:
         """Write normalized data to YAML file."""
-        base_filename = self.config.get_yaml_filename()
         filename = f"account_{account_id}_norm_{run_id:03d}__yaml__{timestamp}.yml"
         output_path = output_dir / filename
         
         # Add metadata comment header
         header_lines = [
-            f"# dbt Cloud Configuration (v2 Schema)",
+            "# dbt Cloud Configuration (v2 Schema)",
             f"# Generated: {dt.strptime(timestamp, '%Y%m%d_%H%M%S').strftime('%Y-%m-%d %H:%M:%S UTC')}",
             f"# Normalization Run: {run_id:03d}",
             f"# Source Account: {account_id}",

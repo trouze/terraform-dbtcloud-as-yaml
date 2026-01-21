@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
@@ -10,7 +9,7 @@ from typing import Any, Dict, List, Optional, Set
 import yaml
 from pydantic import BaseModel, Field
 
-from ..models import AccountSnapshot
+from ..models import AccountSnapshot as AccountSnapshot
 
 log = logging.getLogger(__name__)
 

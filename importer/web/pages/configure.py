@@ -1,7 +1,6 @@
 """Configure Migration step page - provider config and migration summary."""
 
-from pathlib import Path
-from typing import Callable, Optional
+from typing import Callable
 
 from nicegui import ui
 
@@ -204,7 +203,7 @@ def _create_provider_config_section(state: AppState, save_state: Callable[[], No
         ).classes("text-sm text-slate-500 mb-3")
         
         # Host URL
-        host_input = ui.input(
+        ui.input(
             label="Host URL",
             value=state.target_credentials.host_url,
             placeholder="https://cloud.getdbt.com",

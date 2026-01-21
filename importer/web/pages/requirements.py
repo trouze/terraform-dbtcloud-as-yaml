@@ -1,6 +1,5 @@
 """Requirements page for checking and installing dependencies."""
 
-from typing import Callable, List
 
 from nicegui import ui
 
@@ -9,11 +8,7 @@ from importer.web.utils.dependency_checker import (
     DependencyCategory,
     DependencyResult,
     DependencyStatus,
-    check_dbt_cloud_provider,
-    check_dbt_jobs_as_code,
-    check_git,
     check_python_packages,
-    check_terraform,
     get_overall_status,
     install_python_packages,
     run_all_checks,

@@ -1,6 +1,6 @@
 """Import progress UI component for showing resource import status."""
 
-from typing import Callable, Optional
+from typing import Optional
 
 from nicegui import ui
 
@@ -161,8 +161,6 @@ class ImportProgressTable:
         if total == 0:
             return
         
-        pending = sum(1 for r in self.results if r.status == "pending")
-        importing = sum(1 for r in self.results if r.status == "importing")
         success = sum(1 for r in self.results if r.status == "success")
         failed = sum(1 for r in self.results if r.status == "failed")
         skipped = sum(1 for r in self.results if r.status == "skipped")

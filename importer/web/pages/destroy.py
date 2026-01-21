@@ -13,7 +13,7 @@ import json
 import re
 import subprocess
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Callable
 
 from nicegui import ui
 

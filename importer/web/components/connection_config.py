@@ -510,7 +510,7 @@ def _create_connection_form(
         text=f"{conn_name}",
         icon="storage",
         value=not has_config,  # Expand if no config yet
-    ).classes("w-full mb-2") as expansion:
+    ).classes("w-full mb-2"):
         # Connection type badge and view button
         with ui.row().classes("items-center gap-2 mb-3"):
             ui.badge(conn_type.upper(), color="primary").props("outline")

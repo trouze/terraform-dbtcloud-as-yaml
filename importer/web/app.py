@@ -6,7 +6,7 @@ from typing import Optional
 from nicegui import app, ui
 
 from importer.web.state import AppState, WorkflowStep, WorkflowType, STEP_NAMES
-from importer.web.components.stepper import create_nav_drawer, create_progress_header, DBT_NAVY
+from importer.web.components.stepper import create_nav_drawer, create_progress_header
 from importer.web.pages.home import create_home_page
 from importer.web.pages.requirements import create_requirements_page
 from importer.web.pages.fetch_source import create_fetch_source_page

@@ -11,10 +11,9 @@ from typing import Optional
 import threading
 
 import typer
-from rich.console import Console, Group
+from rich.console import Console
 from rich.live import Live
 from rich.panel import Panel
-from rich.spinner import Spinner
 from rich.table import Table
 from rich.text import Text
 from rich.tree import Tree
@@ -23,7 +22,7 @@ from . import get_version
 from .client import DbtCloudClient
 from .config import get_settings
 from .element_ids import apply_element_ids
-from .fetcher import fetch_account_snapshot, FetchProgressCallback
+from .fetcher import fetch_account_snapshot
 from .models import AccountSnapshot
 from .norm_tracker import NormalizationRunTracker
 from .normalizer import MappingConfig, NormalizationContext
@@ -313,7 +312,7 @@ def fetch(
         with FetchProgress(console, threads=fetch_threads) as progress:
             snapshot = fetch_account_snapshot(client, progress=progress, threads=fetch_threads)
         logger.info(f"Successfully fetched snapshot: {len(snapshot.projects)} projects, {len(snapshot.globals.connections)} connections, {len(snapshot.globals.repositories)} repositories")
-    except Exception as e:
+    except Exception:
         logger.exception("Failed to fetch account snapshot")
         raise
     finally:

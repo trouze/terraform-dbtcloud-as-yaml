@@ -13,7 +13,6 @@ from importer.web.state import JACJobConfig
 _DBT_JOBS_AS_CODE_AVAILABLE = False
 try:
     from dbt_jobs_as_code.loader.load import load_job_configuration, LoadingJobsYAMLError
-    from dbt_jobs_as_code.schemas.job import JobDefinition
     from pydantic import ValidationError as PydanticValidationError
     _DBT_JOBS_AS_CODE_AVAILABLE = True
 except ImportError:

@@ -2,9 +2,7 @@
 
 import asyncio
 import json
-import logging
 import threading
-from datetime import datetime
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -17,8 +15,6 @@ from importer.web.components.credential_form import (
 )
 from importer.web.components.terminal_output import (
     CombinedProgressHandler,
-    FetchProgressHandler,
-    LogLevel,
     TerminalOutput,
 )
 from importer.web.components.progress_tree import ProgressTree
@@ -96,7 +92,7 @@ def create_fetch_source_page(
                         ui.label("Actions").classes("font-semibold")
                         
                         # Test connection button
-                        test_btn = ui.button(
+                        ui.button(
                             "Test Connection",
                             icon="network_check",
                             on_click=lambda: _test_connection(state, terminal),

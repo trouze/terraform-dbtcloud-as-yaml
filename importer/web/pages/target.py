@@ -1,11 +1,11 @@
 """Target step page for configuring target account credentials."""
 
 import asyncio
-from typing import Callable, Optional
+from typing import Callable
 
 from nicegui import ui
 
-from importer.web.state import AppState, WorkflowStep, TargetCredentials
+from importer.web.state import AppState, WorkflowStep
 from importer.web.components.credential_form import (
     create_target_credential_form,
     validate_credentials,
@@ -164,7 +164,7 @@ def _create_connection_test_section(
                 ui.icon("network_check", size="sm").classes("text-slate-400")
                 ui.label("Connection Status").classes("text-sm font-semibold")
             # Test connection button
-            test_btn = ui.button(
+            ui.button(
                 "Test Connection",
                 icon="network_check",
                 on_click=lambda: _test_connection(

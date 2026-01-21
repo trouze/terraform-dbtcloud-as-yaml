@@ -1,7 +1,6 @@
 """Chart components using Plotly for data visualization."""
 
 from collections import Counter
-from typing import Any, Optional
 
 from nicegui import ui
 

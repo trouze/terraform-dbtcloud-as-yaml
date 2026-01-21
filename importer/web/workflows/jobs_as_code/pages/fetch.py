@@ -37,7 +37,6 @@ def create_jac_fetch_page(
     
     # Containers for dynamic content
     fetch_status_container = {"element": None}
-    stats_container = {"element": None}
     
     with ui.column().classes("w-full max-w-4xl mx-auto p-8 gap-6"):
         # Header

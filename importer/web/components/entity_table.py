@@ -10,7 +10,6 @@ from typing import Callable, Optional, List, Dict, Any
 from nicegui import ui
 
 from importer.web.state import AppState
-from importer.web.components.stepper import DBT_ORANGE
 
 
 def _load_full_data_for_type(state: AppState, type_code: str, is_target: bool = False) -> List[Dict[str, Any]]:
@@ -607,7 +606,7 @@ def create_entity_table(
         # Toolbar row (auto height)
         with ui.row().classes("w-full items-center gap-2 flex-wrap"):
             # Type filter dropdown
-            type_select = ui.select(
+            ui.select(
                 options={
                     opt: f"{RESOURCE_TYPES.get(opt, {}).get('name', opt)} ({RESOURCE_TYPES.get(opt, {}).get('code', opt)}) [{type_counts.get(opt, 0)}]" 
                     if opt != "all" else f"All Types ({len(report_items)})"
@@ -618,7 +617,7 @@ def create_entity_table(
             ).props("outlined dense").classes("min-w-[200px]")
             
             # Search box
-            search_input = ui.input(
+            ui.input(
                 placeholder="Search by name, key, or ID...",
                 on_change=on_search_change,
             ).props("outlined dense clearable").classes("flex-grow min-w-[200px]")

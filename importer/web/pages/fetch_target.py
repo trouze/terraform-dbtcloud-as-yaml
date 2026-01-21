@@ -2,27 +2,19 @@
 
 import asyncio
 import json
-import logging
 import threading
-from datetime import datetime
 from pathlib import Path
 from typing import Callable, List, Optional, Tuple
 
 from nicegui import ui
 
 from importer.web.state import AppState, WorkflowStep
-
-
-# Native integration strategies that require PAT for target operations
-NATIVE_INTEGRATION_STRATEGIES = {"github_app", "deploy_token", "azure_active_directory_app"}
 from importer.web.components.credential_form import (
     create_target_credential_form,
     validate_credentials,
 )
 from importer.web.components.terminal_output import (
     CombinedProgressHandler,
-    FetchProgressHandler,
-    LogLevel,
     TerminalOutput,
 )
 from importer.web.components.progress_tree import ProgressTree
@@ -34,6 +26,10 @@ from importer.web.env_manager import (
     fetch_account_name,
 )
 from importer.element_ids import apply_element_ids
+
+
+# Native integration strategies that require PAT for target operations
+NATIVE_INTEGRATION_STRATEGIES = {"github_app", "deploy_token", "azure_active_directory_app"}
 
 
 # dbt brand colors
@@ -183,7 +179,7 @@ def create_fetch_target_page(
                         ui.label("Actions").classes("font-semibold")
                         
                         # Test connection button
-                        test_btn = ui.button(
+                        ui.button(
                             "Test Connection",
                             icon="network_check",
                             on_click=lambda: _test_connection(state, terminal),

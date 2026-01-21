@@ -5,7 +5,7 @@ from typing import Callable, Optional
 from nicegui import ui
 
 from importer.web.state import JACJobConfig
-from importer.web.workflows.jobs_as_code.utils.job_fetcher import is_job_managed, parse_job_identifier
+from importer.web.workflows.jobs_as_code.utils.job_fetcher import parse_job_identifier
 from importer.web.workflows.jobs_as_code.utils.yaml_generator import sanitize_identifier
 
 
@@ -239,7 +239,7 @@ def create_job_filter_controls(
         ).classes("min-w-[150px]").props("outlined dense")
         
         # Search box
-        search = ui.input(
+        ui.input(
             label="Search",
             placeholder="Search job names...",
         ).classes("min-w-[200px]").props("outlined dense clearable")

@@ -1,6 +1,6 @@
 """Resource mapping page for Jobs as Code Generator clone workflow."""
 
-from typing import Callable, Optional
+from typing import Callable
 
 from nicegui import ui
 

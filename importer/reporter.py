@@ -415,9 +415,9 @@ def generate_detailed_report(snapshot: AccountSnapshot) -> str:
                 else:
                     lines.append("  ")
                     if env_type == "development":
-                        lines.append(f"  - *No jobs configured. Development environment.*")
+                        lines.append("  - *No jobs configured. Development environment.*")
                     else:
-                        lines.append(f"  - *No jobs configured.*")
+                        lines.append("  - *No jobs configured.*")
                 
                 lines.append("")
             

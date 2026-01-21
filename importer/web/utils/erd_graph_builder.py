@@ -1,6 +1,5 @@
 """Build Cytoscape.js graph data from dbt Cloud resource data."""
 
-from typing import Any
 
 
 # Node styles by resource type
@@ -278,7 +277,7 @@ def export_to_mermaid(report_items: list[dict]) -> str:
     lines = ["```mermaid", "flowchart TD"]
     
     # Build lookup
-    items_by_key = {item.get("key"): item for item in report_items if item.get("key")}
+    {item.get("key"): item for item in report_items if item.get("key")}
     
     # Add nodes grouped by project
     projects = [item for item in report_items if item.get("element_type_code") == "PRJ"]
