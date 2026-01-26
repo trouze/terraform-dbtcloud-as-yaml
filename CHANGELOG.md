@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.5] - 2026-01-22
+
+### Fixed
+- **Connection Dependency Resolution**: Fixed "Select Parents" not auto-selecting connections referenced by environments
+  - Root cause: Environment-to-connection lookup used string keys, which failed for fallback keys like `connection_1559`
+  - Solution: Added `connection_id` field to Environment model and report items for ID-based lookups
+  - Changed lookup logic to match by dbt Cloud connection ID first, with key-based fallback for backward compatibility
+  - Prevents YAML output containing unresolved `LOOKUP:connection_*` placeholders
+
+### Added
+- `connection_id` field on Environment model in `models.py`
+- Connection ID-based index (`_connection_by_id`) in HierarchyIndex
+- `get_connection_by_id()` method in HierarchyIndex for ID-based lookups
+- Unit tests for HierarchyIndex connection ID functionality
+
+### Changed
+- `fetcher.py`: Now stores `connection_id` when building Environment objects
+- `element_ids.py`: Environment report items now include `connection_id`
+- `scope.py` and `mapping.py`: "Select Parents" logic uses connection ID for reliable lookups
+
 ## [0.12.4] - 2026-01-22
 
 ### Added

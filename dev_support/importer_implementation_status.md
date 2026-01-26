@@ -1,7 +1,7 @@
 # Importer Implementation Status & Tracking
 
 **Last Updated:** 2026-01-22  
-**Current Importer Version:** 0.12.4  
+**Current Importer Version:** 0.12.5  
 **Status:** Phase 3 Complete + Interactive Mode + Web UI + E2E Testing Infrastructure + Destroy Workflow + Target Match Feature + Jobs as Code Generator + dbt-jobs-as-code Validation + SAO Support + Native Integration Detection + Target Credentials Redesign
 
 > **⚠️ IMPORTANT: Keep This Document Updated**
@@ -666,6 +666,14 @@ The following items require API endpoint research before implementation can begi
 ---
 
 ## Change Log
+
+### 2026-01-22 (v0.12.5)
+- **Version:** Incremented to 0.12.5 (patch release - Connection ID-Based Dependency Resolution)
+- **Connection ID Field**: Added `connection_id` to Environment model for reliable ID-based lookups
+- **ID-Based Index**: Added `_connection_by_id` index to HierarchyIndex with `get_connection_by_id()` method
+- **Select Parents Fix**: Changed connection lookup from key-based to ID-based with key fallback
+- **Unit Tests**: Added comprehensive tests for HierarchyIndex connection ID functionality
+- **Backward Compatibility**: Existing report items without `connection_id` still work via key-based fallback
 
 ### 2026-01-22 (v0.12.4)
 - **Version:** Incremented to 0.12.4 (patch release - Private Key Validation & Normalization)

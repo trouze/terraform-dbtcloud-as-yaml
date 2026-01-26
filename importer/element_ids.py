@@ -122,6 +122,7 @@ def apply_element_ids(payload: Dict[str, Any], start_number: int = 1001) -> List
                     "project_name": project_name,
                     "parent_project_id": project_mapping_id,
                     "connection_key": env.get("connection_key"),  # For hierarchy linking
+                    "connection_id": env.get("connection_id"),  # For ID-based connection lookup
                 },
             )
             

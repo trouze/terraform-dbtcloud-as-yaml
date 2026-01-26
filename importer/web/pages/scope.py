@@ -1069,7 +1069,7 @@ def _create_action_panel(
             await _run_normalize(state, selection_manager, report_items, status_container, save_state)
         
         ui.button(
-            "Generate Selected Source YAML",
+            "Generate Selected YAML",
             icon="settings_suggest",
             on_click=on_normalize,
         ).style(f"background-color: {DBT_ORANGE};").classes("w-full")
@@ -1129,18 +1129,29 @@ def _apply_scope_selection(
                 selected_env_ids.add(child_id)
     
     # 4. Find and select connections referenced by selected environments
-    used_connection_keys = set()
+    # Use connection_id for reliable lookups (key matching is fallback)
+    used_connection_ids: set[int] = set()
+    used_connection_keys: set[str] = set()
+    
     for env_id in selected_env_ids:
         env_item = item_by_id.get(env_id)
         if env_item:
+            conn_id = env_item.get("connection_id")
             conn_key = env_item.get("connection_key")
-            if conn_key:
+            if conn_id:
+                used_connection_ids.add(conn_id)
+            elif conn_key:
+                # Fallback to key matching if no ID available
                 used_connection_keys.add(conn_key)
     
     for item in report_items:
         if item.get("element_type_code") == "CON":
+            conn_dbt_id = item.get("dbt_id")
             conn_key = item.get("key")
-            if conn_key in used_connection_keys:
+            # Match by ID first, then by key as fallback
+            if conn_dbt_id and conn_dbt_id in used_connection_ids:
+                selection_manager.set_selected(item.get("element_mapping_id"), True, auto_save=False)
+            elif conn_key and conn_key in used_connection_keys:
                 selection_manager.set_selected(item.get("element_mapping_id"), True, auto_save=False)
     
     # 5. Select globals based on toggle settings
@@ -1334,9 +1345,9 @@ def _create_summary_stats(
             else:
                 ui.label(f"{tc['selected']}/{tc['total']}").classes("text-xs font-medium")
     
-    # Dependency warnings
-    selected_ids = selection_manager.get_selected_ids()
-    warnings = hierarchy_index.check_missing_dependencies(selected_ids)
+    # Dependency warnings - use effective_ids (after scope/resource filters)
+    # rather than raw selected_ids to avoid showing warnings for filtered-out entities
+    warnings = hierarchy_index.check_missing_dependencies(effective_ids)
     
     if warnings:
         ui.separator().classes("my-2")

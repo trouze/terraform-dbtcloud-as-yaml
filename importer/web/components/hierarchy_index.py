@@ -95,6 +95,9 @@ class HierarchyIndex:
         # Connection key -> Mapping ID (for connection lookups by key)
         self._connection_by_key: Dict[str, str] = {}
         
+        # Connection dbt_id -> Mapping ID (for ID-based connection lookups)
+        self._connection_by_id: Dict[int, str] = {}
+        
         if entities:
             self.build_index(entities)
     
@@ -112,6 +115,7 @@ class HierarchyIndex:
         self._project_by_key.clear()
         self._repo_by_key.clear()
         self._connection_by_key.clear()
+        self._connection_by_id.clear()
         
         # First pass: index all entities by mapping_id and type
         for entity in entities:
@@ -139,11 +143,14 @@ class HierarchyIndex:
                 if repo_key:
                     self._repo_by_key[repo_key] = mapping_id
             
-            # Index connections by key
+            # Index connections by key and ID
             if entity_type == "CON":
                 conn_key = entity.get("key")
+                conn_dbt_id = entity.get("dbt_id")
                 if conn_key:
                     self._connection_by_key[conn_key] = mapping_id
+                if conn_dbt_id:
+                    self._connection_by_id[conn_dbt_id] = mapping_id
             
             # Initialize parent/child sets
             if mapping_id not in self._children:
@@ -298,6 +305,17 @@ class HierarchyIndex:
             Set of mapping IDs for that type
         """
         return self._by_type.get(entity_type, set()).copy()
+    
+    def get_connection_by_id(self, connection_id: int) -> Optional[str]:
+        """Get connection mapping ID by dbt Cloud connection ID.
+        
+        Args:
+            connection_id: The dbt Cloud connection ID (integer)
+            
+        Returns:
+            The element_mapping_id for the connection, or None if not found
+        """
+        return self._connection_by_id.get(connection_id)
     
     def get_depth(self, mapping_id: str) -> int:
         """Get the depth level of an entity in the hierarchy.

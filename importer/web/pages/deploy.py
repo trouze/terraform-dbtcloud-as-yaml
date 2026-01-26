@@ -274,6 +274,12 @@ def _create_output_directories_section(state: AppState, deploy_state: dict) -> N
     # Initialize default paths
     default_tf_dir = state.deploy.terraform_dir or "deployments/migration"
     
+    # Helper to update state path display when directory changes
+    def update_state_path(new_dir: str):
+        if new_dir and "state_path_display" in deploy_state:
+            deploy_state["terraform_dir"] = new_dir
+            deploy_state["state_path_display"].value = f"{new_dir}/terraform.tfstate"
+    
     with ui.card().classes("w-full p-4"):
         with ui.row().classes("w-full items-end gap-4"):
             # Terraform output directory
@@ -289,7 +295,7 @@ def _create_output_directories_section(state: AppState, deploy_state: dict) -> N
                     def open_tf_folder_picker():
                         def on_select(path: str):
                             tf_dir_input.value = path
-                            deploy_state["terraform_dir"] = path
+                            update_state_path(path)
                         
                         dialog = create_folder_picker_dialog(
                             initial_path=tf_dir_input.value or ".",
@@ -318,11 +324,9 @@ def _create_output_directories_section(state: AppState, deploy_state: dict) -> N
                         "For local backend, it's stored in the Terraform output directory."
                     )
             
-            # Update state path when tf_dir changes
+            # Update state path when tf_dir changes via typing
             def on_tf_dir_change(e):
-                if e.value:
-                    deploy_state["terraform_dir"] = e.value
-                    state_path_display.value = f"{e.value}/terraform.tfstate"
+                update_state_path(e.value)
             
             tf_dir_input.on("change", on_tf_dir_change)
 
