@@ -1,9 +1,12 @@
 """Environment file (.env) management utilities."""
 
+import logging
 from pathlib import Path
 from typing import Optional, Tuple
 
 from dotenv import dotenv_values, set_key
+
+log = logging.getLogger(__name__)
 
 from importer.web.state import AccountInfo
 from importer.web.components.pem_validator import is_private_key_field, normalize_private_key
@@ -492,6 +495,13 @@ def fetch_account_name(
                 return False, "Access denied"
             elif resp.status_code == 404:
                 return False, f"Account {account_id} not found"
+            elif resp.status_code == 409:
+                log.warning(
+                    "Conflict (409) fetching account name - possible rate limit. "
+                    "Response: %s",
+                    resp.text[:200] if resp.text else "(empty)",
+                )
+                return False, "409 Conflict - possible rate limit, please retry"
             else:
                 return False, f"API error: {resp.status_code}"
 

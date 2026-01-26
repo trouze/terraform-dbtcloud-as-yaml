@@ -254,17 +254,17 @@ def _create_fetch_options(
             with ui.expansion("Advanced", icon="settings", value=False).classes("w-auto"):
                 with ui.column().classes("gap-2 p-2"):
                     def _update_threads(e):
-                        val = e.args if e.args is not None else 15
-                        state.target_fetch.threads = int(val) if val else 15
+                        val = e.args if e.args is not None else 25
+                        state.target_fetch.threads = int(val) if val else 25
                         save_state()
                     
                     ui.number(
                         label="Threads",
-                        value=getattr(state.target_fetch, 'threads', 15) or 15,
+                        value=getattr(state.target_fetch, 'threads', 25) or 25,
                         min=1,
-                        max=20,
+                        max=50,
                     ).props('outlined dense').tooltip(
-                        "Number of parallel threads for fetching data (1-20)"
+                        "Number of parallel threads for fetching data (1-50)"
                     ).on("update:model-value", _update_threads)
                     
                     ui.number(
@@ -338,6 +338,34 @@ def _load_env_credentials(
     save_state: Callable[[], None],
 ) -> None:
     """Load target credentials from default .env file."""
+    
+    # Check if there's existing fetch data
+    has_existing_fetch = (
+        state.target_fetch.fetch_complete and 
+        state.target_fetch.last_fetch_file
+    )
+    
+    if has_existing_fetch:
+        # Show confirmation dialog
+        _show_load_credentials_dialog(
+            state=state,
+            terminal=terminal,
+            save_state=save_state,
+            fetch_type="target",
+            load_func=lambda reset: _do_load_env_credentials(state, terminal, save_state, reset),
+        )
+    else:
+        # No existing fetch, just load directly
+        _do_load_env_credentials(state, terminal, save_state, reset_fetch=True)
+
+
+def _do_load_env_credentials(
+    state: AppState,
+    terminal: TerminalOutput,
+    save_state: Callable[[], None],
+    reset_fetch: bool = True,
+) -> None:
+    """Actually load target credentials from default .env file."""
     terminal.info("Loading target credentials from default .env file...")
     
     try:
@@ -357,8 +385,12 @@ def _load_env_credentials(
         # Also update target account info
         state.target_account = load_account_info_from_env("target")
         
-        # Clear previous fetch results since credentials changed
-        state.target_fetch.fetch_complete = False
+        # Optionally clear previous fetch results
+        if reset_fetch:
+            state.target_fetch.fetch_complete = False
+            terminal.info("Previous fetch data cleared - ready for fresh fetch")
+        else:
+            terminal.info("Keeping existing fetch data")
         
         save_state()
         
@@ -373,6 +405,60 @@ def _load_env_credentials(
         ui.notify(f"Failed to load: {e}", type="negative")
 
 
+def _show_load_credentials_dialog(
+    state: AppState,
+    terminal: TerminalOutput,
+    save_state: Callable[[], None],
+    fetch_type: str,
+    load_func: Callable[[bool], None],
+) -> None:
+    """Show a dialog asking whether to keep or reset existing fetch data."""
+    fetch_state = state.target_fetch if fetch_type == "target" else state.fetch
+    
+    with ui.dialog() as dialog, ui.card().classes("w-full max-w-md"):
+        with ui.row().classes("items-center gap-2 mb-3"):
+            ui.icon("warning", size="md").classes("text-amber-500")
+            ui.label("Existing Fetch Data Detected").classes("text-lg font-semibold")
+        
+        ui.label(
+            f"You have existing {fetch_type} fetch data. What would you like to do?"
+        ).classes("text-sm mb-4")
+        
+        # Show existing data info
+        with ui.card().classes("w-full p-3 bg-slate-100 dark:bg-slate-800 mb-4"):
+            if fetch_state.last_fetch_file:
+                ui.label(f"Data file: {fetch_state.last_fetch_file}").classes("text-xs text-slate-600 dark:text-slate-400")
+            if fetch_state.account_name:
+                ui.label(f"Account: {fetch_state.account_name}").classes("text-xs text-slate-600 dark:text-slate-400")
+        
+        with ui.row().classes("w-full justify-end gap-2"):
+            def on_keep():
+                dialog.close()
+                load_func(False)  # Don't reset fetch
+            
+            def on_reset():
+                dialog.close()
+                load_func(True)  # Reset fetch
+            
+            ui.button(
+                "Keep Existing Data",
+                on_click=on_keep,
+                color="primary",
+            ).props("outline")
+            
+            ui.button(
+                "Reset for Fresh Fetch",
+                on_click=on_reset,
+                color="warning",
+            )
+        
+        ui.button(icon="close", on_click=dialog.close).props(
+            "flat round dense"
+        ).classes("absolute top-2 right-2")
+    
+    dialog.open()
+
+
 def _load_env_from_upload(
     content: str,
     filename: str,
@@ -381,6 +467,38 @@ def _load_env_from_upload(
     save_state: Callable[[], None],
 ) -> None:
     """Load target credentials from uploaded .env file content."""
+    
+    # Check if there's existing fetch data
+    has_existing_fetch = (
+        state.target_fetch.fetch_complete and 
+        state.target_fetch.last_fetch_file
+    )
+    
+    if has_existing_fetch:
+        # Show confirmation dialog
+        _show_load_credentials_dialog(
+            state=state,
+            terminal=terminal,
+            save_state=save_state,
+            fetch_type="target",
+            load_func=lambda reset: _do_load_env_from_upload(
+                content, filename, state, terminal, save_state, reset
+            ),
+        )
+    else:
+        # No existing fetch, just load directly
+        _do_load_env_from_upload(content, filename, state, terminal, save_state, reset_fetch=True)
+
+
+def _do_load_env_from_upload(
+    content: str,
+    filename: str,
+    state: AppState,
+    terminal: TerminalOutput,
+    save_state: Callable[[], None],
+    reset_fetch: bool = True,
+) -> None:
+    """Actually load target credentials from uploaded .env file content."""
     terminal.info(f"Loading target credentials from uploaded file: {filename}")
     
     try:
@@ -411,8 +529,12 @@ def _load_env_from_upload(
             state.target_account.host_url = creds["host_url"]
             state.target_account.is_configured = True
         
-        # Clear previous fetch results since credentials changed
-        state.target_fetch.fetch_complete = False
+        # Optionally clear previous fetch results
+        if reset_fetch:
+            state.target_fetch.fetch_complete = False
+            terminal.info("Previous fetch data cleared - ready for fresh fetch")
+        else:
+            terminal.info("Keeping existing fetch data")
         
         save_state()
         
@@ -618,7 +740,7 @@ async def _run_fetch(
 
         # Run fetch in thread pool
         terminal.info("Connecting to dbt Platform API...")
-        threads = getattr(fetch_state, 'threads', 15) or 15
+        threads = getattr(fetch_state, 'threads', 25) or 25
         terminal.info(f"Using {threads} threads for parallel fetching")
         event = cancel_event["event"]
         

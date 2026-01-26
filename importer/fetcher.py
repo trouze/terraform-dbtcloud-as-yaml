@@ -5,8 +5,10 @@ from __future__ import annotations
 import logging
 import re
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any, Dict, Iterable, List, Optional, Protocol, runtime_checkable
+from functools import wraps
+from typing import Any, Callable, Dict, Iterable, List, Optional, Protocol, Tuple, TypeVar, runtime_checkable
 
 from slugify import slugify
 
@@ -30,6 +32,44 @@ from .models import (
 )
 
 log = logging.getLogger(__name__)
+
+# Types for retry decorator
+F = TypeVar("F", bound=Callable[..., Any])
+
+# Transient network errors that should trigger retry
+TRANSIENT_ERRORS: Tuple[type, ...] = (OSError, ConnectionError, TimeoutError)
+
+
+def with_retry(max_retries: int = 3, backoff: float = 1.0) -> Callable[[F], F]:
+    """Decorator to add retry logic for transient network errors.
+    
+    Args:
+        max_retries: Maximum number of attempts (default 3)
+        backoff: Base backoff time in seconds, doubles each retry (default 1.0)
+    
+    Returns:
+        Decorated function with retry logic
+    """
+    def decorator(fn: F) -> F:
+        @wraps(fn)
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
+            last_exc: Optional[Exception] = None
+            for attempt in range(max_retries):
+                try:
+                    return fn(*args, **kwargs)
+                except TRANSIENT_ERRORS as e:
+                    last_exc = e
+                    if attempt < max_retries - 1:
+                        sleep_time = backoff * (2 ** attempt)
+                        log.warning(
+                            "Transient error in %s (attempt %d/%d): %s. Retrying in %.1fs...",
+                            fn.__name__, attempt + 1, max_retries, e, sleep_time
+                        )
+                        time.sleep(sleep_time)
+            log.error("All %d retries failed for %s: %s", max_retries, fn.__name__, last_exc)
+            raise last_exc  # type: ignore[misc]
+        return wrapper  # type: ignore[return-value]
+    return decorator
 
 
 class FetchCancelledException(Exception):
@@ -82,7 +122,7 @@ def _should_include_resource(item: Dict[str, Any]) -> bool:
 def fetch_account_snapshot(
     client: DbtCloudClient,
     progress: Optional[FetchProgressCallback] = None,
-    threads: int = 15,
+    threads: int = 25,
     cancel_event: Optional[threading.Event] = None,
 ) -> AccountSnapshot:
     """
@@ -194,35 +234,102 @@ def fetch_account_snapshot(
 
     # Flat, non-nested concurrency to avoid deadlocks: submit env/jobs/envvars tasks per project,
     # then submit overrides tasks for all jobs, then assemble.
+    # All fetch functions include retry logic for transient network errors.
+    
+    def _fetch_with_retry(
+        fn_name: str,
+        fetch_fn: Callable[[], Any],
+        max_retries: int = 3,
+        backoff: float = 1.0,
+    ) -> Any:
+        """Execute a fetch function with retry logic for transient errors."""
+        last_exc: Optional[Exception] = None
+        for attempt in range(max_retries):
+            try:
+                return fetch_fn()
+            except TRANSIENT_ERRORS as e:
+                last_exc = e
+                if attempt < max_retries - 1:
+                    sleep_time = backoff * (2 ** attempt)
+                    log.warning(
+                        "Transient error in %s (attempt %d/%d): %s. Retrying in %.1fs...",
+                        fn_name, attempt + 1, max_retries, e, sleep_time
+                    )
+                    time.sleep(sleep_time)
+        log.error("All %d retries failed for %s: %s", max_retries, fn_name, last_exc)
+        raise last_exc  # type: ignore[misc]
+
     def _fetch_project_environments_raw(project_id: int) -> list[dict[str, Any]]:
-        c = DbtCloudClient.from_settings(settings)
-        try:
-            return list(c.paginate("/environments/", params={"project_id": project_id}))
-        finally:
-            c.close()
+        def _do_fetch() -> list[dict[str, Any]]:
+            c = DbtCloudClient.from_settings(settings)
+            try:
+                return list(c.paginate("/environments/", params={"project_id": project_id}))
+            finally:
+                c.close()
+        return _fetch_with_retry(f"environments(project={project_id})", _do_fetch)
 
     def _fetch_project_jobs_raw(project_id: int) -> list[dict[str, Any]]:
-        c = DbtCloudClient.from_settings(settings)
-        try:
-            return list(c.paginate("/jobs/", params={"project_id": project_id, "order_by": "id"}))
-        finally:
-            c.close()
+        def _do_fetch() -> list[dict[str, Any]]:
+            c = DbtCloudClient.from_settings(settings)
+            try:
+                return list(c.paginate("/jobs/", params={"project_id": project_id, "order_by": "id"}))
+            finally:
+                c.close()
+        return _fetch_with_retry(f"jobs(project={project_id})", _do_fetch)
 
     def _fetch_project_env_vars_raw(project_id: int) -> dict[str, Any]:
-        c = DbtCloudClient.from_settings(settings)
-        try:
-            path = f"/projects/{project_id}/environment-variables/environment/"
-            return c.get(path, version="v3").get("data", {}) or {}
-        finally:
-            c.close()
+        def _do_fetch() -> dict[str, Any]:
+            c = DbtCloudClient.from_settings(settings)
+            try:
+                path = f"/projects/{project_id}/environment-variables/environment/"
+                return c.get(path, version="v3").get("data", {}) or {}
+            finally:
+                c.close()
+        return _fetch_with_retry(f"env_vars(project={project_id})", _do_fetch)
 
     def _fetch_job_overrides_raw(project_id: int, job_id: int) -> dict[str, Any]:
-        c = DbtCloudClient.from_settings(settings)
-        try:
-            path = f"/projects/{project_id}/environment-variables/job/"
-            return c.get(path, version="v3", params={"job_definition_id": job_id}).get("data", {}) or {}
-        finally:
-            c.close()
+        def _do_fetch() -> dict[str, Any]:
+            c = DbtCloudClient.from_settings(settings)
+            try:
+                path = f"/projects/{project_id}/environment-variables/job/"
+                return c.get(path, version="v3", params={"job_definition_id": job_id}).get("data", {}) or {}
+            finally:
+                c.close()
+        return _fetch_with_retry(f"job_overrides(project={project_id}, job={job_id})", _do_fetch)
+
+    def _fetch_credential_details_raw(
+        project_id: int,
+        credential_id: int,
+        connection_type: Optional[str],
+    ) -> dict[str, Any]:
+        """Fetch credential details with retry logic."""
+        def _do_fetch() -> dict[str, Any]:
+            if not credential_id or credential_id == 0:
+                return {}
+            c = DbtCloudClient.from_settings(settings)
+            try:
+                path = f"/projects/{project_id}/credentials/{credential_id}/"
+                response = c.get(path, version="v3")
+                data = response.get("data", {})
+                if data:
+                    api_type = data.get("type")
+                    if api_type == "adapter":
+                        adapter_version = data.get("adapter_version", "")
+                        if adapter_version:
+                            cred_type = adapter_version.rsplit("_v", 1)[0]
+                        else:
+                            cred_type = connection_type
+                    else:
+                        cred_type = api_type
+                    data["credential_type"] = cred_type
+                    return data
+                return {"credential_type": connection_type}
+            except Exception as e:
+                log.warning(f"Failed to fetch credential {credential_id}: {e}")
+                return {"credential_type": connection_type}
+            finally:
+                c.close()
+        return _fetch_with_retry(f"credential(project={project_id}, cred={credential_id})", _do_fetch)
 
     # Submit all work and assemble projects as they become ready, so the UI can
     # show incremental project/env/job progress even when fetch is parallel.
@@ -230,6 +337,8 @@ def fetch_account_snapshot(
     jobs_raw_by_project: dict[int, list[dict[str, Any]]] = {}
     envvars_raw_by_project: dict[int, dict[str, Any]] = {}
     overrides_raw_by_job: dict[tuple[int, int], dict[str, Any]] = {}
+    # Credentials keyed by (project_id, credential_id)
+    credentials_raw_by_cred: dict[tuple[int, int], dict[str, Any]] = {}
 
     # Track project completeness
     project_name_by_id: dict[int, str] = {}
@@ -255,7 +364,11 @@ def fetch_account_snapshot(
             project_id = int(item.get("id") or 0)
             project_name_by_id[project_id] = item.get("name", "")
             project_key_by_id[project_id] = slug(item.get("name", f"project_{project_id}"))
-            project_done_flags[project_id] = {"env": False, "jobs": False, "envvars": False, "overrides": 0, "overrides_done": 0}
+            project_done_flags[project_id] = {
+                "env": False, "jobs": False, "envvars": False,
+                "overrides": 0, "overrides_done": 0,
+                "creds": 0, "creds_done": 0,
+            }
 
             pending[ex.submit(_fetch_project_environments_raw, project_id)] = ("env", project_id, None)
             pending[ex.submit(_fetch_project_jobs_raw, project_id)] = ("jobs", project_id, None)
@@ -279,7 +392,46 @@ def fetch_account_snapshot(
 
             for fut in as_completed(list(pending.keys()), timeout=None):
                 kind, pid, job_id = pending.pop(fut)
-                result = fut.result()
+                
+                # Handle task completion with error resilience
+                # job_id is reused for credential_id when kind == "cred"
+                aux_id = job_id  # This is job_id for "override" or credential_id for "cred"
+                try:
+                    result = fut.result()
+                except Exception as e:
+                    if kind == "override":
+                        # Job overrides are non-critical - log warning and continue
+                        log.warning(
+                            "Failed to fetch job override for project=%s job=%s: %s (continuing without overrides)",
+                            pid, aux_id, e
+                        )
+                        # Use empty dict as fallback and mark as done
+                        overrides_raw_by_job[(pid, int(aux_id or 0))] = {}
+                        project_done_flags[pid]["overrides_done"] += 1
+                        overrides_done += 1
+                        if progress:
+                            progress.on_resource_item("job_env_var_overrides", f"{pid}")
+                        continue
+                    elif kind == "cred":
+                        # Credentials are non-critical - log warning and continue
+                        log.warning(
+                            "Failed to fetch credential for project=%s cred=%s: %s (continuing without credential details)",
+                            pid, aux_id, e
+                        )
+                        # Use empty dict as fallback and mark as done
+                        credentials_raw_by_cred[(pid, int(aux_id or 0))] = {}
+                        project_done_flags[pid]["creds_done"] += 1
+                        creds_total += 1
+                        if progress:
+                            progress.on_resource_item("credentials", f"{aux_id}")
+                        continue
+                    else:
+                        # Critical resources (env, jobs, envvars) - log and re-raise
+                        log.error(
+                            "Failed to fetch %s for project=%s (project_name=%s): %s",
+                            kind, pid, project_name_by_id.get(pid, "unknown"), e
+                        )
+                        raise
 
                 if kind == "env":
                     env_raw_by_project[pid] = result
@@ -288,6 +440,15 @@ def fetch_account_snapshot(
                         env_total += len(result)
                         for _ in range(len(result)):
                             progress.on_resource_item("environments", f"{pid}")
+                    # Submit credential fetch tasks for each environment with credentials_id
+                    for env_item in result:
+                        cred_id = env_item.get("credentials_id")
+                        if cred_id and isinstance(cred_id, int) and cred_id != 0:
+                            # Get connection_type for this environment's connection
+                            conn_id = env_item.get("connection_id")
+                            conn_type = _get_connection_type(globals_model.connections, conn_id)
+                            project_done_flags[pid]["creds"] += 1
+                            pending[ex.submit(_fetch_credential_details_raw, pid, cred_id, conn_type)] = ("cred", pid, cred_id)
                 elif kind == "jobs":
                     jobs_raw_by_project[pid] = result
                     project_done_flags[pid]["jobs"] = True
@@ -311,11 +472,17 @@ def fetch_account_snapshot(
                         for _ in range(len(vars_dict)):
                             progress.on_resource_item("environment_variables", f"{pid}")
                 elif kind == "override":
-                    overrides_raw_by_job[(pid, int(job_id or 0))] = result if isinstance(result, dict) else {}
+                    overrides_raw_by_job[(pid, int(aux_id or 0))] = result if isinstance(result, dict) else {}
                     project_done_flags[pid]["overrides_done"] += 1
                     overrides_done += 1
                     if progress:
                         progress.on_resource_item("job_env_var_overrides", f"{pid}")
+                elif kind == "cred":
+                    credentials_raw_by_cred[(pid, int(aux_id or 0))] = result if isinstance(result, dict) else {}
+                    project_done_flags[pid]["creds_done"] += 1
+                    creds_total += 1
+                    if progress:
+                        progress.on_resource_item("credentials", f"{aux_id}")
 
                 # If this project is fully ready and not yet assembled, assemble it now.
                 flags = project_done_flags[pid]
@@ -325,6 +492,7 @@ def fetch_account_snapshot(
                     and flags["jobs"]
                     and flags["envvars"]
                     and flags["overrides_done"] >= flags["overrides"]
+                    and flags["creds_done"] >= flags["creds"]
                 ):
                     completed_projects += 1
                     if progress:
@@ -357,16 +525,12 @@ def fetch_account_snapshot(
                         connection_key = _find_connection_key(globals_model.connections, connection_id)
                         connection_type = _get_connection_type(globals_model.connections, connection_id)
                         
-                        # Fetch detailed credential information if credentials_id is present
+                        # Look up pre-fetched credential details
                         credentials_id = env_item.get("credentials_id")
                         credential_details: dict[str, Any] = {}
                         if credentials_id:
-                            credential_details = _fetch_credential_details(
-                                settings, project_id, credentials_id, connection_type
-                            )
-                            creds_total += 1
-                            if progress:
-                                progress.on_resource_item("credentials", f"{credentials_id}")
+                            # Credentials were fetched in parallel when environments were received
+                            credential_details = credentials_raw_by_cred.get((project_id, credentials_id), {})
                         
                         # Build credential with all available details
                         credential = _build_credential_from_api_data(
@@ -380,6 +544,7 @@ def fetch_account_snapshot(
                                 name=env_item["name"],
                                 type=env_item.get("type", "development"),
                                 connection_key=connection_key,
+                                connection_id=connection_id,  # Store original API connection ID
                                 credential=credential,
                                 dbt_version=env_item.get("dbt_version"),
                                 custom_branch=env_item.get("custom_branch"),

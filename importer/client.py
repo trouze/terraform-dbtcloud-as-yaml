@@ -85,9 +85,20 @@ class DbtCloudClient:
 
             if resp.status_code == 429 and retry_after and self.settings.rate_limit_retry_after:
                 sleep_time = float(retry_after)
-                log.warning("Rate limit hit on %s %s. Sleeping %ss", version, path, sleep_time)
+                log.warning("Rate limit hit (429) on %s %s. Sleeping %ss", version, path, sleep_time)
                 time.sleep(sleep_time)
                 continue
+
+            # 409 Conflict can indicate rate limiting or concurrency issues
+            if resp.status_code == 409:
+                log.warning(
+                    "Conflict (409) on %s %s - possible rate limit or concurrent request issue. "
+                    "Response: %s",
+                    version,
+                    path,
+                    resp.text[:200] if resp.text else "(empty)",
+                )
+                # Continue to retry logic below
 
             if attempt > self.settings.max_retries:
                 raise ApiError(resp)

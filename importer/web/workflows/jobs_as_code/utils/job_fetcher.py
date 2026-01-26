@@ -1,9 +1,12 @@
 """Job fetching utilities for Jobs as Code Generator."""
 
+import logging
 import re
 from typing import Optional
 
 import httpx
+
+log = logging.getLogger(__name__)
 
 
 class JobFetchError(Exception):
@@ -73,6 +76,13 @@ def fetch_jobs_from_api(
                     raise JobFetchError("401 Unauthorized - Check your API key")
                 elif response.status_code == 404:
                     raise JobFetchError(f"404 Not Found - Account {account_id} not found")
+                elif response.status_code == 409:
+                    log.warning(
+                        "Conflict (409) fetching jobs - possible rate limit or concurrent request. "
+                        "Response: %s",
+                        response.text[:200] if response.text else "(empty)",
+                    )
+                    raise JobFetchError(f"409 Conflict - possible rate limit: {response.text[:200]}")
                 elif response.status_code >= 400:
                     raise JobFetchError(f"API error: {response.status_code} - {response.text}")
                 

@@ -146,6 +146,7 @@ class Environment(ImporterBaseModel):
     name: str
     type: str
     connection_key: str
+    connection_id: Optional[int] = None  # Original API connection ID for reliable lookups
     credential: Optional[Credential] = None  # Optional - development envs may not have credentials
     dbt_version: Optional[str] = None
     custom_branch: Optional[str] = None

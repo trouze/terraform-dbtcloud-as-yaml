@@ -1142,18 +1142,29 @@ def _apply_scope_selection(
                 selected_env_ids.add(child_id)
     
     # 4. Find and select connections referenced by selected environments
-    used_connection_keys = set()
+    # Use connection_id for reliable lookups (key matching is fallback)
+    used_connection_ids: set[int] = set()
+    used_connection_keys: set[str] = set()
+    
     for env_id in selected_env_ids:
         env_item = item_by_id.get(env_id)
         if env_item:
+            conn_id = env_item.get("connection_id")
             conn_key = env_item.get("connection_key")
-            if conn_key:
+            if conn_id:
+                used_connection_ids.add(conn_id)
+            elif conn_key:
+                # Fallback to key matching if no ID available
                 used_connection_keys.add(conn_key)
     
     for item in report_items:
         if item.get("element_type_code") == "CON":
+            conn_dbt_id = item.get("dbt_id")
             conn_key = item.get("key")
-            if conn_key in used_connection_keys:
+            # Match by ID first, then by key as fallback
+            if conn_dbt_id and conn_dbt_id in used_connection_ids:
+                selection_manager.set_selected(item.get("element_mapping_id"), True, auto_save=False)
+            elif conn_key and conn_key in used_connection_keys:
                 selection_manager.set_selected(item.get("element_mapping_id"), True, auto_save=False)
     
     # 5. Select globals based on toggle settings
@@ -1347,9 +1358,9 @@ def _create_summary_stats(
             else:
                 ui.label(f"{tc['selected']}/{tc['total']}").classes("text-xs font-medium")
     
-    # Dependency warnings
-    selected_ids = selection_manager.get_selected_ids()
-    warnings = hierarchy_index.check_missing_dependencies(selected_ids)
+    # Dependency warnings - use effective_ids (after scope/resource filters)
+    # rather than raw selected_ids to avoid showing warnings for filtered-out entities
+    warnings = hierarchy_index.check_missing_dependencies(effective_ids)
     
     if warnings:
         ui.separator().classes("my-2")
@@ -1767,9 +1778,18 @@ def _create_results_display(state: AppState, on_step_change: Callable[[WorkflowS
 
 def _create_target_matching_section(state: AppState) -> None:
     """Create the target matching section for matching source entities to existing target resources."""
+    from pathlib import Path
     
-    # Only show if target fetch is complete
-    if not state.target_fetch.fetch_complete:
+    # Check if target fetch is complete - either flag is set OR the report items file exists
+    # This handles cases where the state flag wasn't persisted but the data file exists
+    target_fetch_available = state.target_fetch.fetch_complete
+    if not target_fetch_available and state.target_fetch.last_report_items_file:
+        target_fetch_available = Path(state.target_fetch.last_report_items_file).exists()
+        if target_fetch_available:
+            # Fix the state to reflect reality
+            state.target_fetch.fetch_complete = True
+    
+    if not target_fetch_available:
         # Show hint to fetch target
         with ui.expansion(
             "Match Existing Target Resources",
