@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.1] - 2026-01-28
+
+### Fixed
+- **Credential (CRD) Matching**: Fixed credentials showing as "create new" instead of matching existing target credentials
+  - Credential names are dynamically generated (e.g., "Credential (snowflake, schema:ABC)") and often don't match exactly between source and target
+  - Added environment-based matching: credentials now match by `(project_name, environment_name)` when exact name match fails
+  - Since credentials are 1:1 with environments, this reliably matches credentials when their parent environment matches
+
 ## [0.13.0] - 2026-01-28
 
 ### Added
