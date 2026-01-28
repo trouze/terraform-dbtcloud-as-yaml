@@ -1,7 +1,7 @@
 # Importer Implementation Status & Tracking
 
 **Last Updated:** 2026-01-28  
-**Current Importer Version:** 0.13.0  
+**Current Importer Version:** 0.13.1  
 **Status:** Phase 3 Complete + Interactive Mode + Web UI + E2E Testing Infrastructure + Destroy Workflow + Target Match Feature + Jobs as Code Generator + dbt-jobs-as-code Validation + SAO Support + Native Integration Detection + Target Credentials Redesign
 
 > **⚠️ IMPORTANT: Keep This Document Updated**
@@ -666,6 +666,12 @@ The following items require API endpoint research before implementation can begi
 ---
 
 ## Change Log
+
+### 2026-01-28 (v0.13.1)
+- **Version:** Incremented to 0.13.1 (patch release - CRD Matching Fix)
+- **Credential Matching**: Fixed CRD items showing "create new" when they should match target credentials
+- **Environment-Based Lookup**: Added `target_crd_by_env` dictionary to match credentials by parent environment
+- **Matching Logic**: CRD items now fall back to `(project_name, environment_name)` lookup when exact name match fails
 
 ### 2026-01-28 (v0.13.0)
 - **Version:** Incremented to 0.13.0 (minor release - Enhanced Plan Summary & Persistent Execution Logs)

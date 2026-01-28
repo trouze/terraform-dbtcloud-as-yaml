@@ -288,6 +288,9 @@ def build_grid_data(
     # This allows matching repos that point to same Git repo but have different names
     target_repo_by_remote_url: dict[str, dict] = {}
     target_repo_by_github_repo: dict[str, dict] = {}
+    # For credentials (CRD), build lookup by (project_name, environment_name) 
+    # since credentials are 1:1 with environments and name matching doesn't work well
+    target_crd_by_env: dict[tuple[str, str], dict] = {}
     
     for item in target_items:
         element_type = item.get("element_type_code", "")
@@ -310,6 +313,15 @@ def build_grid_data(
             github_repo = item.get("github_repo") or item.get("metadata", {}).get("github_repo")
             if github_repo:
                 target_repo_by_github_repo[github_repo] = item
+        
+        # For credentials, index by (project_name, environment_name)
+        if element_type == "CRD":
+            proj_name = item.get("project_name", "")
+            env_name = item.get("environment_name", "")
+            if proj_name and env_name:
+                crd_key = (proj_name, env_name)
+                if crd_key not in target_crd_by_env:
+                    target_crd_by_env[crd_key] = item
     
     # Build confirmed mapping lookup
     confirmed_by_source_key = {
@@ -498,6 +510,15 @@ def build_grid_data(
         lookup_key = (source_type, source_name)
         clone_config = clone_by_key.get(source_key)
         target = target_by_type_name.get(lookup_key)
+        
+        # Special handling for CRD (credentials) - match by parent environment instead of name
+        # since credential names are generic like "Credential (snowflake)" and often don't match exactly
+        if source_type == "CRD" and not target:
+            source_proj_name = source.get("project_name", "")
+            source_env_name = source.get("environment_name", "")
+            if source_proj_name and source_env_name:
+                crd_lookup = (source_proj_name, source_env_name)
+                target = target_crd_by_env.get(crd_lookup)
         
         if target:
             target_id_int = target.get("dbt_id")
