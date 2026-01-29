@@ -31,6 +31,15 @@ def _is_sensitive_field(field_name: str) -> bool:
 NAME_KEYED_TYPES = {"VAR", "JEVO"}
 
 
+def _normalize_tf_key(key: str) -> str:
+    """Normalize a key for Terraform comparison.
+    
+    Terraform for_each keys cannot contain hyphens, so they are often
+    converted to underscores. This function normalizes keys for comparison.
+    """
+    return key.replace("-", "_")
+
+
 def _keys_match_with_project_prefix(
     source_key: Optional[str],
     state_resource_index: Optional[str],
@@ -56,7 +65,8 @@ def _keys_match_with_project_prefix(
     Returns:
         Tuple of (is_match, match_type) where match_type is one of:
         - "exact": Keys match exactly
-        - "project_key": Repository keyed by project name
+        - "project_key": Repository keyed by project name (exact)
+        - "project_key_normalized": Repository keyed by project name (hyphens->underscores)
         - "project_prefixed": State key is {project_name}_{source_key}
         - "project_prefixed_dedup": State key is {project_name}_{source_key}_N (deduplication suffix)
         - "name_keyed": Resource type is matched by name (key comparison N/A)
@@ -82,26 +92,49 @@ def _keys_match_with_project_prefix(
     if source_key == state_resource_index:
         return True, "exact"
     
-    # Repository special case: keyed by project name
-    if source_type == "REP" and project_name and project_name == state_resource_index:
-        return True, "project_key"
+    # Repository special case: keyed by project name in Terraform
+    # Terraform keys can't have hyphens, so project names are often normalized
+    if source_type == "REP" and project_name:
+        # Exact match with project name
+        if project_name == state_resource_index:
+            return True, "project_key"
+        # Normalized match (hyphens converted to underscores)
+        normalized_project = _normalize_tf_key(project_name)
+        if normalized_project == state_resource_index:
+            return True, "project_key_normalized"
     
     # Project-prefixed pattern: {project_name}_{source_key}
     # Common for environments, jobs, and other project-scoped resources
     if project_name:
+        # Try both exact and normalized project name
+        normalized_project = _normalize_tf_key(project_name)
+        normalized_source_key = _normalize_tf_key(source_key)
+        
+        # Check exact prefix pattern
         expected_prefixed_key = f"{project_name}_{source_key}"
         if expected_prefixed_key == state_resource_index:
+            return True, "project_prefixed"
+        
+        # Check normalized prefix pattern (hyphens -> underscores)
+        expected_normalized_key = f"{normalized_project}_{normalized_source_key}"
+        if expected_normalized_key == state_resource_index:
             return True, "project_prefixed"
         
         # Also check if state_resource_index ends with _{source_key} and starts with project_name
         # This handles potential variations in separators
         if state_resource_index.startswith(project_name) and state_resource_index.endswith(f"_{source_key}"):
             return True, "project_prefixed"
+        if state_resource_index.startswith(normalized_project) and state_resource_index.endswith(f"_{normalized_source_key}"):
+            return True, "project_prefixed"
         
         # Check for deduplication suffix pattern: {project_name}_{source_key}_N
         # where N is a number (e.g., _2, _3, _10)
         dedup_pattern = f"^{re.escape(expected_prefixed_key)}_\\d+$"
         if re.match(dedup_pattern, state_resource_index):
+            return True, "project_prefixed_dedup"
+        # Also check normalized version
+        dedup_pattern_normalized = f"^{re.escape(expected_normalized_key)}_\\d+$"
+        if re.match(dedup_pattern_normalized, state_resource_index):
             return True, "project_prefixed_dedup"
     
     return False, "none"
@@ -1637,6 +1670,10 @@ def _render_match_debug_tab(
                                 ui.badge("✓ Exact match").props("color=green dense")
                             elif match_type == "project_key":
                                 ui.badge("✓ Project key").props("color=blue dense")
+                            elif match_type == "project_key_normalized":
+                                ui.badge("✓ Project key (normalized)").props("color=blue dense")
+                                normalized = project_name.replace("-", "_") if project_name else ""
+                                ui.label(f"({project_name} → {normalized})").classes("text-xs text-blue-600 ml-1")
                             elif match_type == "project_prefixed":
                                 ui.badge("✓ Prefixed match").props("color=green dense")
                                 ui.label(f"({project_name}_{source_key})").classes("text-xs text-green-600 ml-1")
@@ -1653,8 +1690,10 @@ def _render_match_debug_tab(
                         with ui.row().classes("w-full items-center py-2 px-3"):
                             ui.label("Project Name (repo key)").classes("text-sm font-medium w-1/3")
                             ui.code(project_name or "(none)").classes("text-sm")
-                            if project_name and state_resource_index and project_name == state_resource_index:
-                                ui.badge("Used for matching").props("color=green dense")
+                            if match_type == "project_key":
+                                ui.badge("✓ Used for matching").props("color=green dense")
+                            elif match_type == "project_key_normalized":
+                                ui.badge("✓ Normalized for matching").props("color=blue dense")
                     elif project_name and match_type in ("project_prefixed", "project_prefixed_dedup"):
                         # Show project prefix explanation for non-REP resources
                         bg_color = "bg-green-50 dark:bg-green-900/20" if match_type == "project_prefixed" else "bg-teal-50 dark:bg-teal-900/20"
@@ -1985,6 +2024,13 @@ def _build_llm_diagnostic(
         lines.append("Repository resources are keyed by **project name** in Terraform (for_each), not by repository name.")
         if keys_match and match_type == "project_key":
             lines.append(f"- ✅ Keys match via project key: state uses `{state_resource_index}` which equals project name")
+        elif keys_match and match_type == "project_key_normalized":
+            normalized = project_name.replace("-", "_") if project_name else ""
+            lines.append(f"- ✅ Keys match via normalized project key")
+            lines.append(f"  - Project name: `{project_name}` (contains hyphens)")
+            lines.append(f"  - Normalized: `{normalized}` (hyphens → underscores)")
+            lines.append(f"  - State key: `{state_resource_index}`")
+            lines.append("  - Terraform for_each keys cannot contain hyphens, so they are converted to underscores")
         elif keys_match:
             lines.append(f"- ✅ Keys match ({match_type})")
         else:
