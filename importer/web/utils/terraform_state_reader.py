@@ -7,6 +7,7 @@ Maps dbt Cloud Terraform resource types to internal element codes.
 import asyncio
 import json
 import logging
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional, Union
@@ -261,6 +262,20 @@ def _parse_module_resources(
             # Append the index for for_each resources
             if resource_index is not None:
                 address = f'{address}["{resource_index}"]'
+        
+        # FALLBACK: Extract resource_index from address if not provided directly
+        # Address format: module.x.resource_type.name["key"] or resource_type.name["key"]
+        # This handles cases where terraform show -json doesn't include the index field separately
+        if resource_index is None and address and "[" in address:
+            # Match the key inside brackets, handling both ["key"] and [0] formats
+            match = re.search(r'\["([^"]+)"\]$', address)
+            if match:
+                resource_index = match.group(1)
+            else:
+                # Try numeric index
+                match = re.search(r'\[(\d+)\]$', address)
+                if match:
+                    resource_index = match.group(1)
         
         # Get attributes from values
         values = resource.get("values", {})

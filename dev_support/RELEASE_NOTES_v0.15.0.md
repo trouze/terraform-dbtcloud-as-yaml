@@ -14,14 +14,15 @@ Version 0.15.0 introduces **Destroy Page Protection Enhancements**, completing t
 
 ## New Features
 
-### Destroy Section with Auto-Skip Protection
+### Destroy All with Auto-Skip Protection
 
-A new **Destroy Resources** section has been added to the Deploy page:
+The **Destroy Target Resources** tab now handles protected resources gracefully:
 
-- **Auto-Skip Protected**: Destroy automatically skips resources with `protected_` in their Terraform address
+- **Auto-Skip Protected**: "Destroy All" automatically skips resources with `protected_` in their Terraform address
 - **Targeted Destroy**: Uses `-target` flags to only destroy unprotected resources
 - **Skip Notification**: Terminal shows "Skipping N protected resources" with list of preserved items
 - **Graceful Handling**: No Terraform errors when protected resources exist
+- **Preserved Count**: Summary shows "(N protected resource(s) preserved)" after destroy
 
 ### Protected Resources Panel
 
@@ -38,14 +39,6 @@ For users who want to remove protection before destroying:
 - **Explicit Action**: "Unprotect All" button in the protection panel
 - **Confirmation Dialog**: Warning about consequences with resource list
 - **Regenerate Required**: Notification to regenerate Terraform after unprotecting
-
-### Destroy Confirmation Dialog
-
-Added confirmation before destroy operations:
-
-- **Warning Icon**: Clear visual indicator of destructive action
-- **Clear Message**: "This will destroy all unprotected resources"
-- **Protection Note**: Reminds user that protected resources will be skipped
 
 ---
 
@@ -108,7 +101,7 @@ Fixed the "2 resources have drift" message appearing when no actual drift exists
 
 | File | Changes |
 |------|---------|
-| `importer/web/pages/deploy.py` | Added `_create_destroy_section()`, `_create_destroy_protection_panel()`, `_show_destroy_unprotection_dialog()`, modified `_run_terraform_destroy()` |
+| `importer/web/pages/destroy.py` | Added `_create_destroy_protection_panel()`, `_show_destroy_unprotection_dialog()`, modified `_run_terraform_destroy_all()` to auto-skip protected |
 | `importer/web/pages/match.py` | Fixed `drift_resources_exist` calculation to exclude state-only orphans |
 | `modules/projects_v2/projects.tf` | Split into protected/unprotected maps and resource blocks |
 | `modules/projects_v2/environments.tf` | Added `protected_environments` resource block |
@@ -124,20 +117,20 @@ Fixed the "2 resources have drift" message appearing when no actual drift exists
 
 ### Destroying with Protected Resources
 
-1. Navigate to **Deploy** tab
-2. Scroll to **Destroy Resources** section
-3. Review the **Protected Resources** panel (if any exist)
-4. Click **Destroy All** button
-5. Confirm in the dialog
-6. Watch terminal: protected resources are skipped, unprotected are destroyed
+1. Navigate to **Destroy Target Resources** tab
+2. Review the **Protected Resources** panel in the Actions card (if any exist)
+3. Click **Destroy All** button in the Danger Zone
+4. Type the resource count to confirm in the dialog
+5. Watch terminal: protected resources are skipped, unprotected are destroyed
+6. Summary shows preserved count
 
 ### Removing Protection Before Destroy
 
 1. In the **Protected Resources** panel, click **Unprotect All**
 2. Review the confirmation dialog showing resources to unprotect
 3. Click **Unprotect All** to confirm
-4. Click **Generate Terraform** to apply the changes
-5. Now **Destroy All** will affect all resources
+4. Navigate to **Deploy** tab and click **Generate Terraform**
+5. Return to **Destroy Target Resources** - now **Destroy All** will affect all resources
 
 ---
 

@@ -1,8 +1,8 @@
 # Importer Implementation Status & Tracking
 
 **Last Updated:** 2026-01-29  
-**Current Importer Version:** 0.15.0  
-**Status:** Phase 3 Complete + Interactive Mode + Web UI + E2E Testing Infrastructure + Destroy Workflow + Target Match Feature + Jobs as Code Generator + dbt-jobs-as-code Validation + SAO Support + Native Integration Detection + Target Credentials Redesign + Resource Protection with Cascade + Destroy Page Enhancements
+**Current Importer Version:** 0.15.1  
+**Status:** Phase 3 Complete + Interactive Mode + Web UI + E2E Testing Infrastructure + Destroy Workflow + Target Match Feature + Jobs as Code Generator + dbt-jobs-as-code Validation + SAO Support + Native Integration Detection + Target Credentials Redesign + Resource Protection with Cascade + Destroy Page Enhancements + State-Aware Matching Fix
 
 > **⚠️ IMPORTANT: Keep This Document Updated**
 > 
@@ -420,7 +420,7 @@ Before starting end-to-end testing with a real account, verify:
 ## Version Tracking
 
 ### Importer Version
-- **Current:** 0.15.0
+- **Current:** 0.15.1
 - **File:** `importer/VERSION`
 - **Last Updated:** 2026-01-29
 
@@ -666,6 +666,13 @@ The following items require API endpoint research before implementation can begi
 ---
 
 ## Change Log
+
+### 2026-01-29 (v0.15.1)
+- **Version:** Incremented to 0.15.1 (patch release - State-Aware Matching Fix)
+- **Match Debug Tab**: New debugging tab in resource detail popup with diagnostics and LLM report
+- **State-Aware Repo Matching**: Fixed project-linked repositories not matching when names differ
+- **Composite ID Parsing**: Fixed extraction of resource IDs from composite Terraform IDs (e.g., "605:556")
+- **Type Normalization**: Fixed type mismatches in state-to-target ID lookups
 
 ### 2026-01-29 (v0.15.0)
 - **Version:** Incremented to 0.15.0 (minor release - Destroy Page Protection Enhancements)

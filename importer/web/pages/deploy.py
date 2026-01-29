@@ -107,7 +107,7 @@ def create_deploy_page(
         if state.map.target_matching_enabled and state.map.confirmed_mappings:
             _create_import_section(state, terminal, save_state, deploy_state)
 
-        # Tiles: 3-column grid (7 sections total)
+        # Tiles: 2x3 grid (6 sections)
         with ui.element("div").classes("w-full").style(
             "display: grid; "
             "grid-template-columns: repeat(3, minmax(0, 1fr)); "
@@ -124,8 +124,6 @@ def create_deploy_page(
                 _create_plan_section(state, terminal, save_state, deploy_state)
             with ui.column().classes("min-w-0 h-full"):
                 _create_apply_section(state, terminal, save_state, deploy_state)
-            with ui.column().classes("min-w-0 h-full"):
-                _create_destroy_section(state, terminal, save_state, deploy_state)
             with ui.column().classes("min-w-0 h-full"):
                 _create_state_inspection_section(state, deploy_state)
 
@@ -412,153 +410,6 @@ def _create_protected_resources_panel(
                         ui.icon("shield", size="xs").classes("text-blue-400")
                         ui.label(res.name).classes("text-sm")
                         ui.label(f"({res.resource_key})").classes("text-xs text-slate-400")
-
-
-def _create_destroy_protection_panel(
-    state: AppState,
-    deploy_state: dict,
-    terminal: TerminalOutput,
-    save_state: Callable[[], None],
-) -> None:
-    """Create a panel showing protected resources for the destroy section.
-    
-    This panel displays resources that will be SKIPPED during destroy
-    and provides an optional button to unprotect them.
-    """
-    yaml_path = state.map.last_yaml_file
-    if not yaml_path:
-        return
-    
-    try:
-        yaml_config = load_yaml_config(yaml_path)
-        protected_resources = extract_protected_resources(yaml_config)
-    except Exception:
-        return
-    
-    if not protected_resources:
-        return
-    
-    # Group by type
-    by_type: dict[str, list] = {}
-    for res in protected_resources:
-        if res.resource_type not in by_type:
-            by_type[res.resource_type] = []
-        by_type[res.resource_type].append(res)
-    
-    type_labels = {
-        "PRJ": "Projects",
-        "ENV": "Environments",
-        "JOB": "Jobs",
-        "REP": "Repositories",
-        "CON": "Connections",
-    }
-    
-    with ui.expansion(
-        f"Protected Resources ({len(protected_resources)}) - Will be SKIPPED",
-        icon="shield",
-    ).classes("w-full").props("dense").style("border-left: 3px solid #3B82F6;"):
-        
-        # Info banner - warning style
-        with ui.card().classes("w-full p-3 mb-3").style("background-color: rgba(59, 130, 246, 0.1);"):
-            with ui.row().classes("items-start gap-2"):
-                ui.icon("info", size="sm").classes("text-blue-500")
-                with ui.column().classes("gap-1"):
-                    ui.label(
-                        "These resources will be SKIPPED during destroy"
-                    ).classes("text-sm font-medium")
-                    ui.label(
-                        "They have lifecycle.prevent_destroy = true and cannot be deleted."
-                    ).classes("text-xs text-slate-500")
-        
-        # Resource list by type
-        for rtype, resources in sorted(by_type.items()):
-            type_label = type_labels.get(rtype, rtype)
-            
-            with ui.row().classes("w-full items-center gap-2 mb-2"):
-                ui.badge(f"{len(resources)} {type_label}").props("dense color=blue")
-            
-            with ui.column().classes("w-full pl-4 mb-3 gap-1"):
-                for res in resources:
-                    with ui.row().classes("w-full items-center gap-2"):
-                        ui.icon("shield", size="xs").classes("text-blue-400")
-                        ui.label(res.name).classes("text-sm")
-                        ui.label(f"({res.resource_key})").classes("text-xs text-slate-400")
-        
-        # Unprotect All button
-        with ui.row().classes("w-full justify-end mt-2"):
-            ui.button(
-                "Unprotect All",
-                icon="shield_outlined",
-                on_click=lambda: _show_destroy_unprotection_dialog(
-                    protected_resources,
-                    state,
-                    save_state,
-                ),
-            ).props("flat color=amber dense").classes("text-xs")
-
-
-def _show_destroy_unprotection_dialog(
-    protected_resources: list,
-    state: AppState,
-    save_state: Callable[[], None],
-) -> None:
-    """Show confirmation dialog for unprotecting resources before destroy.
-    
-    Only shown when user explicitly clicks 'Unprotect All'.
-    """
-    dialog = ui.dialog()
-    
-    with dialog, ui.card().classes("p-4 min-w-96"):
-        # Header with warning icon
-        with ui.row().classes("items-center gap-2 mb-4"):
-            ui.icon("warning", size="md").classes("text-amber-500")
-            ui.label("Unprotect Resources").classes("text-lg font-semibold")
-        
-        # Warning message
-        with ui.column().classes("gap-2 mb-4"):
-            ui.label(
-                f"This will remove protection from {len(protected_resources)} resource(s)."
-            ).classes("text-sm")
-            
-            with ui.card().classes("w-full p-3").style("background-color: rgba(245, 158, 11, 0.1);"):
-                ui.label(
-                    "After unprotecting, you must click 'Generate Terraform' before destroying."
-                ).classes("text-xs text-amber-700")
-        
-        # Resource list (max 10)
-        with ui.column().classes("gap-1 mb-4 max-h-48 overflow-auto"):
-            ui.label("Resources to unprotect:").classes("text-xs text-slate-500 mb-1")
-            for res in protected_resources[:10]:
-                with ui.row().classes("items-center gap-2"):
-                    ui.icon("shield_outlined", size="xs").classes("text-slate-400")
-                    ui.label(res.name).classes("text-sm")
-            if len(protected_resources) > 10:
-                ui.label(f"... and {len(protected_resources) - 10} more").classes("text-xs text-slate-400 pl-6")
-        
-        # Buttons
-        with ui.row().classes("w-full justify-end gap-2"):
-            ui.button("Cancel", on_click=dialog.close).props("flat")
-            
-            def on_confirm():
-                # Clear all protected resources from state
-                state.map.protected_resources.clear()
-                save_state()
-                dialog.close()
-                ui.notify(
-                    "Resources unprotected. Click 'Generate Terraform' to apply changes.",
-                    type="warning",
-                    timeout=5000,
-                )
-                # Reload to update the UI
-                ui.navigate.reload()
-            
-            ui.button(
-                "Unprotect All",
-                icon="shield_outlined",
-                on_click=on_confirm,
-            ).props("color=amber")
-    
-    dialog.open()
 
 
 def _create_import_section(
@@ -1198,76 +1049,6 @@ def _create_apply_section(
             if not has_output:
                 view_btn.disable()
                 view_btn.tooltip("Run apply first")
-
-
-def _create_destroy_section(
-    state: AppState,
-    terminal: TerminalOutput,
-    save_state: Callable[[], None],
-    deploy_state: dict,
-) -> None:
-    """Create the Terraform destroy section."""
-    with ui.card().classes("w-full h-full").style("display: flex; flex-direction: column;"):
-        with ui.row().classes("items-center gap-2 mb-2"):
-            ui.icon("delete_forever", size="sm").classes("text-red-500")
-            ui.label("Destroy Resources").classes("font-semibold")
-
-        ui.label(
-            "Destroy resources in the target account. Protected resources will be skipped."
-        ).classes("text-sm text-slate-500")
-
-        # Protected resources panel
-        with ui.column().classes("w-full my-3"):
-            _create_destroy_protection_panel(state, deploy_state, terminal, save_state)
-
-        # Destroy button at bottom
-        with ui.column().classes("w-full gap-2 mt-auto"):
-            is_enabled = state.deploy.terraform_initialized
-            
-            async def on_destroy_click():
-                # Show confirmation dialog before destroying
-                dialog = ui.dialog()
-                
-                with dialog, ui.card().classes("p-4 min-w-96"):
-                    with ui.row().classes("items-center gap-2 mb-4"):
-                        ui.icon("warning", size="md").classes("text-red-500")
-                        ui.label("Confirm Destroy").classes("text-lg font-semibold")
-                    
-                    ui.label(
-                        "This will destroy all unprotected resources in the target account."
-                    ).classes("text-sm mb-2")
-                    
-                    ui.label(
-                        "Protected resources will be automatically skipped."
-                    ).classes("text-xs text-slate-500 mb-4")
-                    
-                    with ui.row().classes("w-full justify-end gap-2"):
-                        ui.button("Cancel", on_click=dialog.close).props("flat")
-                        
-                        async def confirm_destroy():
-                            dialog.close()
-                            await _run_terraform_destroy(state, terminal, save_state, deploy_state)
-                        
-                        ui.button(
-                            "Destroy",
-                            icon="delete_forever",
-                            on_click=confirm_destroy,
-                        ).props("color=red")
-                
-                dialog.open()
-            
-            destroy_btn = ui.button(
-                "Destroy All",
-                icon="delete_forever",
-                on_click=on_destroy_click,
-            ).classes("w-full").props("color=red")
-            
-            if not is_enabled:
-                destroy_btn.props("outline").style("opacity: 0.5;")
-                destroy_btn.disable()
-                destroy_btn.tooltip("Initialize Terraform first")
-            
-            deploy_state["destroy_btn"] = destroy_btn
 
 
 def _get_state_file_path(state: AppState, deploy_state: dict) -> Optional[str]:
@@ -2614,7 +2395,7 @@ async def _run_terraform_destroy(
     save_state: Callable[[], None],
     deploy_state: dict,
 ) -> None:
-    """Run terraform destroy, automatically skipping protected resources."""
+    """Run terraform destroy."""
     if not state.deploy.terraform_initialized:
         terminal.warning("Terraform not initialized")
         ui.notify("Initialize terraform first", type="warning")
@@ -2626,6 +2407,10 @@ async def _run_terraform_destroy(
     terminal.clear()
     terminal.warning("━━━ TERRAFORM DESTROY ━━━")
     terminal.warning("")
+    terminal.warning("⚠️ This will DESTROY all resources in the target account!")
+    terminal.info("")
+    terminal.info(f"Running terraform destroy in {tf_dir}...")
+    terminal.info("")
 
     deploy_state["destroy_running"] = True
 
@@ -2633,76 +2418,9 @@ async def _run_terraform_destroy(
         # Set TF_VAR_* environment variables for terraform
         env = _get_terraform_env(state)
 
-        # Step 1: Get list of all resources in state
-        terminal.info("Checking terraform state...")
-        state_result = await asyncio.to_thread(
-            subprocess.run,
-            ["terraform", "state", "list"],
-            cwd=tf_dir,
-            capture_output=True,
-            text=True,
-            env=env,
-        )
-        
-        if state_result.returncode != 0:
-            terminal.error("Failed to list terraform state")
-            for line in state_result.stderr.split("\n"):
-                if line.strip():
-                    terminal.error(f"  {line}")
-            ui.notify("Failed to list terraform state", type="negative")
-            return
-        
-        # Parse resources from state
-        all_resources = [r.strip() for r in state_result.stdout.strip().split("\n") if r.strip()]
-        
-        if not all_resources:
-            terminal.warning("No resources found in terraform state")
-            ui.notify("No resources to destroy", type="warning")
-            return
-        
-        # Step 2: Filter out protected resources (addresses containing "protected_")
-        unprotected_resources = [r for r in all_resources if "protected_" not in r]
-        protected_resources = [r for r in all_resources if "protected_" in r]
-        
-        # Step 3: Show skip notification if any protected
-        if protected_resources:
-            terminal.info("")
-            terminal.info(f"Skipping {len(protected_resources)} protected resource(s):")
-            # Show first 10 protected resources
-            for addr in protected_resources[:10]:
-                # Extract a shorter display name from the address
-                short_name = addr.split("[")[-1].rstrip("]").strip('"') if "[" in addr else addr.split(".")[-1]
-                terminal.info(f"  - {short_name}")
-            if len(protected_resources) > 10:
-                terminal.info(f"  ... and {len(protected_resources) - 10} more")
-            terminal.info("")
-        
-        # Step 4: If nothing unprotected to destroy, exit early
-        if not unprotected_resources:
-            terminal.warning("")
-            terminal.warning("All resources are protected - nothing to destroy")
-            terminal.info("")
-            terminal.info("To destroy protected resources:")
-            terminal.info("  1. Unprotect them using the panel above")
-            terminal.info("  2. Click 'Generate Terraform' to apply changes")
-            terminal.info("  3. Then run destroy again")
-            ui.notify("All resources are protected", type="warning")
-            return
-        
-        # Step 5: Build command with -target for each unprotected resource
-        terminal.info(f"Destroying {len(unprotected_resources)} unprotected resource(s)...")
-        terminal.warning("")
-        terminal.warning("⚠️ This will DESTROY the following resources!")
-        terminal.info("")
-        
-        cmd = ["terraform", "destroy", "-no-color", "-auto-approve"]
-        for target in unprotected_resources:
-            cmd.extend(["-target", target])
-        
-        # Step 6: Run destroy
         result = await asyncio.to_thread(
             subprocess.run,
-            cmd,
+            ["terraform", "destroy", "-no-color", "-auto-approve"],
             cwd=tf_dir,
             capture_output=True,
             text=True,
@@ -2727,8 +2445,6 @@ async def _run_terraform_destroy(
         if result.returncode == 0:
             terminal.success("")
             terminal.success("Destroy complete!")
-            if protected_resources:
-                terminal.info(f"({len(protected_resources)} protected resource(s) preserved)")
             state.deploy.apply_complete = False
             state.deploy.last_plan_success = False
             save_state()
