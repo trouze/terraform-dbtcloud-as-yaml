@@ -16,6 +16,9 @@ This is **Part 8** in the Web UI PRD series.
 - Replace direct `.env` overwrites with a file picker dialog for explicit save locations
 - Auto-save workflow state when a project is active
 - Support seamless switching between projects from the home page
+- **Persist all migration settings per-project** (disable_job_triggers, import_mode, mappings, protected resources)
+- **Preserve settings when re-fetching data** within a project (settings should NOT reset)
+- **Store resource protection status per-project** (each project tracks its own protected resources)
 
 ## User Stories
 
@@ -84,12 +87,18 @@ This is **Part 8** in the Web UI PRD series.
   - `name: str` - Human-readable project name
   - `slug: str` - Folder-safe identifier
   - `description: str` - Optional description
-  - `workflow_type: WorkflowType` - Migration, Account Explorer, etc.
+  - `workflow_type: WorkflowType` - Migration, Account Explorer, Jobs as Code, Import & Adopt
   - `created_at: datetime` - Creation timestamp
   - `updated_at: datetime` - Last modification timestamp
   - `source_env_file: str` - Relative path (default: `.env.source`)
   - `target_env_file: str` - Relative path (default: `.env.target`)
   - `output_config: OutputConfig` - Output directory settings
+  - **Account summary fields (for fast filtering without loading full state):**
+    - `source_host: Optional[str]` - Source dbt Cloud host URL (e.g., "cloud.getdbt.com")
+    - `source_account_id: Optional[int]` - Source account ID
+    - `target_host: Optional[str]` - Target dbt Cloud host URL
+    - `target_account_id: Optional[int]` - Target account ID
+- [ ] Account summary fields updated when credentials are saved
 - [ ] `to_dict()` and `from_dict()` methods for JSON serialization
 - [ ] Stored as `project.json` in project folder
 - [ ] Typecheck passes
@@ -98,6 +107,40 @@ This is **Part 8** in the Web UI PRD series.
 - [ ] Unit test: serialization round-trip preserves all fields
 - [ ] Unit test: datetime fields serialize to ISO format
 - [ ] Unit test: default values applied correctly
+- [ ] Unit test: account summary fields are optional (None for unconfigured)
+
+---
+
+### US-083b: ProjectSettings Model
+**Description:** As a developer, I need a data model for project-specific settings so that migration configuration persists across sessions.
+
+**Acceptance Criteria:**
+- [ ] `ProjectSettings` dataclass with fields:
+  - **Deploy Settings:**
+    - `disable_job_triggers: bool` - Disable all job triggers in generated YAML (default: False)
+    - `import_mode: str` - "modern" (TF 1.5+) or "legacy" (default: "modern")
+    - `terraform_dir: str` - Terraform output directory (default: "deployments/migration")
+  - **Match Settings:**
+    - `target_matching_enabled: bool` - Whether target matching is enabled (default: False)
+    - `confirmed_mappings: list[dict]` - User-confirmed source-to-target mappings
+    - `rejected_suggestions: set[str]` - Source keys rejected by user
+    - `cloned_resources: list[dict]` - Clone configurations for "Create New" resources
+  - **Protection Settings:**
+    - `protected_resources: set[str]` - Source keys marked as protected (prevent destroy)
+  - **Mapping Settings:**
+    - `scope_mode: str` - "all_projects", "specific_projects", "account_only"
+    - `selected_project_ids: list[int]` - Project IDs for specific_projects mode
+    - `resource_filters: dict` - Per-resource-type inclusion toggles
+    - `normalization_options: dict` - Normalization settings (strip_ids, secret_handling, etc.)
+- [ ] Stored in `state.json` alongside full AppState
+- [ ] Settings NOT reset when re-fetching source/target data
+- [ ] Typecheck passes
+
+**Testing:**
+- [ ] Unit test: all settings serialize/deserialize correctly
+- [ ] Unit test: default values applied for missing keys
+- [ ] Integration test: settings persist after re-fetch
+- [ ] Browser test: change settings, re-fetch, verify settings preserved
 
 ---
 
@@ -140,12 +183,18 @@ This is **Part 8** in the Web UI PRD series.
 
 **Acceptance Criteria:**
 - [ ] Dialog opens from "New Project" button on home page
+- [ ] **Dialog pattern per ag-grid-standards.mdc:**
+  - Use `with ui.dialog() as dialog, ui.card().classes("w-full max-w-2xl")` pattern
+  - Call `dialog.open()` after defining content
+  - Close button (X icon) in top-right header: `ui.button(icon="close", on_click=dialog.close).props("flat round dense")`
+  - Card classes: `min-w-[600px] max-h-[80vh]`
 - [ ] Stepper component shows 4 steps with labels
 - [ ] Current step highlighted, completed steps show checkmark
 - [ ] "Back" and "Next" buttons for navigation
 - [ ] "Next" disabled until current step is valid
 - [ ] "Cancel" button closes dialog without creating project
 - [ ] Dialog is modal (prevents interaction with page behind)
+- [ ] Content areas use `ui.scroll_area()` for overflow
 - [ ] Typecheck passes
 - [ ] Verify in browser
 
@@ -153,6 +202,8 @@ This is **Part 8** in the Web UI PRD series.
 - [ ] Browser test: open wizard, navigate all steps, cancel
 - [ ] Browser test: stepper state updates correctly
 - [ ] Browser test: cannot proceed with invalid step
+- [ ] Browser test: close button (X) works
+- [ ] Browser test: dialog scrolls correctly with long content
 
 ---
 
@@ -287,12 +338,24 @@ This is **Part 8** in the Web UI PRD series.
 
 ---
 
-### US-090: Project List Display
-**Description:** As a user, I want to see all my existing projects on the home page so that I can quickly access them.
+### US-090: Project List Display (Hybrid Card/Grid)
+**Description:** As a user, I want to see all my existing projects on the home page so that I can quickly access them, with an appropriate UI for the number of projects I have.
 
 **Acceptance Criteria:**
 - [ ] "Your Projects" section on home page
-- [ ] Projects displayed as cards in a grid
+- [ ] **Hybrid display based on project count:**
+  - **<10 projects**: Card-based grid view (visual, glanceable)
+  - **≥10 projects**: AG Grid table view (scalable, searchable)
+- [ ] Toggle button to manually switch between Card/Grid views
+- [ ] User preference for view mode persisted in browser storage
+- [ ] Projects sorted by last modified (most recent first)
+- [ ] "No projects yet" message when list empty
+- [ ] "New Project" button prominently displayed
+- [ ] Typecheck passes
+- [ ] Verify in browser
+
+**Card View (< 10 projects):**
+- [ ] Projects displayed as cards in responsive grid
 - [ ] Each card shows:
   - Project name (title)
   - Workflow type badge (colored)
@@ -300,17 +363,45 @@ This is **Part 8** in the Web UI PRD series.
   - Last modified date (relative, e.g., "2 hours ago")
   - Source account info (if configured): Account ID, host
   - Target account info (if configured): Account ID, host
-- [ ] Cards sorted by last modified (most recent first)
-- [ ] "No projects yet" message when list empty
-- [ ] "New Project" button prominently displayed
-- [ ] Typecheck passes
-- [ ] Verify in browser
+- [ ] Click card to load project
+- [ ] Delete button (trash icon) with confirmation
+
+**AG Grid View (≥ 10 projects) - Per ag-grid-standards.mdc:**
+- [ ] Use `theme="quartz"` for automatic dark/light mode
+- [ ] Column definitions with explicit `colId` on every column:
+  - `name` (colId: "name") - Project name, filterable, width: 200
+  - `workflow_type` (colId: "workflow_type") - Badge with valueFormatter, dropdown filter
+    - Values: Migration, Account Explorer, Jobs as Code, Import & Adopt
+    - cellClassRules for color-coded badges
+  - `description` (colId: "description") - Truncated text, width: 250
+  - `source_account` (colId: "source_account") - Format: `{host} / Account {id}`, dropdown filter
+    - "Not configured" if no source credentials
+    - Tooltip shows full host URL
+  - `target_account` (colId: "target_account") - Format: `{host} / Account {id}`, dropdown filter
+    - "Not configured" if no target credentials
+    - Tooltip shows full host URL
+    - Only shown for Migration/Import & Adopt workflows
+  - `updated_at` (colId: "updated_at") - Relative date formatter ("2 hours ago")
+  - `actions` (colId: "actions") - Load/Delete buttons, pinned: "right"
+- [ ] `defaultColDef`: `{sortable: True, filter: True, resizable: True}`
+- [ ] Quick search input with `setGridOption('quickFilterText', ...)`
+- [ ] Export to CSV button with `exportDataAsCsv`
+- [ ] Single row selection: `rowSelection: {mode: "singleRow"}`
+- [ ] CSS Grid layout: `grid-template-rows: auto 1fr`
+- [ ] Pre-sort data in Python, NOT via AG Grid sort properties
+- [ ] `animateRows: False` for stability
+- [ ] Row click loads the project
+- [ ] **Row grouping** option to group by source or target account
 
 **Testing:**
 - [ ] Browser test: view empty state
-- [ ] Browser test: view single project
-- [ ] Browser test: view multiple projects, verify sorting
+- [ ] Browser test: view 1-9 projects, see card view
+- [ ] Browser test: view 10+ projects, see AG Grid view
+- [ ] Browser test: toggle between card/grid views
+- [ ] Browser test: AG Grid - verify search, filter, export work
+- [ ] Browser test: AG Grid - verify light/dark mode switching
 - [ ] Browser test: verify card content accuracy
+- [ ] Browser test: view preference persists across sessions
 
 ---
 
@@ -363,25 +454,58 @@ This is **Part 8** in the Web UI PRD series.
 
 ---
 
-### US-093: Project Search/Filter
-**Description:** As a user, I want to search and filter my projects so that I can quickly find what I need when I have many projects.
+### US-093: Project Search/Filter with Account Grouping
+**Description:** As a user, I want to search, filter, and group my projects by workflow type and account so that I can quickly find projects related to specific dbt Cloud accounts.
 
 **Acceptance Criteria:**
-- [ ] Search input above project grid
-- [ ] Searches project name and description
-- [ ] Filter by workflow type (dropdown or chips)
+
+**Filter Dimensions:**
+- [ ] **Workflow Type**: Migration, Account Explorer, Jobs as Code, Import & Adopt
+- [ ] **Source Account**: Group by `{host} / Account {id}` (e.g., "cloud.getdbt.com / Account 12345")
+- [ ] **Target Account**: Group by `{host} / Account {id}` (e.g., "cloud.salesforce.getdbt.com / Account 67890")
+- [ ] Accounts with no configuration show as "Not configured"
+
+**Card View Search:**
+- [ ] Search input above project cards
+- [ ] Client-side filtering of cards by name and description
+- [ ] Filter chips for workflow type (4 types)
+- [ ] Filter dropdown for source account (grouped by unique host+id combinations)
+- [ ] Filter dropdown for target account (grouped by unique host+id combinations)
 - [ ] Results update in real-time as user types
 - [ ] "No matching projects" message when filter returns empty
-- [ ] Clear filters button
+- [ ] Clear all filters button
+- [ ] Active filter count badge
+
+**AG Grid View Search (per ag-grid-standards.mdc):**
+- [ ] Search input wired to `grid.run_grid_method('setGridOption', 'quickFilterText', value)`
+- [ ] Uses AG Grid's built-in column filters (`defaultColDef.filter: True`)
+- [ ] Columns for filtering:
+  - `workflow_type` - Dropdown filter with 4 workflow types
+  - `source_account` - Dropdown filter showing `{host} / Account {id}` options
+  - `target_account` - Dropdown filter showing `{host} / Account {id}` options
+- [ ] Row grouping option: Group by source account OR target account
+- [ ] Export filtered results via `exportDataAsCsv`
+- [ ] "No rows" overlay when filter returns empty
+
+**Account Display Format:**
+- [ ] Full format: `cloud.getdbt.com / Account 12345`
+- [ ] Short format (for narrow columns): `12345 @ cloud.getdbt.com`
+- [ ] Tooltip shows full details on hover
+
+**Both Views:**
 - [ ] Typecheck passes
 - [ ] Verify in browser
 
 **Testing:**
-- [ ] Browser test: search by name, verify filtering
-- [ ] Browser test: search by description text
-- [ ] Browser test: filter by workflow type
-- [ ] Browser test: combine search and filter
-- [ ] Browser test: clear filters
+- [ ] Browser test: filter by workflow type "Migration" only
+- [ ] Browser test: filter by workflow type "Jobs as Code" only
+- [ ] Browser test: filter by source account, see only matching projects
+- [ ] Browser test: filter by target account, see only matching projects
+- [ ] Browser test: combine workflow type + source account filters
+- [ ] Browser test: AG Grid - verify column filters work
+- [ ] Browser test: AG Grid - verify row grouping by account
+- [ ] Browser test: export filtered results includes correct subset
+- [ ] Browser test: clear filters resets all
 
 ---
 
@@ -394,13 +518,19 @@ This is **Part 8** in the Web UI PRD series.
 
 **Acceptance Criteria:**
 - [ ] Dialog opens when clicking "Save to .env" button
+- [ ] **Dialog pattern per ag-grid-standards.mdc (Config/Picker style):**
+  - Use `with ui.dialog() as dialog, ui.card().classes("p-4 min-w-[400px] max-h-[80vh]")` pattern
+  - Call `dialog.open()` after defining content
+  - Close button (X icon) in header: `ui.button(icon="close", on_click=dialog.close).props("flat round dense")`
+  - Content in `ui.scroll_area().style("max-height: 400px;")` if needed
+  - Action buttons at bottom with `ui.row().classes("w-full justify-end mt-4 gap-2")`
 - [ ] Shows current project context (if active)
 - [ ] File path input field with:
   - Default: project's `.env.source` or `.env.target` (based on context)
   - If no project: defaults to workspace root `.env`
   - Browse button for file selection
 - [ ] Overwrite warning if file exists
-- [ ] "Save" and "Cancel" buttons
+- [ ] "Save" (primary) and "Cancel" (flat) buttons
 - [ ] Typecheck passes
 - [ ] Verify in browser
 
@@ -410,6 +540,7 @@ This is **Part 8** in the Web UI PRD series.
 - [ ] Browser test: open dialog with no project, see root .env default
 - [ ] Browser test: select custom path via browse
 - [ ] Browser test: verify overwrite warning appears
+- [ ] Browser test: close button (X) works
 
 ---
 
@@ -582,8 +713,154 @@ This is **Part 8** in the Web UI PRD series.
 
 ---
 
+### Epic 7: Project Settings & Resource Protection
+
+---
+
+### US-103: Preserve Settings on Re-Fetch
+**Description:** As a user, I want my project settings to be preserved when I re-fetch source or target data so that I don't lose my configuration.
+
+**Acceptance Criteria:**
+- [ ] `disable_job_triggers` setting NOT reset when fetching new data
+- [ ] `import_mode` setting NOT reset when fetching new data
+- [ ] `confirmed_mappings` NOT cleared when fetching (may need revalidation)
+- [ ] `protected_resources` NOT cleared when fetching
+- [ ] `scope_mode` and `resource_filters` NOT reset when fetching
+- [ ] Notification shown if mappings need revalidation after fetch
+- [ ] Typecheck passes
+- [ ] Verify in browser
+
+**Testing:**
+- [ ] Browser test: set disable_job_triggers=true, fetch, verify still true
+- [ ] Browser test: set import_mode=legacy, fetch, verify still legacy
+- [ ] Browser test: confirm mappings, fetch, verify mappings preserved
+- [ ] Browser test: protect resources, fetch, verify protection preserved
+- [ ] Unit test: fetch operation does not modify settings fields
+
+---
+
+### US-104: Per-Project Protected Resources
+**Description:** As a user, I want each project to maintain its own list of protected resources so that protection settings are isolated.
+
+**Acceptance Criteria:**
+- [ ] `protected_resources` stored in project's `state.json`
+- [ ] Protection status restored when loading a project
+- [ ] Protection status isolated between projects (Project A's protection doesn't affect Project B)
+- [ ] Protection panel on Destroy page shows project-specific protections
+- [ ] Protecting/unprotecting resources auto-saves to project state
+- [ ] Typecheck passes
+- [ ] Verify in browser
+
+**Testing:**
+- [ ] Browser test: protect resource in Project A, switch to Project B, verify not protected
+- [ ] Browser test: load project, verify protected resources restored
+- [ ] Browser test: protect resource, close app, reopen, verify still protected
+- [ ] Unit test: protected_resources serialization in state.json
+
+---
+
+### US-105: Per-Project Confirmed Mappings
+**Description:** As a user, I want each project to store its source-to-target mappings so that I can resume matching work.
+
+**Acceptance Criteria:**
+- [ ] `confirmed_mappings` stored in project's `state.json`
+- [ ] `rejected_suggestions` stored in project's `state.json`
+- [ ] `cloned_resources` stored in project's `state.json`
+- [ ] Mappings restored when loading a project
+- [ ] Match page shows restored mappings correctly
+- [ ] Stale mappings detected if source/target data changed (show warning)
+- [ ] Typecheck passes
+- [ ] Verify in browser
+
+**Testing:**
+- [ ] Browser test: confirm mapping, close app, reopen, verify mapping shown
+- [ ] Browser test: reject suggestion, close app, reopen, verify still rejected
+- [ ] Browser test: create clone config, close app, reopen, verify clone config present
+- [ ] Unit test: mapping serialization round-trip
+
+---
+
+### US-106: Per-Project Deploy Settings
+**Description:** As a user, I want deploy settings stored per-project so that each migration has its own configuration.
+
+**Acceptance Criteria:**
+- [ ] `disable_job_triggers` stored in project's `state.json`
+- [ ] `import_mode` stored in project's `state.json`
+- [ ] `terraform_dir` stored in project's `state.json` (relative to project folder)
+- [ ] Settings restored when loading a project
+- [ ] Configure page shows correct values after project load
+- [ ] Typecheck passes
+- [ ] Verify in browser
+
+**Testing:**
+- [ ] Browser test: set disable_job_triggers, switch projects, verify different values
+- [ ] Browser test: set import_mode=legacy in Project A, load Project B (modern), verify different
+- [ ] Browser test: save project, reload app, verify deploy settings restored
+
+---
+
+### US-107: Per-Project Mapping Configuration
+**Description:** As a user, I want mapping configuration (scope, filters, normalization) stored per-project.
+
+**Acceptance Criteria:**
+- [ ] `scope_mode` stored in project's `state.json`
+- [ ] `selected_project_ids` stored in project's `state.json`
+- [ ] `resource_filters` stored in project's `state.json`
+- [ ] `normalization_options` stored in project's `state.json`
+- [ ] Mapping page shows correct configuration after project load
+- [ ] Typecheck passes
+- [ ] Verify in browser
+
+**Testing:**
+- [ ] Browser test: configure scope_mode=specific_projects, reload, verify preserved
+- [ ] Browser test: toggle resource filters, reload, verify preserved
+- [ ] Browser test: change normalization options, reload, verify preserved
+
+---
+
+### US-108: Settings Validation on Fetch
+**Description:** As a user, I want to be notified when re-fetched data may invalidate my existing mappings or settings.
+
+**Acceptance Criteria:**
+- [ ] After fetch, check if confirmed_mappings reference resources that no longer exist
+- [ ] Show warning banner if mappings are stale: "X mappings may need review"
+- [ ] Mark stale mappings in Match UI (different color/icon)
+- [ ] Option to "Clear stale mappings" or "Review mappings"
+- [ ] Protected resources that no longer exist are cleaned up automatically
+- [ ] Typecheck passes
+- [ ] Verify in browser
+
+**Testing:**
+- [ ] Browser test: map resource, delete from source, re-fetch, see stale warning
+- [ ] Browser test: protect resource, delete from source, re-fetch, verify cleaned up
+- [ ] Browser test: click "Review mappings", navigate to Match page
+
+---
+
+### US-109: Import Settings from Another Project
+**Description:** As a user, I want to optionally import settings from another project when creating a new one so that I can reuse configurations.
+
+**Acceptance Criteria:**
+- [ ] In wizard Step 2, "Copy from project" option includes settings checkbox
+- [ ] Can selectively import:
+  - Deploy settings (disable_job_triggers, import_mode)
+  - Mapping configuration (scope, filters, normalization)
+  - Note: Mappings NOT imported (project-specific)
+  - Note: Protected resources NOT imported (project-specific)
+- [ ] Preview shows which settings will be imported
+- [ ] Typecheck passes
+- [ ] Verify in browser
+
+**Testing:**
+- [ ] Browser test: create project, import settings from existing, verify settings copied
+- [ ] Browser test: verify mappings NOT copied
+- [ ] Browser test: selective import (only deploy settings)
+
+---
+
 ## Functional Requirements
 
+### Project Infrastructure
 - **FR-1:** Projects must be stored as folders under `projects/` directory
 - **FR-2:** Each project folder must contain its own `.gitignore` file
 - **FR-3:** Root `.gitignore` must exclude the entire `projects/` directory
@@ -598,6 +875,21 @@ This is **Part 8** in the Web UI PRD series.
 - **FR-12:** Project loading must restore full workflow state
 - **FR-13:** Fetch outputs must use project-relative paths when project active
 
+### Settings Persistence (New)
+- **FR-14:** `disable_job_triggers` must NOT reset when fetching new source/target data
+- **FR-15:** `import_mode` must NOT reset when fetching new source/target data
+- **FR-16:** `confirmed_mappings` must persist across fetch operations (with stale detection)
+- **FR-17:** `protected_resources` must be stored per-project in `state.json`
+- **FR-18:** `scope_mode`, `resource_filters`, and `normalization_options` must persist per-project
+- **FR-19:** Stale mappings must be detected and flagged after re-fetch
+- **FR-20:** Protection status must be isolated between projects
+- **FR-21:** Settings can be optionally imported from another project during creation
+
+### UI Standards Compliance (New)
+- **FR-22:** Project list AG Grid (≥10 projects) must comply with `.cursor/rules/ag-grid-standards.mdc`
+- **FR-23:** All dialogs must follow dialog patterns from ag-grid-standards.mdc (close buttons, scroll areas)
+- **FR-24:** Project list must support hybrid card/grid view with user preference persistence
+
 ## Non-Goals (Out of Scope)
 
 - **Project sharing/export** - Projects are local only
@@ -608,6 +900,25 @@ This is **Part 8** in the Web UI PRD series.
 - **Project archiving** - Delete or keep, no archive state
 
 ## Technical Considerations
+
+### Standards Compliance
+
+All implementations in this PRD MUST follow:
+
+- **AG Grid Standards**: `.cursor/rules/ag-grid-standards.mdc`
+  - Use `theme="quartz"` for all grids
+  - Explicit `colId` on every column
+  - Required features: filter, sort, resize, quick search, CSV export
+  - Use v32+ selection API (`rowSelection.checkboxes`, `rowSelection.headerCheckbox`)
+  - Pre-sort data in Python, never via AG Grid sort properties
+  - Dialog patterns with close buttons
+  
+- **Dialog Standards** (from ag-grid-standards.mdc):
+  - Config/Picker dialogs: `ui.card().classes("p-4 min-w-[400px] max-h-[80vh]")`
+  - Large dialogs: `ui.card().classes("w-full max-w-6xl").style("height: 80vh;")`
+  - Always include close button: `ui.button(icon="close", on_click=dialog.close).props("flat round dense")`
+  - Content in `ui.scroll_area()` for overflow handling
+  - Call `dialog.open()` AFTER defining content
 
 ### File Structure
 
@@ -891,6 +1202,9 @@ class StateSaver:
 | `test_state_serialization.py` | AppState to_dict/from_dict |
 | `test_gitignore_template.py` | Gitignore content validation |
 | `test_env_parsing.py` | .env file parsing for import |
+| `test_settings_persistence.py` | Settings NOT reset on fetch |
+| `test_mapping_serialization.py` | Confirmed mappings, protected resources serialization |
+| `test_stale_mapping_detection.py` | Detection of mappings referencing deleted resources |
 
 ### Integration Tests
 
@@ -900,6 +1214,10 @@ class StateSaver:
 | Credential import | Import from .env, verify files created |
 | State persistence | Save state, restart app, verify restored |
 | Output directories | Fetch to project folder, verify paths |
+| Settings on re-fetch | Configure settings → fetch → verify settings preserved |
+| Protection persistence | Protect resources → reload project → verify still protected |
+| Mapping persistence | Confirm mappings → reload project → verify mappings intact |
+| Cross-project isolation | Protect in Project A → switch to B → verify not protected |
 
 ### Browser/E2E Tests
 
@@ -910,6 +1228,10 @@ class StateSaver:
 | Delete project | Create project → delete → verify removed |
 | Save .env dialog | Enter credentials → save → verify file created |
 | Project switching | Create 2 projects → switch between → verify state isolated |
+| Settings preservation | Set disable_job_triggers=true → fetch → verify still true |
+| Protection isolation | Protect resource in A → switch to B → verify independent |
+| Stale mapping detection | Map resource → delete from source → re-fetch → see warning |
+| Settings import | Create project → import settings from another → verify copied |
 
 ### Manual Testing Checklist
 
@@ -921,6 +1243,18 @@ class StateSaver:
 - [ ] Test wizard cancellation at each step
 - [ ] Test browser refresh during wizard
 - [ ] Verify state survives app restart
+
+### Settings Persistence Checklist
+
+- [ ] Set `disable_job_triggers=true`, re-fetch source, verify still true
+- [ ] Set `import_mode=legacy`, re-fetch source, verify still legacy
+- [ ] Configure scope_mode and filters, re-fetch, verify preserved
+- [ ] Confirm several mappings, re-fetch source, verify mappings still shown
+- [ ] Protect resources, re-fetch source, verify still protected
+- [ ] Protect resource in Project A, switch to Project B, verify not protected in B
+- [ ] Delete a mapped source resource, re-fetch, verify stale warning appears
+- [ ] Import settings from another project, verify selective import works
+- [ ] Verify protected resources that no longer exist are cleaned up
 
 ## Success Metrics
 

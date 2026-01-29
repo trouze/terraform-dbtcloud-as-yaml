@@ -1,0 +1,139 @@
+---
+description: Browser automation using agent-browser CLI
+globs:
+alwaysApply: true
+---
+
+# Browser Automation with agent-browser
+
+Use the `agent-browser` CLI for web automation, testing, and browser interactions.
+
+**IMPORTANT: Always use `--headed` flag when opening browsers so the user can see the browser window.**
+
+## When to Use agent-browser
+
+**Proactively use agent-browser when:**
+- User asks you to test a web app or UI
+- User is debugging a frontend issue
+- User says "check if it works" for a web application
+- User mentions localhost, a URL, or a web page
+- After making frontend changes, to verify they work
+- User asks to fill out forms, click buttons, or navigate pages
+- User wants to see what a page looks like or capture screenshots
+
+**Examples of triggers:**
+- "Test the login page"
+- "Check if the form works"
+- "What does the homepage look like?"
+- "Debug why the button isn't working"
+- "Verify my changes on localhost:3000"
+- "Take a screenshot of the dashboard"
+
+## Core Workflow
+
+1. **Navigate**: `agent-browser open <url> --headed` - Open a page (visible browser)
+2. **Snapshot**: `agent-browser snapshot -i` - Get interactive elements with refs (@e1, @e2, etc.)
+3. **Interact**: Use refs from snapshot to interact:
+   - `agent-browser click @e1` - Click element
+   - `agent-browser fill @e2 "text"` - Fill input field
+   - `agent-browser type @e3 "text"` - Type into element
+4. **Re-snapshot**: After page changes, take a new snapshot to get updated refs
+
+## Common Commands
+
+```bash
+# Navigation (always use --headed for visible browser)
+agent-browser open <url> --headed     # Navigate to URL (visible browser)
+agent-browser back                    # Go back
+agent-browser forward                 # Go forward
+agent-browser reload                  # Reload page
+
+# Interaction (use refs from snapshot)
+agent-browser click @e1               # Click element
+agent-browser fill @e2 "text"         # Clear and fill input
+agent-browser type @e3 "text"         # Type into element (appends)
+agent-browser press Enter             # Press key
+agent-browser hover @e4               # Hover element
+agent-browser select @e5 "option"     # Select dropdown option
+agent-browser check @e6               # Check checkbox
+agent-browser scroll down 500         # Scroll down 500px
+
+# Get Information
+agent-browser snapshot -i             # Interactive elements only (recommended)
+agent-browser snapshot                # Full accessibility tree
+agent-browser get text @e1            # Get text content
+agent-browser get url                 # Get current URL
+agent-browser get title               # Get page title
+agent-browser screenshot [path]       # Take screenshot
+
+# Wait
+agent-browser wait @e1                # Wait for element visible
+agent-browser wait 2000               # Wait 2 seconds
+agent-browser wait --text "Welcome"   # Wait for text to appear
+
+# State checks
+agent-browser is visible @e1          # Check if visible
+agent-browser is enabled @e2          # Check if enabled
+```
+
+## Snapshot Options
+
+```bash
+agent-browser snapshot -i             # Interactive elements only (buttons, inputs, links)
+agent-browser snapshot -c             # Compact (remove empty elements)
+agent-browser snapshot -d 3           # Limit depth to 3 levels
+agent-browser snapshot -i -c          # Combine options
+agent-browser snapshot --json         # JSON output for parsing
+```
+
+## Sessions (Multiple Browsers)
+
+```bash
+agent-browser --session test1 open site-a.com --headed
+agent-browser --session test2 open site-b.com --headed
+agent-browser session list            # List active sessions
+```
+
+## Best Practices
+
+1. Always use `snapshot -i` before interactions to get fresh refs
+2. Use refs (@e1, @e2) instead of CSS selectors when possible - they're more reliable
+3. Re-snapshot after any action that changes the page
+4. Use `--json` flag for machine-readable output
+5. Use `agent-browser close` when done to clean up
+
+## Troubleshooting & Testing Workflow
+
+When debugging or testing a web application:
+
+```bash
+# 1. Open the app
+agent-browser open http://localhost:3000 --headed
+
+# 2. Get current state
+agent-browser snapshot -i              # See interactive elements
+agent-browser screenshot /tmp/before.png  # Capture current state
+
+# 3. Interact and test
+agent-browser fill @e1 "test@example.com"
+agent-browser fill @e2 "password123"
+agent-browser click @e3                # Click submit button
+
+# 4. Check results
+agent-browser wait 2000                # Wait for response
+agent-browser snapshot -i              # Check new state
+agent-browser screenshot /tmp/after.png   # Capture result
+agent-browser get url                  # Did we navigate?
+
+# 5. Check for errors (in browser console)
+agent-browser console                  # View console messages
+agent-browser errors                   # View JS errors
+```
+
+## Debugging Tips
+
+- **Page not loading?** Check `agent-browser get url` and `agent-browser errors`
+- **Element not found?** Run `agent-browser snapshot` (without -i) to see full tree
+- **Action not working?** Use `agent-browser wait @element` before clicking
+- **Need to see what happened?** Take screenshots before/after actions
+- **Check network/API calls?** Use `agent-browser console` to see logs

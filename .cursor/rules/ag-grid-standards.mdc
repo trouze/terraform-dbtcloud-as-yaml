@@ -1,0 +1,824 @@
+---
+description: AG Grid standards and patterns for all data grids in the web UI
+globs: ["importer/web/**/*.py"]
+alwaysApply: false
+---
+
+# AG Grid Standards
+
+All data grids in PRDs and the web UI MUST use AG Grid (`ui.aggrid()`) as the standard component.
+
+---
+
+## Quick Reference: Critical Rules
+
+### MUST DO
+
+1. **Always set explicit `colId`** on every column definition
+2. **Use `theme="quartz"`** for automatic dark/light mode support
+3. **Use `run_grid_method("setGridOption", ...)`** for runtime column updates
+4. **Convert Observable types to plain dicts**: `[dict(j) for j in data]`
+5. **Use `stopEditingWhenCellsLoseFocus: True`** when cells are editable
+6. **Use CSS Grid layout** with `grid-template-rows: auto 1fr` for proper sizing
+7. **Use `:valueFormatter`** (colon prefix) for JavaScript function strings
+8. **Use `cellClassRules`** instead of `cellRenderer` for conditional styling
+9. **Use AG Grid v32+ row selection API**: `rowSelection.checkboxes` and `rowSelection.headerCheckbox`
+10. **Add `cellDataType: False`** to boolean columns to prevent unwanted checkbox rendering
+11. **Pre-sort data in Python** before passing to grid (no default sort via AG Grid)
+12. **Use `animateRows: False`** for stability
+13. **For dialogs**: Use `with ui.dialog() as dialog, ui.card()` pattern, call `dialog.open()` after
+14. **Always include a close button** in dialogs
+
+### MUST NOT DO
+
+1. **Never use `initialState.sortModel`** - creates phantom columns
+2. **Never use column-level `sort` or `sortIndex`** properties - same issue
+3. **Never use `getRowId`** - causes issues with NiceGUI's AG Grid wrapper
+4. **Never mutate `grid.options["columnDefs"]` directly** - won't trigger updates
+5. **Never assume `grid.update()` will refresh column definitions** - it won't
+6. **Never use deprecated `headerCheckboxSelection` or `checkboxSelection`** on columns - use `rowSelection` options instead (AG Grid v32.2+)
+
+---
+
+## Required Standard Features
+
+Every AG Grid implementation MUST include:
+
+1. **Theme**: `theme="quartz"` for automatic dark/light mode support
+2. **Column Filtering**: `defaultColDef.filter: True`
+3. **Column Sorting**: `defaultColDef.sortable: True`
+4. **Column Resizing**: `defaultColDef.resizable: True`
+5. **Quick Filter/Search**: Search input with `grid.run_grid_method('setGridOption', 'quickFilterText', value)`
+6. **Export to CSV**: Export button calling `grid.run_grid_method('exportDataAsCsv', {...})`
+
+---
+
+## Column Definition Patterns
+
+### Explicit colId Required
+
+Every column MUST have an explicit `colId` to prevent the phantom column bug:
+
+```python
+# CORRECT - explicit colId prevents "Name 3", "Sort Key 2" bug
+column_defs = [
+    {
+        "field": "name",
+        "colId": "name",  # REQUIRED
+        "headerName": "Name",
+        "sortable": True,
+    },
+    {
+        "field": "project_name",
+        "colId": "project_name",  # REQUIRED
+        "headerName": "Project",
+        "sortable": True,
+    },
+]
+
+# WRONG - missing colId causes phantom columns
+column_defs = [
+    {"field": "name", "headerName": "Name"},  # NO colId!
+]
+```
+
+### Boolean Columns - Prevent Auto-Checkbox
+
+Boolean fields automatically render as checkboxes. Add `cellDataType: False` to prevent this:
+
+```python
+{
+    "field": "is_active",
+    "colId": "is_active",
+    "headerName": "Active",
+    "cellDataType": False,  # Prevents unwanted checkbox
+    ":valueFormatter": "params => params.value ? '✓ Yes' : ''",
+}
+```
+
+### Runtime Column Updates
+
+Never mutate options directly. Use the API:
+
+```python
+# WRONG - changes won't appear
+grid.options["columnDefs"] = new_col_defs
+grid.update()
+
+# CORRECT - use AG Grid API
+async def update_columns(grid, new_col_defs):
+    await grid.run_grid_method("setGridOption", "columnDefs", new_col_defs)
+```
+
+---
+
+## Grid Options Template
+
+```python
+# Pre-sort data in Python (no AG Grid default sort)
+sorted_data = sorted(row_data, key=lambda x: x.get("name", ""))
+
+# Convert Observable types to plain dicts
+row_data = [dict(item) for item in sorted_data]
+
+grid_options = {
+    "columnDefs": column_defs,
+    "rowData": row_data,
+    "defaultColDef": {
+        "sortable": True,
+        "filter": True,
+        "resizable": True,
+        "flex": 1,
+        "minWidth": 80,
+    },
+    # Row selection (read-only grids)
+    "rowSelection": {"mode": "singleRow"},
+    # OR for multi-select:
+    # "rowSelection": {
+    #     "mode": "multiRow",
+    #     "headerCheckbox": True,
+    #     "checkboxes": True,
+    # },
+    # "suppressRowClickSelection": True,  # Only checkbox selects
+    "stopEditingWhenCellsLoseFocus": True,
+    "animateRows": False,  # Stability
+}
+
+grid = ui.aggrid(grid_options, theme="quartz").classes("w-full h-full")
+```
+
+---
+
+## Layout and Container Patterns
+
+### CSS Grid for Proper Sizing
+
+AG Grid needs explicit height. Use CSS Grid layout:
+
+```python
+with ui.element("div").style(
+    "display: grid; "
+    "grid-template-rows: auto 1fr; "  # Toolbar auto, grid fills rest
+    "width: 100%; "
+    "height: 100%; "
+    "gap: 8px; "
+    "overflow: hidden;"
+):
+    # Toolbar row (auto height)
+    with ui.row().classes("w-full items-center gap-2"):
+        ui.input(placeholder="Search...").props("outlined dense clearable")
+        ui.button("Export CSV", icon="download")
+    
+    # Grid container (fills remaining space)
+    grid_container = ui.element("div").classes("w-full h-full").style(
+        "min-height: 200px;"
+    )
+    
+    with grid_container:
+        grid = ui.aggrid({...}, theme="quartz").classes("w-full h-full")
+```
+
+### Grid Container Rebuild Pattern
+
+When columns change significantly, rebuild the entire grid:
+
+```python
+grid_container = ui.element("div").classes("w-full h-full").style("min-height: 200px;")
+grid_ref = {"grid": None}
+
+def build_grid_in_container():
+    column_defs = build_column_defs()
+    row_data = get_filtered_data()
+    
+    grid = ui.aggrid({
+        "columnDefs": column_defs,
+        "rowData": row_data,
+        ...
+    }, theme="quartz").classes("w-full h-full")
+    
+    grid_ref["grid"] = grid
+    grid.on("cellClicked", handle_cell_click)
+
+def rebuild_grid():
+    grid_container.clear()
+    with grid_container:
+        build_grid_in_container()
+
+# Initial grid creation
+with grid_container:
+    build_grid_in_container()
+```
+
+### Height Patterns
+
+```python
+# Fill available space (recommended)
+grid = ui.aggrid({...}).classes("w-full h-full").style("overflow-x: auto;")
+
+# Fixed height
+grid = ui.aggrid({...}).classes("w-full").style("height: 400px;")
+
+# Flex-grow in flex container
+grid = ui.aggrid({...}).classes("w-full flex-grow").style(
+    "height: 100%; min-height: 300px;"
+)
+```
+
+---
+
+## Selection Patterns
+
+### Read-Only / Select-Only Grids
+
+Use AG Grid's built-in row selection (AG Grid v32+ API):
+
+```python
+# Single selection
+grid_options = {
+    "rowSelection": {"mode": "singleRow"},
+}
+
+# Multi-selection with checkboxes
+grid_options = {
+    "rowSelection": {
+        "mode": "multiRow",
+        "headerCheckbox": True,    # Replaces deprecated headerCheckboxSelection
+        "checkboxes": True,        # Replaces deprecated checkboxSelection
+    },
+    "suppressRowClickSelection": True,  # Only checkbox selects
+}
+
+# Handle selection changes
+async def handle_selection():
+    selected = await grid.get_selected_rows()
+    selected_ids = [row["id"] for row in selected]
+    process_selection(selected_ids)
+
+grid.on("selectionChanged", lambda: handle_selection())
+```
+
+### Pre-selecting Rows on Grid Load
+
+```python
+pre_selected_ids = set(state.selected_ids)
+all_selected = pre_selected_ids and len(pre_selected_ids) == len(rows)
+
+# After grid creation, use timer to pre-select
+if all_selected:
+    async def select_all_rows():
+        await grid.run_grid_method("selectAll")
+    ui.timer(0.1, select_all_rows, once=True)
+elif pre_selected_ids:
+    ids_list = list(pre_selected_ids)
+    js_code = f"""
+        const selectedIds = {ids_list};
+        getElement({grid.id}).gridOptions.api.forEachNode(node => {{
+            if (selectedIds.includes(node.data.id)) {{
+                node.setSelected(true);
+            }}
+        }});
+    """
+    ui.timer(0.2, lambda: ui.run_javascript(js_code), once=True)
+```
+
+### Editable Grids (when specified in PRD)
+
+Use inline cell editing with `cellValueChanged`:
+
+```python
+grid_options = {
+    "defaultColDef": {
+        "editable": False,  # Set True per-column as needed
+    },
+    "stopEditingWhenCellsLoseFocus": True,
+    "singleClickEdit": True,  # For faster editing UX
+}
+
+def on_cell_value_changed(e):
+    data = e.args.get("data", {})
+    col = e.args.get("colId")
+    new_val = e.args.get("newValue")
+    handle_edit(data, col, new_val)
+
+grid.on("cellValueChanged", on_cell_value_changed)
+```
+
+---
+
+## Event Handling Patterns
+
+### Programmatic Update Flag Pattern
+
+Prevent circular event loops when updating grid programmatically:
+
+```python
+programmatic_update = {"active": False}
+
+def on_cell_value_changed(e):
+    # Skip if this is a programmatic update
+    if programmatic_update.get("active", False):
+        return
+    
+    # Process the user-initiated change
+    row_data = e.args.get("data", {})
+    handle_change(row_data)
+
+grid.on("cellValueChanged", on_cell_value_changed)
+
+async def select_all_programmatically():
+    programmatic_update["active"] = True
+    try:
+        for row in grid.options.get("rowData", []):
+            row["_selected"] = True
+        grid.update()
+    finally:
+        programmatic_update["active"] = False
+```
+
+### Cell Click vs Cell Value Changed
+
+```python
+# For clicking anywhere in a row (read-only interaction)
+def on_cell_clicked(e):
+    # Skip for checkbox column clicks
+    if e.args and e.args.get("colId") == "_selected":
+        return
+    if e.args and "data" in e.args:
+        row_data = e.args["data"]
+        show_detail_dialog(row_data)
+
+grid.on("cellClicked", on_cell_clicked)
+
+# For editable cells (value changes)
+def on_cell_value_changed(e):
+    data = e.args.get("data", {})
+    col = e.args.get("colId")
+    new_val = e.args.get("newValue")
+    handle_edit(data, col, new_val)
+
+grid.on("cellValueChanged", on_cell_value_changed)
+```
+
+---
+
+## Export to CSV
+
+```python
+def export_csv():
+    grid.run_grid_method('exportDataAsCsv', {
+        'fileName': f'{resource_type}_export.csv',
+        'columnSeparator': ',',
+    })
+
+ui.button("Export CSV", on_click=export_csv, icon="download").props("size=sm")
+```
+
+---
+
+## Search/Quick Filter
+
+```python
+def on_search(e):
+    grid.run_grid_method('setGridOption', 'quickFilterText', e.value)
+
+ui.input(placeholder="Search...", on_change=on_search).props("outlined dense clearable")
+```
+
+---
+
+## Styling Patterns
+
+### valueFormatter for Display Text
+
+Use `:valueFormatter` (colon prefix) for JavaScript functions:
+
+```python
+{
+    "field": "action",
+    "colId": "action",
+    "headerName": "Action",
+    ":valueFormatter": """params => {
+        const labels = {
+            'match': '⛓️ Match',
+            'create_new': '➕ Create New',
+            'skip': '⏭️ Skip',
+        };
+        return labels[params.value] || params.value;
+    }""",
+}
+```
+
+### cellClassRules for Conditional Styling
+
+Prefer `cellClassRules` over `cellRenderer` for NiceGUI compatibility:
+
+```python
+{
+    "field": "status",
+    "colId": "status",
+    "headerName": "Status",
+    ":valueFormatter": """params => {
+        const labels = {
+            'pending': '⏳ Pending',
+            'confirmed': '✓ Confirmed',
+            'error': '✗ Error',
+        };
+        return labels[params.value] || params.value;
+    }""",
+    "cellClassRules": {
+        "status-pending": "x === 'pending'",
+        "status-confirmed": "x === 'confirmed'",
+        "status-error": "x === 'error'",
+    },
+}
+```
+
+### Row Class Rules
+
+```python
+grid_options = {
+    "rowClassRules": {
+        "row-confirmed": "data.status === 'confirmed'",
+        "row-error": "data.status === 'error'",
+        "row-skipped": "data.action === 'skip'",
+    },
+}
+```
+
+### Dark Mode CSS
+
+Always define both light and dark mode variants:
+
+```python
+ui.add_css("""
+    /* Light mode */
+    .status-pending { color: #D97706 !important; }
+    .status-confirmed { color: #059669 !important; font-weight: 600; }
+    .status-error { color: #DC2626 !important; font-weight: 600; }
+    
+    .row-confirmed { background-color: rgba(16, 185, 129, 0.15) !important; }
+    .row-error { background-color: rgba(239, 68, 68, 0.15) !important; }
+    
+    /* Dark mode - brighter colors for visibility */
+    .dark .status-pending, .body--dark .status-pending { color: #FCD34D !important; }
+    .dark .status-confirmed, .body--dark .status-confirmed { color: #6EE7B7 !important; }
+    .dark .status-error, .body--dark .status-error { color: #FCA5A5 !important; }
+    
+    .dark .row-confirmed, .body--dark .row-confirmed {
+        background-color: rgba(16, 185, 129, 0.25) !important;
+    }
+    .dark .row-error, .body--dark .row-error {
+        background-color: rgba(239, 68, 68, 0.25) !important;
+    }
+""")
+```
+
+---
+
+## Dialog Patterns
+
+### Standard Sizing
+
+| Dialog Type | Card Classes | Height Style | Content Scroll |
+|-------------|--------------|--------------|----------------|
+| **Detail/Large** | `w-full max-w-6xl` | `height: 80vh;` | `height: 55vh;` |
+| **Config/Picker** | `p-4 min-w-[400px] max-h-[80vh]` | (none) | `max-height: 400px;` |
+| **Maximized** | `w-full h-full` | `dialog.props("maximized")` | `flex: 1; min-height: 0;` |
+
+### Detail Dialog (Entity Browser Style)
+
+```python
+def show_detail_dialog(row_data: dict) -> None:
+    with ui.dialog() as dialog, ui.card().classes("w-full max-w-6xl").style("height: 80vh;"):
+        # Header with close button
+        with ui.row().classes("w-full items-center justify-between p-4 border-b"):
+            with ui.row().classes("items-center gap-2"):
+                ui.icon("info")
+                ui.label(row_data.get("name", "Details")).classes("text-xl font-bold")
+            # REQUIRED: Always include close button
+            ui.button(icon="close", on_click=dialog.close).props("flat round dense")
+        
+        # Tabs
+        with ui.tabs().classes("w-full") as tabs:
+            summary_tab = ui.tab("Summary", icon="summarize")
+            details_tab = ui.tab("Details", icon="table_rows")
+            json_tab = ui.tab("JSON", icon="code")
+        
+        # Tab panels - flex-1 to fill remaining height
+        with ui.tab_panels(tabs, value=summary_tab).classes("w-full flex-1"):
+            with ui.tab_panel(summary_tab):
+                with ui.scroll_area().style("height: 55vh;"):
+                    render_summary(row_data)
+            
+            with ui.tab_panel(details_tab):
+                with ui.scroll_area().style("height: 55vh;"):
+                    render_details(row_data)
+            
+            with ui.tab_panel(json_tab):
+                with ui.scroll_area().style("height: 55vh;"):
+                    ui.code(json.dumps(row_data, indent=2), language="json")
+    
+    # IMPORTANT: Call open() after defining
+    dialog.open()
+```
+
+### Configuration/Picker Dialog
+
+```python
+def show_config_dialog():
+    with ui.dialog() as dialog, ui.card().classes("p-4 min-w-[400px] max-h-[80vh]"):
+        ui.label("Configuration").classes("text-lg font-semibold mb-2")
+        
+        with ui.scroll_area().style("max-height: 400px;"):
+            checkbox1 = ui.checkbox("Option 1", value=True)
+            checkbox2 = ui.checkbox("Option 2", value=False)
+        
+        # Action buttons at bottom
+        with ui.row().classes("w-full justify-end mt-4 gap-2"):
+            ui.button("Cancel", on_click=dialog.close).props("flat")
+            
+            async def apply_config():
+                save_configuration(checkbox1.value, checkbox2.value)
+                dialog.close()
+                ui.notify("Configuration saved", type="positive")
+            
+            ui.button("Apply", on_click=apply_config).props("color=primary")
+    
+    dialog.open()
+```
+
+### Maximized Viewer Dialog
+
+```python
+def show_viewer_dialog(content: str, title: str):
+    with ui.dialog() as dialog:
+        dialog.props("maximized")
+        
+        with ui.card().classes("w-full h-full").style("display: flex; flex-direction: column;"):
+            # Header
+            with ui.row().classes("w-full items-center justify-between p-4"):
+                ui.label(title).classes("text-xl font-bold")
+                ui.button(icon="close", on_click=dialog.close).props("flat round dense")
+            
+            # Content fills remaining space
+            with ui.scroll_area().classes("w-full").style("flex: 1; min-height: 0;"):
+                ui.code(content, language="json").classes("w-full text-sm")
+    
+    dialog.open()
+```
+
+---
+
+## Data Compatibility
+
+### Observable Types Conversion
+
+Convert NiceGUI Observable types before passing to grid:
+
+```python
+# WRONG - may crash with reactive data
+grid = ui.aggrid({"rowData": state.items})
+
+# CORRECT - convert to plain dicts
+row_data = [dict(item) for item in state.items]
+grid = ui.aggrid({"rowData": row_data})
+```
+
+### Handling None Values
+
+```python
+def prepare_row_data(items: list[dict]) -> list[dict]:
+    rows = []
+    for item in items:
+        project = item.get("project") or {}
+        rows.append({
+            "id": item.get("id"),
+            "name": item.get("name", ""),
+            "project_name": project.get("name") or f"Project {item.get('project_id', 'N/A')}",
+        })
+    return rows
+```
+
+---
+
+## Testing Requirements
+
+All grids MUST be tested for:
+
+- [ ] Light mode appearance
+- [ ] Dark mode appearance (toggle via UI or browser preference)
+- [ ] Dynamic dark/light mode switching without refresh
+- [ ] Column filtering works
+- [ ] Column sorting works
+- [ ] Quick search/filter works
+- [ ] Export to CSV works (verify file content)
+- [ ] Selection behavior (if applicable)
+- [ ] Inline editing (if applicable)
+- [ ] Custom cell styling visible in both modes
+
+---
+
+## Troubleshooting Guide
+
+| Symptom | Likely Cause | Solution |
+|---------|--------------|----------|
+| Column headers show "Name 3", "Sort Key 2" | Sorting properties or missing colId | Remove `initialState.sortModel`, `sort`, `sortIndex`; add explicit `colId` |
+| Column visibility changes don't apply | Using `grid.options` mutation | Use `run_grid_method("setGridOption", "columnDefs", ...)` |
+| Grid has zero height | No explicit height in container | Use CSS Grid with `grid-template-rows: auto 1fr` |
+| Checkbox clicks don't register | Missing `editable: True` | Add `editable: True` to checkbox column |
+| Event handler fires multiple times | Circular update loop | Use `programmatic_update` flag pattern |
+| Dark mode colors wrong | Missing dark mode CSS | Add `.dark` and `.body--dark` CSS selectors |
+| Grid crashes with Observable data | Reactive types not compatible | Convert with `[dict(item) for item in data]` |
+| Cell editing doesn't commit | Focus handling issue | Add `stopEditingWhenCellsLoseFocus: True` |
+| Dialog doesn't appear | Missing `dialog.open()` | Call `dialog.open()` after defining the dialog |
+| Dialog content overflows | No scroll area | Wrap content in `ui.scroll_area().style("height: Xvh;")` |
+| Dialog has no close button | Missing close handler | Add `ui.button(icon="close", on_click=dialog.close).props("flat round dense")` |
+| Two checkbox columns appear | Boolean field auto-renders as checkbox | Add `cellDataType: False` to boolean columns |
+| Selection checkboxes never checked | Selection state not applied to grid | Use `selectAll()` or `forEachNode` with `ui.timer` to pre-select rows |
+| Deprecation warnings about checkboxSelection | Using old AG Grid API | Use `rowSelection.checkboxes` and `rowSelection.headerCheckbox` instead |
+
+---
+
+## Complete Working Example
+
+```python
+from nicegui import ui
+import json
+
+def create_entity_grid(
+    items: list[dict],
+    on_selection_change: callable,
+    pre_selected_ids: set = None
+) -> ui.aggrid:
+    """Create a properly configured AG Grid following all standards."""
+    
+    # Convert Observable types and pre-sort
+    row_data = sorted(
+        [dict(item) for item in items],
+        key=lambda x: x.get("name", "")
+    )
+    pre_selected_ids = pre_selected_ids or set()
+    
+    # Column definitions with explicit colId
+    column_defs = [
+        {
+            "field": "name",
+            "colId": "name",
+            "headerName": "Name",
+            "width": 200,
+            "filter": "agTextColumnFilter",
+            "sortable": True,
+        },
+        {
+            "field": "status",
+            "colId": "status",
+            "headerName": "Status",
+            "width": 120,
+            ":valueFormatter": """params => {
+                const labels = {
+                    'active': '✓ Active',
+                    'pending': '⏳ Pending',
+                    'error': '✗ Error',
+                };
+                return labels[params.value] || params.value;
+            }""",
+            "cellClassRules": {
+                "status-active": "x === 'active'",
+                "status-pending": "x === 'pending'",
+                "status-error": "x === 'error'",
+            },
+        },
+        {
+            "field": "is_active",
+            "colId": "is_active",
+            "headerName": "Active",
+            "width": 80,
+            "cellDataType": False,  # Prevent auto-checkbox
+            ":valueFormatter": "params => params.value ? '✓' : ''",
+        },
+    ]
+    
+    # Grid options
+    grid_options = {
+        "columnDefs": column_defs,
+        "rowData": row_data,
+        "rowSelection": {
+            "mode": "multiRow",
+            "headerCheckbox": True,
+            "checkboxes": True,
+        },
+        "suppressRowClickSelection": True,
+        "pagination": True,
+        "paginationPageSize": 50,
+        "paginationPageSizeSelector": [25, 50, 100],
+        "rowClassRules": {
+            "row-active": "data.status === 'active'",
+            "row-error": "data.status === 'error'",
+        },
+        "defaultColDef": {
+            "resizable": True,
+            "sortable": True,
+            "filter": True,
+            "minWidth": 80,
+        },
+        "stopEditingWhenCellsLoseFocus": True,
+        "animateRows": False,
+    }
+    
+    # Create grid with quartz theme
+    grid = ui.aggrid(grid_options, theme="quartz").classes("w-full h-full")
+    
+    # Pre-select rows
+    if pre_selected_ids:
+        all_selected = len(pre_selected_ids) == len(row_data)
+        if all_selected:
+            async def select_all():
+                await grid.run_grid_method("selectAll")
+            ui.timer(0.1, select_all, once=True)
+        else:
+            ids_list = list(pre_selected_ids)
+            js_code = f"""
+                const selectedIds = {ids_list};
+                getElement({grid.id}).gridOptions.api.forEachNode(node => {{
+                    if (selectedIds.includes(node.data.id)) {{
+                        node.setSelected(true);
+                    }}
+                }});
+            """
+            ui.timer(0.2, lambda: ui.run_javascript(js_code), once=True)
+    
+    # Handle selection
+    async def handle_selection():
+        selected = await grid.get_selected_rows()
+        on_selection_change([row["id"] for row in selected])
+    
+    grid.on("selectionChanged", lambda: handle_selection())
+    
+    # Add CSS with dark mode support
+    ui.add_css("""
+        .status-active { color: #059669 !important; font-weight: 600; }
+        .status-pending { color: #D97706 !important; }
+        .status-error { color: #DC2626 !important; font-weight: 600; }
+        
+        .row-active { background-color: rgba(16, 185, 129, 0.1) !important; }
+        .row-error { background-color: rgba(239, 68, 68, 0.1) !important; }
+        
+        .dark .status-active, .body--dark .status-active { color: #6EE7B7 !important; }
+        .dark .status-pending, .body--dark .status-pending { color: #FCD34D !important; }
+        .dark .status-error, .body--dark .status-error { color: #FCA5A5 !important; }
+        
+        .dark .row-active, .body--dark .row-active {
+            background-color: rgba(16, 185, 129, 0.2) !important;
+        }
+        .dark .row-error, .body--dark .row-error {
+            background-color: rgba(239, 68, 68, 0.2) !important;
+        }
+    """)
+    
+    return grid
+
+
+def create_page():
+    """Example page using the grid."""
+    
+    with ui.element("div").style(
+        "display: grid; "
+        "grid-template-rows: auto 1fr; "
+        "height: 100%; "
+        "gap: 8px; "
+        "overflow: hidden;"
+    ):
+        # Toolbar
+        with ui.row().classes("w-full items-center gap-2"):
+            search = ui.input(placeholder="Search...").props("outlined dense clearable")
+            ui.button("Export CSV", icon="download")
+        
+        # Grid container
+        with ui.element("div").classes("w-full h-full").style("min-height: 200px;"):
+            grid = create_entity_grid(
+                items=my_data,
+                on_selection_change=handle_selection,
+            )
+            
+            # Wire up search
+            search.on("update:model-value", lambda e: grid.run_grid_method(
+                'setGridOption', 'quickFilterText', e.args
+            ))
+```
+
+---
+
+## Inline Editing Guidelines
+
+Inline editing should ONLY be implemented when:
+
+1. Explicitly specified in the PRD
+2. The use case requires direct data manipulation in the grid
+
+When implementing:
+
+- Use `editable: True` on specific columns, not globally
+- Handle `cellValueChanged` events for validation and state updates
+- Provide visual feedback for edited cells
+- Use `stopEditingWhenCellsLoseFocus: True`
+- Use `singleClickEdit: True` for faster UX

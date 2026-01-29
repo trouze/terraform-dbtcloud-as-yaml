@@ -469,6 +469,20 @@ def _create_selection_panel(
                     icon="filter_alt_off", 
                     on_click=reset_filters
                 ).props("outline dense").tooltip("Reset to All Types with Selected Only off")
+                
+                # Export CSV button
+                def export_csv():
+                    if grid_ref["grid"]:
+                        grid_ref["grid"].run_grid_method('exportDataAsCsv', {
+                            'fileName': 'scope_entities.csv',
+                            'columnSeparator': ',',
+                        })
+                
+                ui.button(
+                    "Export CSV",
+                    icon="download",
+                    on_click=export_csv
+                ).props("outline dense")
             
             # Count display
             counts = selection_manager.get_selection_counts()
@@ -620,6 +634,7 @@ def _create_selection_grid(
             "filter": True,
         },
         "stopEditingWhenCellsLoseFocus": True,
+        "animateRows": False,  # Stability - per ag-grid-standards.mdc
     }, theme="quartz").classes("w-full h-full")
     
     grid_ref["grid"] = grid

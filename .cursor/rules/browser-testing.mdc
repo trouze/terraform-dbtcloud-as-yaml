@@ -1,0 +1,66 @@
+---
+description: Browser testing workflow using cursor-browser-extension MCP for UI verification
+globs: ["importer/web/**/*.py"]
+alwaysApply: false
+---
+
+# Browser Testing with cursor-browser-extension
+
+When testing NiceGUI web UI changes, use the `cursor-browser-extension` MCP tools.
+
+## Standard Testing Workflow
+
+1. **Restart the server** before testing:
+   ```bash
+   ./restart_web.sh
+   ```
+
+2. **Load credentials** after server restart (session state is cleared):
+   - Navigate to `/fetch_target`
+   - Click "Load .env" button
+   - Handle the "Existing Fetch Data Detected" dialog (press Escape or click "Keep Existing Data")
+   - Verify API Token field is populated
+
+3. **Navigate to test page**:
+   - Use `browser_navigate` with the target URL
+   - Take a `browser_snapshot` to verify page state
+
+4. **Interact and verify**:
+   - Use `browser_click` with element refs from snapshots
+   - Use `browser_snapshot` after interactions to verify changes
+   - For large snapshots, use `Grep` on the snapshot file to find specific elements
+
+## Key MCP Tools
+
+- `browser_navigate`: Navigate to URLs
+- `browser_snapshot`: Capture current page state (returns element refs)
+- `browser_click`: Click elements by ref
+- `browser_press_key`: Send keyboard input (e.g., "Escape")
+- `browser_type`: Type text into inputs
+- `browser_fill`: Clear and fill input fields
+
+## Common Patterns
+
+### Finding elements in large snapshots
+```bash
+# Search for specific text or element types
+Grep pattern="button.*Manage|combobox.*Filter" path=/path/to/snapshot.log
+```
+
+### Handling dialogs
+- Dialogs appear at the end of snapshots
+- Use `browser_press_key` with "Escape" to dismiss
+- Or find and click dialog buttons by ref
+
+### Verifying filter changes
+After selecting a filter option:
+1. Check the combobox shows the new value
+2. Check the badge/counter updates (e.g., "11 shown / 336 total")
+3. Check table rows update accordingly
+
+## Session State Notes
+
+- NiceGUI uses in-memory session state
+- Server restart clears all session data
+- Always reload credentials via `/fetch_target` after restart
+- The destroy page requires valid target credentials to show resources
