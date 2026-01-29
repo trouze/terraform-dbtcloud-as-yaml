@@ -9,16 +9,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.1] - 2026-01-29
+
+### Added
+- **Match Debug Tab**: New debugging tab in resource detail popup for troubleshooting matching issues
+  - Shows matching strategy, key comparison, and lookup diagnostics
+  - Displays Terraform import address preview
+  - LLM Diagnostic Report with "Copy for AI" button for easy diagnosis
+  - Raw grid row JSON for detailed inspection
+
+### Fixed
+- **State-Aware Repository Matching**: Fixed matching for adopted repositories with different names
+  - Project-linked repositories now use state ID to find target matches
+  - Handles cases where source repo name differs from target repo name after adoption
+  - Correctly shows "Match" action instead of "Create New" for adopted repos
+- **Composite ID Parsing**: Fixed extraction of numeric IDs from composite Terraform IDs
+  - Handles IDs like "605:556" by extracting the resource ID portion (556)
+  - Normalizes `dbt_id` to integers for consistent lookups
+- **Type Normalization**: Fixed type mismatches in state-to-target ID lookups
+  - Ensures consistent integer types when comparing state IDs to target IDs
+
 ## [0.15.0] - 2026-01-29
 
 ### Added
-- **Destroy Section with Protection Support**: New destroy section in the Deploy page
+- **Destroy Page Protection Enhancements**: Enhanced Destroy Target Resources tab with protection support
   - Auto-skips protected resources using `-target` flags (no more Terraform errors)
   - Shows "Skipping N protected resources" notification with list of preserved resources
   - Protected Resources panel displays resources grouped by type
   - "Unprotect All" button with confirmation dialog for explicit unprotection
-  - "Destroy All" button with confirmation dialog
   - Handles edge case where all resources are protected
+  - Shows "(N protected resource(s) preserved)" in destroy summary
 
 - **Terraform Module Protection Support**: Enhanced modules to support `lifecycle.prevent_destroy`
   - Split resources into `protected` and `unprotected` maps in all modules

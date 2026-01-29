@@ -269,11 +269,25 @@ def _create_matching_content(
     # (We store serialized state in reconcile_state_resources)
     if state.deploy.reconcile_state_loaded and state.deploy.reconcile_state_resources:
         # Reconstruct a minimal StateReadResult from saved data
+        import re
         from importer.web.utils.terraform_state_reader import StateReadResult, StateResource
         state_result = StateReadResult(success=True)
         for res_data in state.deploy.reconcile_state_resources:
+            # Get resource_index from cached data, or extract from address as fallback
+            resource_index = res_data.get("resource_index")
+            address = res_data.get("address", "")
+            if resource_index is None and address and "[" in address:
+                # Extract index from address like: resource.name["key"] or resource.name[0]
+                match = re.search(r'\["([^"]+)"\]$', address)
+                if match:
+                    resource_index = match.group(1)
+                else:
+                    match = re.search(r'\[(\d+)\]$', address)
+                    if match:
+                        resource_index = match.group(1)
+            
             resource = StateResource(
-                address=res_data.get("address", ""),
+                address=address,
                 tf_type=res_data.get("tf_type", ""),
                 element_code=res_data.get("element_code", ""),
                 tf_name=res_data.get("tf_name", ""),
@@ -281,7 +295,7 @@ def _create_matching_content(
                 name=res_data.get("name"),
                 project_id=res_data.get("project_id"),
                 attributes=res_data.get("attributes", {}),
-                resource_index=res_data.get("resource_index"),
+                resource_index=resource_index,
             )
             state_result.resources.append(resource)
             if resource.dbt_id is not None:
@@ -805,6 +819,7 @@ def _create_matching_content(
                                 "tf_name": res.tf_name,
                                 "element_code": res.element_code,
                                 "project_id": res.project_id,
+                                "resource_index": res.resource_index,
                                 **res.attributes,
                             }
                             break

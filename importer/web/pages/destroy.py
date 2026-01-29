@@ -20,6 +20,7 @@ from nicegui import ui
 from importer.web.components.terminal_output import TerminalOutput
 from importer.web.pages.deploy import _get_state_file_path, _get_terraform_env
 from importer.web.state import AppState, WorkflowStep
+from importer.web.utils.protection_manager import extract_protected_resources, load_yaml_config
 from importer.web.utils.yaml_viewer import create_state_viewer_dialog
 
 
@@ -520,6 +521,152 @@ def _show_resource_detail_dialog(
     dialog.open()
 
 
+def _create_destroy_protection_panel(
+    state: AppState,
+    save_state: Callable[[], None],
+) -> None:
+    """Create a panel showing protected resources that will be skipped during destroy (US-DP-04).
+    
+    This panel displays resources that have lifecycle.prevent_destroy = true
+    and provides an optional button to unprotect them (US-DP-05).
+    """
+    yaml_path = state.map.last_yaml_file
+    if not yaml_path:
+        return
+    
+    try:
+        yaml_config = load_yaml_config(yaml_path)
+        protected_resources = extract_protected_resources(yaml_config)
+    except Exception:
+        return
+    
+    if not protected_resources:
+        return
+    
+    # Group by type
+    by_type: dict[str, list] = {}
+    for res in protected_resources:
+        if res.resource_type not in by_type:
+            by_type[res.resource_type] = []
+        by_type[res.resource_type].append(res)
+    
+    type_labels = {
+        "PRJ": "Projects",
+        "ENV": "Environments",
+        "JOB": "Jobs",
+        "REP": "Repositories",
+        "CON": "Connections",
+    }
+    
+    with ui.expansion(
+        f"Protected Resources ({len(protected_resources)}) - Will be SKIPPED",
+        icon="shield",
+    ).classes("w-full mb-3").props("dense").style("border-left: 3px solid #3B82F6;"):
+        
+        # Info banner
+        with ui.card().classes("w-full p-3 mb-3").style("background-color: rgba(59, 130, 246, 0.1);"):
+            with ui.row().classes("items-start gap-2"):
+                ui.icon("info", size="sm").classes("text-blue-500")
+                with ui.column().classes("gap-1"):
+                    ui.label(
+                        "These resources will be SKIPPED during destroy"
+                    ).classes("text-sm font-medium")
+                    ui.label(
+                        "They have lifecycle.prevent_destroy = true and cannot be deleted."
+                    ).classes("text-xs text-slate-500")
+        
+        # Resource list by type
+        for rtype, resources in sorted(by_type.items()):
+            type_label = type_labels.get(rtype, rtype)
+            
+            with ui.row().classes("w-full items-center gap-2 mb-2"):
+                ui.badge(f"{len(resources)} {type_label}").props("dense color=blue")
+            
+            with ui.column().classes("w-full pl-4 mb-3 gap-1"):
+                for res in resources:
+                    with ui.row().classes("w-full items-center gap-2"):
+                        ui.icon("shield", size="xs").classes("text-blue-400")
+                        ui.label(res.name).classes("text-sm")
+                        ui.label(f"({res.resource_key})").classes("text-xs text-slate-400")
+        
+        # Unprotect All button (US-DP-05)
+        with ui.row().classes("w-full justify-end mt-2"):
+            ui.button(
+                "Unprotect All",
+                icon="shield_outlined",
+                on_click=lambda: _show_destroy_unprotection_dialog(
+                    protected_resources,
+                    state,
+                    save_state,
+                ),
+            ).props("flat color=amber dense").classes("text-xs")
+
+
+def _show_destroy_unprotection_dialog(
+    protected_resources: list,
+    state: AppState,
+    save_state: Callable[[], None],
+) -> None:
+    """Show confirmation dialog for unprotecting resources before destroy (US-DP-06).
+    
+    Only shown when user explicitly clicks 'Unprotect All'.
+    """
+    dialog = ui.dialog()
+    
+    with dialog, ui.card().classes("p-4 min-w-96"):
+        # Header with warning icon
+        with ui.row().classes("items-center gap-2 mb-4"):
+            ui.icon("warning", size="md").classes("text-amber-500")
+            ui.label("Unprotect Resources").classes("text-lg font-semibold")
+        
+        # Warning message
+        with ui.column().classes("gap-2 mb-4"):
+            ui.label(
+                f"This will remove protection from {len(protected_resources)} resource(s)."
+            ).classes("text-sm")
+            
+            with ui.card().classes("w-full p-3").style("background-color: rgba(245, 158, 11, 0.1);"):
+                ui.label(
+                    "After unprotecting, you must regenerate Terraform files before destroying."
+                ).classes("text-xs text-amber-700")
+        
+        # Resource list (max 10)
+        with ui.column().classes("gap-1 mb-4 max-h-48 overflow-auto"):
+            ui.label("Resources to unprotect:").classes("text-xs text-slate-500 mb-1")
+            for res in protected_resources[:10]:
+                with ui.row().classes("items-center gap-2"):
+                    ui.icon("shield_outlined", size="xs").classes("text-slate-400")
+                    ui.label(res.name).classes("text-sm")
+            if len(protected_resources) > 10:
+                ui.label(f"... and {len(protected_resources) - 10} more").classes("text-xs text-slate-400 pl-6")
+        
+        # Buttons
+        with ui.row().classes("w-full justify-end gap-2"):
+            ui.button("Cancel", on_click=dialog.close).props("flat")
+            
+            def on_confirm():
+                # Clear all protected resources from state
+                state.map.protected_resources.clear()
+                save_state()
+                dialog.close()
+                # Notification with next steps (US-DP-07)
+                ui.notify(
+                    "Resources unprotected. Go to Deploy tab and click 'Generate Terraform' to apply changes.",
+                    type="warning",
+                    timeout=8000,
+                )
+                # Reload to update the UI
+                ui.navigate.reload()
+            
+            ui.button(
+                "Unprotect All",
+                icon="shield_outlined",
+                on_click=on_confirm,
+            ).props("color=amber")
+    
+    dialog.open()
+
+
 def _create_bulk_actions_panel(
     state: AppState,
     terminal: TerminalOutput,
@@ -568,6 +715,9 @@ def _create_bulk_actions_panel(
                 icon="delete_forever",
                 on_click=on_destroy_selected,
             ).style(f"background-color: {STATUS_ERROR}; color: white;")
+
+        # Protected resources panel (US-DP-04)
+        _create_destroy_protection_panel(state, save_state)
 
         # Danger zone
         ui.separator().classes("my-2")
@@ -1085,25 +1235,88 @@ async def _run_terraform_destroy_all(
     save_state: Callable[[], None],
     destroy_state: dict,
 ) -> None:
-    """Run terraform destroy for ALL resources (US-048)."""
+    """Run terraform destroy for ALL resources, auto-skipping protected resources (US-048, US-DP-01)."""
     tf_dir = state.deploy.terraform_dir or "deployments/migration"
-    all_resources = _load_state_resources(state, destroy_state)
-    # Filter out data sources - only count managed resources
-    managed_resources = [r for r in all_resources if r.get("mode") != "data"]
 
     terminal.clear()
     terminal.set_title("Output — DESTROY ALL")
     terminal.error("━━━ TERRAFORM DESTROY ALL ━━━")
     terminal.error("")
-    terminal.warning("⚠️  DESTROYING ALL RESOURCES IN TARGET ACCOUNT")
-    terminal.warning(f"    Total resources: {len(managed_resources)}")
-    terminal.info("")
 
     env = _get_terraform_env(state)
 
+    # Step 1: Get list of all resources in terraform state
+    terminal.info("Checking terraform state...")
+    state_result = await asyncio.to_thread(
+        subprocess.run,
+        ["terraform", "state", "list"],
+        cwd=tf_dir,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    
+    if state_result.returncode != 0:
+        terminal.error("Failed to list terraform state")
+        for line in state_result.stderr.split("\n"):
+            if line.strip():
+                terminal.error(f"  {line}")
+        ui.notify("Failed to list terraform state", type="negative")
+        return
+    
+    # Parse resources from state
+    all_state_resources = [r.strip() for r in state_result.stdout.strip().split("\n") if r.strip()]
+    
+    if not all_state_resources:
+        terminal.warning("No resources found in terraform state")
+        ui.notify("No resources to destroy", type="warning")
+        return
+    
+    # Step 2: Filter out protected resources (addresses containing "protected_")
+    unprotected_resources = [r for r in all_state_resources if "protected_" not in r]
+    protected_resources = [r for r in all_state_resources if "protected_" in r]
+    
+    # Step 3: Show skip notification if any protected (US-DP-02)
+    if protected_resources:
+        terminal.info("")
+        terminal.info(f"Skipping {len(protected_resources)} protected resource(s):")
+        # Show up to 10 protected resources
+        for addr in protected_resources[:10]:
+            # Extract a shorter display name from the address
+            short_name = addr.split("[")[-1].rstrip("]").strip('"') if "[" in addr else addr.split(".")[-1]
+            terminal.info(f"  🛡️ {short_name}")
+        if len(protected_resources) > 10:
+            terminal.info(f"  ... and {len(protected_resources) - 10} more")
+        terminal.info("")
+    
+    # Step 4: If nothing unprotected to destroy, exit early (US-DP-03)
+    if not unprotected_resources:
+        terminal.warning("")
+        terminal.warning("All resources are protected - nothing to destroy")
+        terminal.info("")
+        terminal.info("To destroy protected resources:")
+        terminal.info("  1. Click 'Unprotect All' in the protection panel above")
+        terminal.info("  2. Go to Deploy tab and click 'Generate Terraform'")
+        terminal.info("  3. Return here and run destroy again")
+        ui.notify("All resources are protected", type="warning")
+        return
+    
+    # Step 5: Show what will be destroyed
+    terminal.warning("⚠️  DESTROYING UNPROTECTED RESOURCES")
+    terminal.warning(f"    Resources to destroy: {len(unprotected_resources)}")
+    if protected_resources:
+        terminal.info(f"    Protected (skipped): {len(protected_resources)}")
+    terminal.info("")
+    
+    # Step 6: Build command with -target for each unprotected resource
+    cmd = ["terraform", "destroy", "-no-color", "-auto-approve"]
+    for target in unprotected_resources:
+        cmd.extend(["-target", target])
+    
+    # Step 7: Run destroy
     result = await asyncio.to_thread(
         subprocess.run,
-        ["terraform", "destroy", "-no-color", "-auto-approve"],
+        cmd,
         cwd=tf_dir,
         capture_output=True,
         text=True,
@@ -1143,6 +1356,11 @@ async def _run_terraform_destroy_all(
         terminal.success("")
         terminal.success("━━━ DESTROY ALL SUMMARY ━━━")
         terminal.success(f"Successfully destroyed {final_count} resource(s)")
+        
+        # Show preserved count if any protected (US-DP-08)
+        if protected_resources:
+            terminal.info(f"({len(protected_resources)} protected resource(s) preserved)")
+        
         if destroyed_resources:
             terminal.info("")
             terminal.info("Destroyed resources:")
@@ -1156,7 +1374,7 @@ async def _run_terraform_destroy_all(
         state.deploy.last_plan_success = False
         state.deploy.destroy_complete = True
         save_state()
-        ui.notify(f"Destroyed all {final_count} resources", type="positive")
+        ui.notify(f"Destroyed {final_count} resources", type="positive")
         
         # Refresh the resource table to reflect destroyed resources
         _refresh_resources(state, destroy_state)

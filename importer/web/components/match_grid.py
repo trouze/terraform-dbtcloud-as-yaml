@@ -224,9 +224,16 @@ def build_grid_data(
     state_by_id: dict[tuple[str, int], dict] = {}
     if state_result and state_result.resources:
         for res in state_result.resources:
+            # Normalize dbt_id to int to ensure consistent lookups
+            dbt_id_normalized = res.dbt_id
+            if isinstance(dbt_id_normalized, str):
+                try:
+                    dbt_id_normalized = int(dbt_id_normalized)
+                except ValueError:
+                    pass
             state_info = {
                 "address": res.address,
-                "dbt_id": res.dbt_id,
+                "dbt_id": dbt_id_normalized,
                 "name": res.name,
                 "tf_name": res.tf_name,
                 "element_code": res.element_code,
@@ -242,8 +249,8 @@ def build_grid_data(
                 if key not in state_by_name:
                     state_by_name[key] = state_info
             # Index by dbt_id - this is the PRIMARY lookup for drift detection
-            if res.dbt_id is not None:
-                state_by_id[(res.element_code, res.dbt_id)] = state_info
+            if dbt_id_normalized is not None:
+                state_by_id[(res.element_code, dbt_id_normalized)] = state_info
     
     # Build additional lookup for repositories by project_name (resource_index)
     # For for_each resources, the key comes from the resource_index field
@@ -251,17 +258,33 @@ def build_grid_data(
     if state_result and state_result.resources:
         for res in state_result.resources:
             if res.element_code == "REP":
-                # Use resource_index (for_each key) if available, otherwise tf_name
-                repo_key = res.resource_index or res.tf_name
+                # Use resource_index (for_each key) if available
+                repo_key = res.resource_index
+                
+                # Fallback: extract from address if resource_index is None
+                # Address format: ...protected_repositories["sse_dm_fin_fido"]
+                if not repo_key and res.address and "[" in res.address:
+                    import re
+                    match = re.search(r'\["([^"]+)"\]$', res.address)
+                    if match:
+                        repo_key = match.group(1)
+                
                 if repo_key:
+                    # Normalize dbt_id to int to ensure consistent lookups
+                    dbt_id_normalized = res.dbt_id
+                    if isinstance(dbt_id_normalized, str):
+                        try:
+                            dbt_id_normalized = int(dbt_id_normalized)
+                        except ValueError:
+                            pass
                     state_repo_by_project[repo_key] = {
                         "address": res.address,
-                        "dbt_id": res.dbt_id,
+                        "dbt_id": dbt_id_normalized,
                         "name": res.name,
                         "tf_name": res.tf_name,
                         "element_code": res.element_code,
                         "project_id": res.project_id,
-                        "resource_index": res.resource_index,
+                        "resource_index": repo_key,  # Use the extracted key
                     }
     
     # Debug: log state lookup info
@@ -309,6 +332,21 @@ def build_grid_data(
         dbt_id = item.get("dbt_id")
         if dbt_id:
             target_by_id[dbt_id] = item
+            # For composite IDs like "605:556", also index by the numeric part
+            # This allows matching when state extracts just the resource ID (556)
+            if isinstance(dbt_id, str) and ":" in dbt_id:
+                parts = dbt_id.split(":")
+                try:
+                    numeric_id = int(parts[-1])
+                    target_by_id[numeric_id] = item
+                except ValueError:
+                    pass
+            # Also try to index by int conversion of the full ID
+            elif isinstance(dbt_id, str):
+                try:
+                    target_by_id[int(dbt_id)] = item
+                except ValueError:
+                    pass
         
         # For repositories, also index by remote_url and github_repo
         if element_type == "REP":
@@ -525,6 +563,50 @@ def build_grid_data(
                 crd_lookup = (source_proj_name, source_env_name)
                 target = target_crd_by_env.get(crd_lookup)
         
+        # STATE-AWARE AUTO-MATCHING: If no target found by name but resource is in TF state,
+        # look up the state's ID in targets and auto-suggest that match. This handles cases
+        # where source name differs from target name but the resource was already imported.
+        if not target and state_result:
+            state_resource = None
+            # For repositories, check by project_name first (handles project-linked repos)
+            if source_type == "REP" and project_name:
+                state_resource = state_repo_by_project.get(project_name)
+            # Fall back to name-based lookup for other types or if not found
+            if not state_resource:
+                state_resource = state_by_name.get((source_type, source_name))
+            
+            # If we have a state resource with a valid ID, look up in targets
+            if state_resource and state_resource.get("dbt_id"):
+                state_dbt_id = state_resource.get("dbt_id")
+                # Normalize to int for lookup (handles potential type mismatch from state storage)
+                if isinstance(state_dbt_id, str):
+                    try:
+                        state_dbt_id = int(state_dbt_id)
+                    except ValueError:
+                        pass
+                # Try lookup with normalized ID
+                target_from_state = target_by_id.get(state_dbt_id)
+                # Fallback: try with original value if int conversion didn't help
+                if not target_from_state and state_resource.get("dbt_id") != state_dbt_id:
+                    target_from_state = target_by_id.get(state_resource.get("dbt_id"))
+                if target_from_state and target_from_state.get("element_type_code") == source_type:
+                    target = target_from_state
+                    _debug_log({
+                        "sessionId": "debug-session",
+                        "runId": "run1",
+                        "hypothesisId": "H20",
+                        "location": "match_grid.py:state-aware-match",
+                        "message": "state-aware auto-match found",
+                        "data": {
+                            "source_key": source_key,
+                            "source_name": source_name,
+                            "state_dbt_id": state_dbt_id,
+                            "target_name": target.get("name"),
+                            "state_address": state_resource.get("address"),
+                        },
+                        "timestamp": int(time.time() * 1000),
+                    })
+        
         if target:
             target_id_int = target.get("dbt_id")
             
@@ -715,6 +797,24 @@ def build_grid_data(
                         elif repo_lookup_key in target_by_type_name:
                             target_repo = target_by_type_name[repo_lookup_key]
                             match_confidence = "exact_match"
+                        
+                        # STATE-AWARE MATCHING for repositories: If no match found but repo is in TF state,
+                        # look up target by state's dbt_id. This handles adopted repos with different names.
+                        if not target_repo and state_result and state_repo_by_project:
+                            state_repo = state_repo_by_project.get(source_name)  # source_name is parent project name
+                            if state_repo and state_repo.get("dbt_id"):
+                                state_dbt_id = state_repo.get("dbt_id")
+                                # Normalize to int for lookup
+                                if isinstance(state_dbt_id, str):
+                                    try:
+                                        state_dbt_id = int(state_dbt_id)
+                                    except ValueError:
+                                        pass
+                                # Look up target by state ID
+                                target_from_state = target_by_id.get(state_dbt_id)
+                                if target_from_state and target_from_state.get("element_type_code") == "REP":
+                                    target_repo = target_from_state
+                                    match_confidence = "state_id_match"
                         
                         if repo_source_key in rejected_keys:
                             repo_state_id, repo_drift, repo_state_addr = _compute_drift_status(

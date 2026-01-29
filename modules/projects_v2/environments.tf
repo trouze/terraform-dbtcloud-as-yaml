@@ -439,9 +439,7 @@ resource "dbtcloud_environment" "protected_environments" {
     try(dbtcloud_starburst_credential.credentials[each.key].credential_id, null),
     try(dbtcloud_spark_credential.credentials[each.key].credential_id, null),
     try(dbtcloud_teradata_credential.credentials[each.key].credential_id, null),
-  ), null)
-
-  # Optional fields
+  ), null)  # Optional fields
   dbt_version                = try(each.value.env_data.dbt_version, null)
   enable_model_query_history = try(each.value.env_data.enable_model_query_history, null)
   custom_branch              = try(each.value.env_data.custom_branch, null)

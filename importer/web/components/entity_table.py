@@ -1,6 +1,7 @@
 """Entity table component with AGGrid."""
 
 import csv
+import html
 import io
 import json
 from datetime import datetime
@@ -1197,6 +1198,7 @@ def show_match_detail_dialog(
             target_tab = ui.tab("Target Details", icon="cloud_download")
             state_tab = ui.tab("TF State", icon="storage")
             json_tab = ui.tab("JSON", icon="code")
+            debug_tab = ui.tab("Match Debug", icon="bug_report")
         
         with ui.tab_panels(tabs, value=drift_tab).classes("w-full flex-1 overflow-auto"):
             # Drift comparison tab
@@ -1388,8 +1390,443 @@ def show_match_detail_dialog(
                                     ),
                                 ).props("flat dense")
                             ui.code(state_json, language="json").classes("w-full text-xs")
+            
+            # Match Debug tab
+            with ui.tab_panel(debug_tab):
+                with ui.scroll_area().style("height: 65vh;"):
+                    _render_match_debug_tab(
+                        source_data=display_source,
+                        target_data=full_target,
+                        state_resource=state_resource,
+                        grid_row=grid_row,
+                        type_info=type_info,
+                        has_state_loaded=has_state_loaded,
+                    )
     
     dialog.open()
+
+
+def _render_match_debug_tab(
+    source_data: dict,
+    target_data: Optional[dict],
+    state_resource: Optional[dict],
+    grid_row: dict,
+    type_info: dict,
+    has_state_loaded: bool = False,
+) -> None:
+    """Render debug information about match resolution.
+    
+    Shows diagnostic info about how matches are resolved:
+    - Keys comparison (source_key vs resource_index)
+    - Matching strategy used
+    - Lookup diagnostics
+    - Import address preview
+    """
+    source_key = grid_row.get("source_key", "")
+    source_name = grid_row.get("source_name", source_data.get("name", ""))
+    source_type = grid_row.get("source_type", source_data.get("element_type_code", ""))
+    project_name = grid_row.get("project_name", source_data.get("project_name", ""))
+    target_id = grid_row.get("target_id", "")
+    target_name = target_data.get("name", "") if target_data else ""
+    state_id = grid_row.get("state_id")
+    drift_status = grid_row.get("drift_status", "no_state")
+    confidence = grid_row.get("confidence", "none")
+    action = grid_row.get("action", "")
+    state_address = grid_row.get("state_address") or (state_resource.get("address") if state_resource else None)
+    
+    with ui.column().classes("w-full gap-4 p-4"):
+        ui.label("Match Resolution Debug").classes("font-bold text-lg text-purple-600")
+        ui.label("Diagnostic information about how this resource match was resolved").classes("text-sm text-slate-500 mb-2")
+        
+        # Section 1: Matching Strategy
+        with ui.card().classes("w-full p-4"):
+            with ui.row().classes("items-center gap-2 mb-2"):
+                ui.icon("psychology", size="sm").classes("text-blue-500")
+                ui.label("Matching Strategy").classes("font-semibold")
+            
+            strategy_info = {
+                "exact_match": ("Name Match", "Source name matched a target name exactly", "green"),
+                "fuzzy": ("Fuzzy Match", "Source name partially matched a target name", "amber"),
+                "manual": ("Manual Selection", "User manually selected this target", "blue"),
+                "derived": ("Derived", "Auto-generated from parent resource", "purple"),
+                "none": ("No Match", "No matching target found", "slate"),
+            }
+            
+            strategy_label, strategy_desc, strategy_color = strategy_info.get(
+                confidence, ("Unknown", f"Confidence: {confidence}", "slate")
+            )
+            
+            with ui.row().classes("items-center gap-2"):
+                ui.badge(strategy_label).props(f"color={strategy_color}")
+                ui.label(strategy_desc).classes("text-sm text-slate-600")
+            
+            # Check if state-aware matching might have been used
+            if confidence == "exact_match" and state_resource and not target_data:
+                ui.label("ℹ️ State-aware fallback may have been used").classes("text-xs text-blue-500 mt-1")
+            elif confidence == "none" and state_resource:
+                ui.label("⚠️ Resource exists in state but no target match").classes("text-xs text-amber-500 mt-1")
+        
+        # Section 2: Key Comparison
+        with ui.card().classes("w-full p-4"):
+            with ui.row().classes("items-center gap-2 mb-2"):
+                ui.icon("key", size="sm").classes("text-amber-500")
+                ui.label("Key Comparison").classes("font-semibold")
+            
+            state_resource_index = state_resource.get("resource_index") if state_resource else None
+            
+            with ui.element("div").classes("w-full border rounded"):
+                # Source key row
+                with ui.row().classes("w-full items-center border-b py-2 px-3 bg-blue-50 dark:bg-blue-900/20"):
+                    ui.label("Source Key").classes("text-sm font-medium w-1/3")
+                    ui.code(source_key or "(none)").classes("text-sm")
+                
+                # State resource_index row
+                with ui.row().classes("w-full items-center border-b py-2 px-3 bg-purple-50 dark:bg-purple-900/20"):
+                    ui.label("State resource_index").classes("text-sm font-medium w-1/3")
+                    if state_resource_index:
+                        ui.code(state_resource_index).classes("text-sm")
+                        # Show if they match
+                        if source_key == state_resource_index:
+                            ui.badge("✓ Match").props("color=green dense")
+                        elif project_name == state_resource_index:
+                            ui.badge("✓ Project key").props("color=blue dense")
+                        else:
+                            ui.badge("✗ Different").props("color=amber dense")
+                    else:
+                        ui.label("(not in state)").classes("text-sm text-slate-400 italic")
+                
+                # Project name row (for repository matching)
+                if source_type == "REP":
+                    with ui.row().classes("w-full items-center py-2 px-3"):
+                        ui.label("Project Name (repo key)").classes("text-sm font-medium w-1/3")
+                        ui.code(project_name or "(none)").classes("text-sm")
+                        if project_name and state_resource_index and project_name == state_resource_index:
+                            ui.badge("Used for matching").props("color=green dense")
+            
+            # Explanation for key mismatch
+            if state_resource_index and source_key != state_resource_index:
+                with ui.card().classes("w-full p-2 mt-2").style("background-color: rgba(245, 158, 11, 0.1);"):
+                    ui.label("Key Mismatch Explanation").classes("text-xs font-semibold text-amber-700")
+                    if source_type == "REP" and project_name == state_resource_index:
+                        ui.label(
+                            "Repository keys differ because source uses repo name but Terraform uses project name "
+                            "for project-linked repositories (for_each key)."
+                        ).classes("text-xs text-amber-600")
+                    else:
+                        ui.label(
+                            f"Source key '{source_key}' differs from state key '{state_resource_index}'. "
+                            "This may indicate the resource was renamed or indexed differently."
+                        ).classes("text-xs text-amber-600")
+        
+        # Section 3: Lookup Diagnostics
+        with ui.card().classes("w-full p-4"):
+            with ui.row().classes("items-center gap-2 mb-2"):
+                ui.icon("search", size="sm").classes("text-green-500")
+                ui.label("Lookup Diagnostics").classes("font-semibold")
+            
+            lookups = []
+            
+            # Name lookup
+            name_lookup_key = f'("{source_type}", "{source_name}")'
+            name_matched = confidence == "exact_match" and target_data
+            lookups.append({
+                "method": "Name Lookup",
+                "key": name_lookup_key,
+                "result": "✓ Found" if name_matched else "✗ Not found",
+                "color": "green" if name_matched else "slate",
+            })
+            
+            # State ID lookup (if we have state)
+            if state_id:
+                state_id_lookup_key = f'("{source_type}", {state_id})'
+                state_id_matched = target_id and str(state_id) == str(target_id)
+                lookups.append({
+                    "method": "State ID in Target",
+                    "key": state_id_lookup_key,
+                    "result": "✓ Matched" if state_id_matched else "⚠️ ID differs" if target_id else "— No target",
+                    "color": "green" if state_id_matched else "amber" if target_id else "slate",
+                })
+            
+            # Project-based lookup for repos
+            if source_type == "REP" and project_name:
+                project_lookup_key = f'state_repo_by_project["{project_name}"]'
+                project_matched = state_resource and state_resource.get("resource_index") == project_name
+                lookups.append({
+                    "method": "Repo by Project",
+                    "key": project_lookup_key,
+                    "result": "✓ Found" if project_matched else "✗ Not found",
+                    "color": "green" if project_matched else "slate",
+                })
+            
+            with ui.element("div").classes("w-full border rounded"):
+                for lookup in lookups:
+                    with ui.row().classes("w-full items-center border-b last:border-b-0 py-2 px-3 hover:bg-slate-50 dark:hover:bg-slate-800"):
+                        ui.label(lookup["method"]).classes("text-sm font-medium w-1/4")
+                        ui.code(lookup["key"]).classes("text-xs flex-1")
+                        ui.badge(lookup["result"]).props(f"color={lookup['color']} dense")
+        
+        # Section 4: Import Address Preview
+        with ui.card().classes("w-full p-4"):
+            with ui.row().classes("items-center gap-2 mb-2"):
+                ui.icon("upload", size="sm").classes("text-purple-500")
+                ui.label("Terraform Import Address").classes("font-semibold")
+            
+            if state_address:
+                ui.label("Current state address:").classes("text-xs text-slate-500")
+                ui.code(state_address).classes("text-sm font-mono w-full")
+                
+                # Check if it's a protected resource
+                is_protected = "protected_" in state_address
+                if is_protected:
+                    ui.badge("🛡️ Protected Resource").props("color=blue").classes("mt-2")
+                    ui.label(
+                        "This resource has lifecycle.prevent_destroy = true"
+                    ).classes("text-xs text-blue-500")
+            else:
+                # Show what the import address would be
+                type_to_resource = {
+                    "PRJ": "dbtcloud_project",
+                    "ENV": "dbtcloud_environment",
+                    "JOB": "dbtcloud_job",
+                    "REP": "dbtcloud_repository",
+                    "CON": "dbtcloud_global_connection",
+                    "TOK": "dbtcloud_service_token",
+                    "GRP": "dbtcloud_group",
+                }
+                tf_resource_type = type_to_resource.get(source_type, f"dbtcloud_{source_type.lower()}")
+                
+                # Determine key for for_each
+                import_key = source_key
+                if source_type == "REP" and project_name:
+                    import_key = project_name
+                
+                # Show both protected and unprotected addresses
+                base_address = f'module.dbt_cloud.module.projects_v2[0].{tf_resource_type}'
+                
+                ui.label("Expected import addresses:").classes("text-xs text-slate-500")
+                with ui.column().classes("w-full gap-1 mt-1"):
+                    ui.label("Unprotected:").classes("text-xs text-slate-400")
+                    ui.code(f'{base_address}.{tf_resource_type.split("_")[1]}s["{import_key}"]').classes("text-xs font-mono")
+                    ui.label("Protected:").classes("text-xs text-slate-400")
+                    ui.code(f'{base_address}.protected_{tf_resource_type.split("_")[1]}s["{import_key}"]').classes("text-xs font-mono")
+        
+        # Section 5: Raw Grid Row Data
+        with ui.expansion("Raw Grid Row Data", icon="data_object").classes("w-full"):
+            grid_row_json = json.dumps(grid_row, indent=2, sort_keys=True, default=str)
+            with ui.row().classes("w-full justify-end"):
+                ui.button(
+                    "Copy",
+                    icon="content_copy",
+                    on_click=lambda grj=grid_row_json: (
+                        ui.run_javascript(f"navigator.clipboard.writeText({json.dumps(grj)})"),
+                        ui.notify("Copied to clipboard", type="positive"),
+                    ),
+                ).props("flat dense")
+            with ui.element("div").classes("w-full").style(
+                "max-width: 100%; overflow-x: auto; max-height: 300px;"
+            ):
+                ui.html(f'<pre style="white-space: pre-wrap; word-break: break-word; font-size: 0.75rem; margin: 0; padding: 8px; background: #1e1e1e; color: #d4d4d4; border-radius: 4px;">{html.escape(grid_row_json)}</pre>')
+        
+        # Section 6: LLM Diagnostic Report
+        state_resource_index = state_resource.get("resource_index") if state_resource else None
+        is_protected = "protected_" in state_address if state_address else False
+        
+        # Build the LLM-friendly diagnostic text
+        llm_diagnostic = _build_llm_diagnostic(
+            source_key=source_key,
+            source_name=source_name,
+            source_type=source_type,
+            source_id=source_data.get("dbt_id"),
+            project_name=project_name,
+            target_id=target_id,
+            target_name=target_name,
+            state_id=state_id,
+            state_address=state_address,
+            state_resource_index=state_resource_index,
+            drift_status=drift_status,
+            confidence=confidence,
+            action=action,
+            is_protected=is_protected,
+            has_state_loaded=has_state_loaded,
+            grid_row=grid_row,
+            source_data=source_data,
+            state_resource=state_resource,
+        )
+        
+        with ui.card().classes("w-full p-4").style("border: 2px solid #8B5CF6;"):
+            with ui.row().classes("items-center justify-between mb-2"):
+                with ui.row().classes("items-center gap-2"):
+                    ui.icon("smart_toy", size="sm").classes("text-purple-500")
+                    ui.label("LLM Diagnostic Report").classes("font-semibold")
+                ui.button(
+                    "Copy for AI",
+                    icon="content_copy",
+                    on_click=lambda diag=llm_diagnostic: (
+                        ui.run_javascript(f"navigator.clipboard.writeText({json.dumps(diag)})"),
+                        ui.notify("Diagnostic copied - paste into AI assistant", type="positive"),
+                    ),
+                ).props("color=purple")
+            
+            ui.label(
+                "Structured diagnostic for AI analysis. Click 'Copy for AI' to paste into Claude/ChatGPT."
+            ).classes("text-xs text-slate-500 mb-2")
+            
+            with ui.expansion("View Diagnostic", icon="visibility").classes("w-full"):
+                # Container to constrain width and enable scrolling
+                with ui.element("div").classes("w-full").style(
+                    "max-width: 100%; overflow-x: auto; overflow-y: auto; max-height: 400px;"
+                ):
+                    ui.html(f'<pre style="white-space: pre-wrap; word-break: break-word; font-size: 0.75rem; margin: 0; padding: 8px; background: #1e1e1e; color: #d4d4d4; border-radius: 4px; overflow-x: auto;">{html.escape(llm_diagnostic)}</pre>')
+
+
+def _build_llm_diagnostic(
+    source_key: str,
+    source_name: str,
+    source_type: str,
+    source_id: Optional[int],
+    project_name: str,
+    target_id: str,
+    target_name: str,
+    state_id: Optional[int],
+    state_address: Optional[str],
+    state_resource_index: Optional[str],
+    drift_status: str,
+    confidence: str,
+    action: str,
+    is_protected: bool,
+    has_state_loaded: bool,
+    grid_row: dict,
+    source_data: dict,
+    state_resource: Optional[dict],
+) -> str:
+    """Build an LLM-friendly diagnostic report for match debugging.
+    
+    Returns structured text optimized for AI analysis.
+    """
+    lines = []
+    
+    # Header
+    lines.append("# Match Debug Diagnostic Report")
+    lines.append("")
+    lines.append("## Problem Summary")
+    
+    # Determine the issue
+    issues = []
+    if drift_status == "state_only":
+        issues.append("Resource exists in Terraform state but has no matched target")
+    if drift_status == "not_in_state" and target_id:
+        issues.append("Target exists but resource is not in Terraform state")
+    if drift_status == "id_mismatch":
+        issues.append(f"ID mismatch: state has ID {state_id}, target has ID {target_id}")
+    if confidence == "none" and not target_id:
+        issues.append("No target match found by any lookup method")
+    if source_key and state_resource_index and source_key != state_resource_index:
+        issues.append(f"Key mismatch: source_key '{source_key}' != state resource_index '{state_resource_index}'")
+    
+    if issues:
+        for issue in issues:
+            lines.append(f"- {issue}")
+    else:
+        lines.append("- No obvious issues detected")
+    lines.append("")
+    
+    # Resource identification
+    lines.append("## Resource Identification")
+    lines.append(f"- **Resource Type**: {source_type}")
+    lines.append(f"- **Source Name**: {source_name}")
+    lines.append(f"- **Source Key**: `{source_key}`")
+    lines.append(f"- **Source ID** (from source account): {source_id or 'None'}")
+    lines.append(f"- **Project Name**: {project_name or 'None'}")
+    lines.append("")
+    
+    # Target information
+    lines.append("## Target (dbt Cloud Account)")
+    lines.append(f"- **Matched Target ID**: {target_id or 'None (no match)'}")
+    lines.append(f"- **Matched Target Name**: {target_name or 'None'}")
+    lines.append(f"- **Match Confidence**: {confidence}")
+    lines.append("")
+    
+    # Terraform state
+    lines.append("## Terraform State")
+    lines.append(f"- **State Loaded**: {has_state_loaded}")
+    lines.append(f"- **State ID**: {state_id or 'None'}")
+    lines.append(f"- **State Address**: `{state_address or 'None'}`")
+    lines.append(f"- **State resource_index (for_each key)**: `{state_resource_index or 'None'}`")
+    lines.append(f"- **Protected**: {is_protected}")
+    lines.append(f"- **Drift Status**: {drift_status}")
+    lines.append("")
+    
+    # Key matching analysis
+    lines.append("## Key Matching Analysis")
+    if source_type == "REP":
+        lines.append("Repository resources are keyed by **project name** in Terraform (for_each), not by repository name.")
+        lines.append(f"- Source key (repo name): `{source_key}`")
+        lines.append(f"- Expected TF key (project name): `{project_name}`")
+        lines.append(f"- Actual state resource_index: `{state_resource_index or 'N/A'}`")
+        if project_name and state_resource_index:
+            if project_name == state_resource_index:
+                lines.append("- ✅ Project name matches state resource_index")
+            else:
+                lines.append(f"- ❌ Project name '{project_name}' does NOT match state resource_index '{state_resource_index}'")
+    else:
+        lines.append(f"- Source key: `{source_key}`")
+        lines.append(f"- State resource_index: `{state_resource_index or 'N/A'}`")
+        if source_key and state_resource_index:
+            if source_key == state_resource_index:
+                lines.append("- ✅ Keys match")
+            else:
+                lines.append("- ❌ Keys do NOT match")
+    lines.append("")
+    
+    # Lookup attempts
+    lines.append("## Lookup Methods Attempted")
+    lines.append(f"1. **Name lookup**: `target_by_type_name[(\"{source_type}\", \"{source_name}\")]`")
+    if state_id:
+        lines.append(f"2. **State ID lookup**: `target_by_id[{state_id}]` for type {source_type}")
+    if source_type == "REP" and project_name:
+        lines.append(f"3. **Repo by project**: `state_repo_by_project[\"{project_name}\"]`")
+    lines.append("")
+    
+    # Current action
+    lines.append("## Current State")
+    lines.append(f"- **Action**: {action}")
+    lines.append(f"- **Status**: {grid_row.get('status', 'unknown')}")
+    lines.append("")
+    
+    # Hypotheses to investigate
+    lines.append("## Diagnostic Questions")
+    lines.append("1. Does the target account have a resource with ID matching the state ID?")
+    if source_type == "REP":
+        lines.append("2. Is the repository linked to the correct project in the target account?")
+        lines.append("3. Was the resource imported using the project name as the key?")
+    lines.append("4. Is the state-aware auto-matching code being reached?")
+    lines.append("5. Is `state_repo_by_project` being populated correctly?")
+    lines.append("")
+    
+    # Raw data for context
+    lines.append("## Raw Data")
+    lines.append("")
+    lines.append("### Grid Row")
+    lines.append("```json")
+    lines.append(json.dumps(grid_row, indent=2, sort_keys=True, default=str))
+    lines.append("```")
+    lines.append("")
+    
+    if state_resource:
+        lines.append("### State Resource")
+        lines.append("```json")
+        lines.append(json.dumps(state_resource, indent=2, sort_keys=True, default=str))
+        lines.append("```")
+        lines.append("")
+    
+    # Relevant code locations
+    lines.append("## Relevant Code Locations")
+    lines.append("- `importer/web/components/match_grid.py`: `build_grid_rows()` - builds grid data")
+    lines.append("- `importer/web/components/match_grid.py`: `_compute_drift_status()` - computes drift")
+    lines.append("- `importer/web/components/match_grid.py`: state-aware auto-matching (around line 520)")
+    lines.append("- `importer/web/utils/terraform_state_reader.py`: `parse_state_json()` - extracts resource_index")
+    
+    return "\n".join(lines)
 
 
 def _render_drift_comparison(
