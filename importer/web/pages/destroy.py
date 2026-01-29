@@ -55,17 +55,14 @@ def create_destroy_page(
         if not _check_prerequisites(state, on_step_change, destroy_state):
             return
 
-        # Top row: State/Target info on left, Actions on right
-        with ui.row().classes("w-full gap-4"):
-            # Left column: State file and Target info stacked
-            with ui.column().classes("flex-1 gap-4"):
-                _create_state_inspection_panel(state, destroy_state)
-                _create_target_info_panel(state, on_step_change)
-            # Right column: Actions
-            _create_bulk_actions_panel(state, terminal, save_state, destroy_state)
+        # Compact info bar: State path + Target info in one row
+        _create_compact_info_bar(state, destroy_state, on_step_change)
 
-        # Resource table (full width)
-        _create_resource_table(state, destroy_state)
+        # Protected resources panel (full width, self-contained with actions)
+        _create_destroy_protection_panel(state, save_state, destroy_state)
+
+        # Destroy resources table (full width, self-contained with actions)
+        _create_resource_table(state, destroy_state, terminal, save_state)
 
         # Output terminal (full width)
         with ui.card().classes("w-full"):
@@ -118,6 +115,58 @@ def _check_prerequisites(
         return False
 
     return True
+
+
+def _create_compact_info_bar(
+    state: AppState,
+    destroy_state: dict,
+    on_step_change: Callable[[WorkflowStep], None],
+) -> None:
+    """Create a compact info bar with state path and target account info."""
+    state_path = _get_state_file_path(state, destroy_state)
+    creds = state.target_credentials
+    
+    # Extract display-friendly host
+    host_display = creds.host_url or "https://cloud.getdbt.com"
+    host_display = host_display.replace("https://", "").replace("http://", "").rstrip("/")
+    if host_display.endswith("/api"):
+        host_display = host_display[:-4]
+    
+    with ui.row().classes("w-full items-center gap-4 p-3 rounded").style(
+        "background-color: rgba(100, 116, 139, 0.1);"
+    ):
+        # State file info
+        ui.icon("description", size="sm").classes("text-slate-500")
+        if state_path:
+            ui.label(state_path).classes("text-xs text-slate-600 dark:text-slate-400 font-mono truncate")
+        else:
+            ui.label("No state file").classes("text-xs text-slate-500 italic")
+        
+        def open_state_viewer():
+            current_state_path = _get_state_file_path(state, destroy_state)
+            if current_state_path:
+                dialog = create_state_viewer_dialog(current_state_path)
+                dialog.open()
+            else:
+                _show_no_state_dialog(state, destroy_state)
+        
+        ui.button(
+            icon="visibility",
+            on_click=open_state_viewer,
+        ).props("flat dense round size=sm").tooltip("View State")
+        
+        ui.separator().props("vertical").classes("mx-2")
+        
+        # Target account info
+        ui.icon("cloud", size="sm").classes("text-slate-500")
+        account_name = getattr(state.target_credentials, 'account_name', None) or "Target"
+        ui.label(f"{account_name} (ID: {creds.account_id})").classes("text-xs text-slate-600 dark:text-slate-400")
+        ui.label(host_display).classes("text-xs text-slate-500 font-mono")
+        
+        ui.button(
+            icon="settings",
+            on_click=lambda: on_step_change(WorkflowStep.FETCH_TARGET),
+        ).props("flat dense round size=sm").tooltip("Configure Target")
 
 
 def _show_no_state_dialog(state: AppState, destroy_state: dict) -> None:
@@ -222,78 +271,276 @@ def _create_target_info_panel(
             ui.label(host_display).classes("text-xs text-slate-500 font-mono")
 
 
-def _create_resource_table(state: AppState, destroy_state: dict) -> None:
-    """Create the resource selection table."""
+def _create_resource_table(
+    state: AppState,
+    destroy_state: dict,
+    terminal: TerminalOutput,
+    save_state: Callable[[], None],
+) -> None:
+    """Create the self-contained Destroy Resources AG Grid with filters and action buttons."""
     resources = _load_state_resources(state, destroy_state)
     
     # Filter out data sources (mode="data") - they can't be tainted/destroyed
     managed_resources = [r for r in resources if r.get("mode") != "data"]
+    
+    # Pre-sort data by display_name (per AG Grid standards - no default sort via AG Grid)
+    managed_resources = sorted(managed_resources, key=lambda x: x.get("display_name", ""))
+    
+    # Store all resources for filtering
+    destroy_state["all_resources"] = managed_resources
+    resource_count = len(managed_resources)
 
-    columns = [
-        {"name": "type", "label": "Type", "field": "type", "align": "left", "sortable": True},
-        {"name": "display_name", "label": "Name", "field": "display_name", "align": "left", "sortable": True},
+    # Filter state
+    filter_state = {"type": "all", "search": ""}
+    
+    # Count resources by type
+    type_counts = {}
+    for r in managed_resources:
+        t = r.get("type", "unknown")
+        type_counts[t] = type_counts.get(t, 0) + 1
+    
+    # Build type filter options
+    type_options = {"all": f"All Types ({len(managed_resources)})"}
+    for t in sorted(type_counts.keys()):
+        # Create friendly display name from terraform type
+        display_name = t.replace("dbtcloud_", "").replace("_", " ").title()
+        type_options[t] = f"{display_name} ({type_counts[t]})"
+
+    # AG Grid column definitions with explicit colId (per standards)
+    column_defs = [
+        {
+            "field": "protected",
+            "colId": "protected",
+            "headerName": "",
+            "width": 50,
+            "cellDataType": False,  # Prevent auto-checkbox for boolean
+            ":valueFormatter": "params => params.value ? '🛡️' : ''",
+            "sortable": False,
+            "filter": False,
+        },
+        {
+            "field": "type",
+            "colId": "type",
+            "headerName": "Type",
+            "width": 180,
+            "sortable": True,
+            "filter": "agTextColumnFilter",
+        },
+        {
+            "field": "display_name",
+            "colId": "display_name",
+            "headerName": "Name",
+            "flex": 1,
+            "sortable": True,
+            "filter": "agTextColumnFilter",
+        },
     ]
 
     with ui.card().classes("w-full"):
+        # Header row with title and refresh
         with ui.row().classes("w-full items-center justify-between mb-2"):
             with ui.row().classes("items-center gap-2"):
-                ui.label("Select Resources").classes("font-semibold")
-                resource_badge = ui.badge(f"{len(managed_resources)} managed").props("color=primary outline")
+                ui.label("Destroy Resources").classes("font-semibold")
+                resource_badge = ui.badge(f"{resource_count} managed").props("color=primary outline")
                 destroy_state["resource_badge"] = resource_badge
             ui.button(
                 "Refresh",
                 icon="refresh",
-                on_click=lambda: _refresh_resources(state, destroy_state),
+                on_click=lambda: _refresh_resources_aggrid(state, destroy_state),
             ).props("outline size=sm")
-
-        table = ui.table(
-            columns=columns,
-            rows=managed_resources,
-            row_key="address",
-            pagination={"rowsPerPage": 0},  # 0 means show all rows
-        ).classes("w-full").style("max-height: 400px;")
-        table.props("selection=multiple dense")
-
-        def on_selection(e) -> None:
-            # Selection event is incremental - "added" indicates if rows were added or removed
-            changed_rows = e.args.get("rows", [])
-            is_added = e.args.get("added", True)
-            
-            # Initialize selected set if not present
-            if "selected" not in destroy_state:
-                destroy_state["selected"] = set()
-            
-            # Add or remove based on the "added" flag
-            for row in changed_rows:
-                addr = row.get("address")
-                if addr:
-                    if is_added:
-                        destroy_state["selected"].add(addr)
-                    else:
-                        destroy_state["selected"].discard(addr)
-
-        table.on("selection", on_selection)
         
-        def on_row_click(e) -> None:
-            """Show resource details when a row is clicked."""
-            # Try different formats - NiceGUI table events vary
-            row = None
-            if isinstance(e.args, dict):
-                row = e.args.get("row", {})
-            elif isinstance(e.args, list) and len(e.args) > 1:
-                # Format might be [event, row, col]
-                row = e.args[1] if isinstance(e.args[1], dict) else None
-            
-            if not row:
-                ui.notify("Could not get row data", type="warning")
+        # Helper to update selection label
+        def _update_selection_label():
+            label = destroy_state.get("selection_label")
+            if label:
+                count = len(destroy_state.get("selected", set()))
+                label.set_text(f"Selected: {count}")
+        
+        # Handle selection changes from AG Grid
+        async def handle_destroy_selection_changed():
+            grid = destroy_state.get("grid")
+            if not grid:
                 return
-            address = row.get("address", "")
-            display_name = row.get("display_name", "")
-            resource_type = row.get("type", "")
-            _show_resource_detail_dialog(state, destroy_state, address, display_name, resource_type)
+            selected_rows = await grid.get_selected_rows()
+            destroy_state["selected"] = {row.get("address") for row in selected_rows if row.get("address")}
+            _update_selection_label()
         
-        table.on("row-click", on_row_click)
-        destroy_state["table"] = table
+        # Helper to update the grid with quick filter (type filter requires row data update)
+        def update_destroy_grid_filter():
+            grid = destroy_state.get("grid")
+            if not grid:
+                return
+            
+            # Use AG Grid's quick filter for search
+            search_term = filter_state.get("search", "")
+            grid.run_grid_method('setGridOption', 'quickFilterText', search_term)
+            
+            # For type filter, update rowData
+            if filter_state["type"] != "all":
+                filtered = [r for r in managed_resources if r.get("type") == filter_state["type"]]
+                grid.options["rowData"] = filtered
+                grid.update()
+            else:
+                grid.options["rowData"] = managed_resources
+                grid.update()
+            
+            # Update badge
+            badge = destroy_state.get("resource_badge")
+            if badge:
+                if filter_state["type"] == "all" and not filter_state["search"]:
+                    badge.set_text(f"{len(managed_resources)} managed")
+                else:
+                    visible_count = len([r for r in managed_resources if r.get("type") == filter_state["type"]]) if filter_state["type"] != "all" else len(managed_resources)
+                    badge.set_text(f"{visible_count} shown / {len(managed_resources)} total")
+        
+        # Select all visible rows
+        async def select_all_destroy():
+            grid = destroy_state.get("grid")
+            if grid:
+                await grid.run_grid_method("selectAll")
+        
+        # Clear all selections
+        async def clear_destroy_selection():
+            grid = destroy_state.get("grid")
+            if grid:
+                await grid.run_grid_method("deselectAll")
+        
+        # Export CSV handler
+        def export_destroy_csv():
+            grid = destroy_state.get("grid")
+            if grid:
+                grid.run_grid_method('exportDataAsCsv', {
+                    'fileName': 'destroy_resources.csv',
+                    'columnSeparator': ',',
+                })
+        
+        # Action button handlers
+        async def on_destroy_selected():
+            await _confirm_destroy_selected(state, terminal, save_state, destroy_state)
+        
+        async def on_destroy_all():
+            await _confirm_destroy_all(state, terminal, save_state, destroy_state, resource_count)
+        
+        # Action buttons row (above filters)
+        with ui.row().classes("w-full items-center gap-2 mb-3 flex-wrap"):
+            # Selection buttons
+            ui.button(
+                "Select All",
+                icon="select_all",
+                on_click=lambda: select_all_destroy(),
+            ).props("outline size=sm padding='4px 12px'")
+            
+            ui.button(
+                "Clear",
+                icon="close",
+                on_click=lambda: clear_destroy_selection(),
+            ).props("outline size=sm padding='4px 12px'")
+            
+            ui.separator().props("vertical").classes("mx-1")
+            
+            # Taint button
+            ui.button(
+                "Taint Selected",
+                icon="warning",
+                on_click=lambda: _run_terraform_taint(
+                    state, terminal, save_state, destroy_state
+                ),
+            ).props("outline color=warning size=sm padding='4px 12px'")
+            
+            # Destroy Selected button
+            ui.button(
+                "Destroy Selected",
+                icon="delete",
+                on_click=on_destroy_selected,
+            ).props("outline color=negative size=sm padding='4px 12px'")
+            
+            ui.separator().props("vertical").classes("mx-1")
+            
+            # Export CSV button
+            ui.button(
+                "Export CSV",
+                icon="download",
+                on_click=export_destroy_csv,
+            ).props("outline size=sm padding='4px 12px'")
+            
+            ui.space()
+            
+            # Destroy All (danger)
+            ui.button(
+                f"Destroy All ({resource_count})",
+                icon="delete_forever",
+                on_click=on_destroy_all,
+            ).props("color=negative size=sm padding='4px 16px'").style(f"background-color: {STATUS_ERROR}; color: white;")
+        
+        # Type filter change handler
+        def on_type_change(e):
+            new_value = e.value if e.value else "all"
+            filter_state["type"] = new_value
+            update_destroy_grid_filter()
+        
+        # Search change handler (uses AG Grid quick filter)
+        def on_search_change(e):
+            new_value = e.value if e.value else ""
+            filter_state["search"] = new_value
+            update_destroy_grid_filter()
+        
+        # Filter row: Type dropdown | Search input | Selection counter
+        with ui.row().classes("w-full items-center gap-3 mb-3"):
+            ui.select(
+                options=type_options,
+                value="all",
+                label="Filter by Type",
+                on_change=on_type_change,
+            ).props("outlined dense").classes("min-w-[180px]")
+            
+            ui.input(
+                placeholder="Search by name or ID...",
+                on_change=on_search_change,
+            ).props("outlined dense clearable").classes("flex-grow min-w-[200px]")
+            
+            selection_label = ui.label("Selected: 0").classes(
+                "text-sm text-slate-600 dark:text-slate-400 whitespace-nowrap"
+            )
+            destroy_state["selection_label"] = selection_label
+
+        # AG Grid with v32+ rowSelection API
+        grid = ui.aggrid({
+            "columnDefs": column_defs,
+            "rowData": managed_resources,
+            "rowSelection": {
+                "mode": "multiRow",
+                "headerCheckbox": True,
+                "checkboxes": True,
+            },
+            "suppressRowClickSelection": True,
+            "defaultColDef": {
+                "sortable": True,
+                "filter": True,
+                "resizable": True,
+            },
+            "stopEditingWhenCellsLoseFocus": True,
+            "animateRows": False,
+            "pagination": True,
+            "paginationPageSize": 50,
+            "paginationPageSizeSelector": [25, 50, 100, 200],
+        }, theme="quartz").classes("w-full").style("height: 400px;")
+        
+        destroy_state["grid"] = grid
+        
+        # Handle selection changes
+        grid.on("selectionChanged", lambda: handle_destroy_selection_changed())
+        
+        # Handle cell click for showing details
+        def on_cell_clicked(e):
+            """Show resource details when a cell is clicked."""
+            if e.args and "data" in e.args:
+                row = e.args["data"]
+                address = row.get("address", "")
+                display_name = row.get("display_name", "")
+                resource_type = row.get("type", "")
+                _show_resource_detail_dialog(state, destroy_state, address, display_name, resource_type)
+        
+        grid.on("cellClicked", on_cell_clicked)
 
         ui.label(
             "Select resources to taint or destroy. Click a row for details."
@@ -406,7 +653,7 @@ def _show_resource_detail_dialog(
     
     # Create the dialog
     with ui.dialog() as dialog:
-        with ui.card().classes("w-full max-w-4xl max-h-[90vh]"):
+        with ui.card().classes("w-full max-w-5xl max-h-[90vh] p-6"):
             # Header
             with ui.row().classes("w-full items-center justify-between mb-4"):
                 with ui.column().classes("gap-1"):
@@ -422,7 +669,40 @@ def _show_resource_detail_dialog(
                 ui.icon("link", size="xs").classes("text-slate-400")
                 ui.label(address).classes("text-xs text-slate-500 font-mono break-all")
             
-            # Metadata section
+            # Key Target Resource Details (extracted from attributes)
+            key_fields = []
+            # Extract important fields from attributes
+            if attributes.get("id"):
+                key_fields.append(("dbt Cloud ID", str(attributes["id"])))
+            if attributes.get("project_id"):
+                key_fields.append(("Project ID", str(attributes["project_id"])))
+            if attributes.get("environment_id"):
+                key_fields.append(("Environment ID", str(attributes["environment_id"])))
+            if attributes.get("account_id"):
+                key_fields.append(("Account ID", str(attributes["account_id"])))
+            if attributes.get("name"):
+                key_fields.append(("Name", str(attributes["name"])))
+            if attributes.get("dbt_version"):
+                key_fields.append(("dbt Version", str(attributes["dbt_version"])))
+            if attributes.get("type"):
+                key_fields.append(("Type", str(attributes["type"])))
+            if attributes.get("state"):
+                key_fields.append(("State", str(attributes["state"])))
+            if attributes.get("is_active") is not None:
+                key_fields.append(("Active", "Yes" if attributes["is_active"] else "No"))
+            
+            if key_fields:
+                with ui.card().classes("w-full mb-4 p-4").style(
+                    "background-color: rgba(59, 130, 246, 0.05); border: 1px solid rgba(59, 130, 246, 0.2);"
+                ):
+                    ui.label("Target Resource Details").classes("text-sm font-semibold mb-3 text-blue-600")
+                    with ui.row().classes("w-full gap-6 flex-wrap"):
+                        for label, value in key_fields:
+                            with ui.column().classes("items-start min-w-[120px]"):
+                                ui.label(label).classes("text-xs text-slate-400")
+                                ui.label(value).classes("text-sm font-mono")
+            
+            # Metadata section (provider, mode, dependencies)
             with ui.row().classes("w-full gap-4 mb-4 flex-wrap"):
                 if resource_detail.get("provider"):
                     with ui.column().classes("items-start"):
@@ -524,82 +804,439 @@ def _show_resource_detail_dialog(
 def _create_destroy_protection_panel(
     state: AppState,
     save_state: Callable[[], None],
+    destroy_state: dict,
 ) -> None:
-    """Create a panel showing protected resources that will be skipped during destroy (US-DP-04).
+    """Create a self-contained panel for protected resources with filters, selection, and actions.
     
     This panel displays resources that have lifecycle.prevent_destroy = true
-    and provides an optional button to unprotect them (US-DP-05).
+    and provides inline controls for filtering, selecting, and unprotecting them.
+    
+    Uses AG Grid with checkbox column for reliable selection (same pattern as Select Source page).
     """
-    yaml_path = state.map.last_yaml_file
+    # Look for the generated config YAML in the terraform directory
+    from pathlib import Path
+    
+    tf_dir = state.deploy.terraform_dir if state.deploy.terraform_dir else "deployments/migration"
+    project_root = Path(__file__).parent.parent.parent.parent.resolve()
+    
+    # Try multiple possible config file names
+    possible_paths = [
+        project_root / tf_dir / "dbt-cloud-config.yml",
+        project_root / tf_dir / "dbt_cloud_config.yml",
+        project_root / tf_dir / "config.yml",
+    ]
+    
+    # Also try the map's last_yaml_file as fallback
+    if state.map.last_yaml_file:
+        possible_paths.append(Path(state.map.last_yaml_file))
+    
+    yaml_path = None
+    for path in possible_paths:
+        if path.exists():
+            yaml_path = str(path)
+            break
+    
     if not yaml_path:
         return
     
     try:
         yaml_config = load_yaml_config(yaml_path)
-        protected_resources = extract_protected_resources(yaml_config)
+        all_protected_resources = extract_protected_resources(yaml_config)
     except Exception:
         return
+    
+    # Filter out resources that the user has unprotected
+    unprotected_keys = state.map.unprotected_keys or set()
+    protected_resources = [
+        r for r in all_protected_resources
+        if r.resource_key not in unprotected_keys
+    ]
     
     if not protected_resources:
         return
     
-    # Group by type
-    by_type: dict[str, list] = {}
-    for res in protected_resources:
-        if res.resource_type not in by_type:
-            by_type[res.resource_type] = []
-        by_type[res.resource_type].append(res)
-    
+    # Type mappings
     type_labels = {
-        "PRJ": "Projects",
-        "ENV": "Environments",
-        "JOB": "Jobs",
-        "REP": "Repositories",
-        "CON": "Connections",
+        "PRJ": "Project",
+        "ENV": "Environment",
+        "JOB": "Job",
+        "REP": "Repository",
+        "CON": "Connection",
     }
     
-    with ui.expansion(
-        f"Protected Resources ({len(protected_resources)}) - Will be SKIPPED",
-        icon="shield",
-    ).classes("w-full mb-3").props("dense").style("border-left: 3px solid #3B82F6;"):
+    # Terraform address mapping for protected resources
+    tf_type_map = {
+        "PRJ": "dbtcloud_project",
+        "ENV": "dbtcloud_environment",
+        "JOB": "dbtcloud_job",
+        "REP": "dbtcloud_repository",
+        "CON": "dbtcloud_connection",
+    }
+    
+    # Build rows for the grid (no _selected column - using AG Grid row selection API)
+    protected_rows = []
+    for res in protected_resources:
+        type_label = type_labels.get(res.resource_type, res.resource_type)
+        tf_type = tf_type_map.get(res.resource_type, f"dbtcloud_{res.resource_type.lower()}")
+        protected_rows.append({
+            "key": f"{res.resource_type}_{res.name}",
+            "type": type_label,
+            "type_code": res.resource_type,
+            "name": res.name,
+            "id": getattr(res, "resource_id", ""),
+            "tf_address": f"{tf_type}.protected_{res.name}",
+        })
+    
+    # Pre-sort data by name (per AG Grid standards - no default sort via AG Grid)
+    protected_rows = sorted(protected_rows, key=lambda x: x.get("name", ""))
+    
+    # Store all rows for filtering
+    all_protected_rows = protected_rows.copy()
+    
+    # Panel state for filters, grid reference, and selection tracking
+    panel_state = {
+        "type": "all",
+        "search": "",
+        "grid": None,
+        "selected_keys": set(),  # Track selected row keys
+    }
+    
+    # Count resources by type for filter dropdown
+    type_counts = {}
+    for r in protected_rows:
+        t = r.get("type_code", "unknown")
+        type_counts[t] = type_counts.get(t, 0) + 1
+    
+    # Build type filter options
+    type_options = {"all": f"All Types ({len(protected_rows)})"}
+    for t in sorted(type_counts.keys()):
+        display_name = type_labels.get(t, t)
+        type_options[t] = f"{display_name}s ({type_counts[t]})"
+    
+    # Capture references for button handlers
+    _protected_res = protected_resources
+    _state = state
+    _save_fn = save_state
+    
+    # Full-width card for protected resources panel
+    with ui.card().classes("w-full").style("border-left: 4px solid #3B82F6;"):
+        # Header row with icon, title, count, and badge
+        with ui.row().classes("w-full items-center gap-3 mb-2"):
+            ui.icon("shield", size="md").classes("text-blue-500")
+            ui.label(f"Protected Resources ({len(protected_resources)})").classes("font-semibold")
+            resource_badge = ui.badge("Will be SKIPPED").props("color=blue outline")
+            panel_state["badge"] = resource_badge
         
-        # Info banner
-        with ui.card().classes("w-full p-3 mb-3").style("background-color: rgba(59, 130, 246, 0.1);"):
-            with ui.row().classes("items-start gap-2"):
-                ui.icon("info", size="sm").classes("text-blue-500")
-                with ui.column().classes("gap-1"):
-                    ui.label(
-                        "These resources will be SKIPPED during destroy"
-                    ).classes("text-sm font-medium")
-                    ui.label(
-                        "They have lifecycle.prevent_destroy = true and cannot be deleted."
-                    ).classes("text-xs text-slate-500")
+        # Info text
+        ui.label(
+            "These resources have lifecycle.prevent_destroy = true and will be preserved during destroy operations."
+        ).classes("text-xs text-slate-500 mb-3")
         
-        # Resource list by type
-        for rtype, resources in sorted(by_type.items()):
-            type_label = type_labels.get(rtype, rtype)
+        # Helper to get selected keys from panel state
+        def get_selected_keys():
+            return panel_state.get("selected_keys", set())
+        
+        # Helper to get selected count
+        def get_selected_count():
+            return len(panel_state.get("selected_keys", set()))
+        
+        # Helper to update the grid with AG Grid quick filter (not local filtering)
+        def update_grid_filter():
+            grid = panel_state.get("grid")
+            if not grid:
+                return
             
-            with ui.row().classes("w-full items-center gap-2 mb-2"):
-                ui.badge(f"{len(resources)} {type_label}").props("dense color=blue")
+            # Use AG Grid's quick filter for search
+            search_term = panel_state.get("search", "")
+            grid.run_grid_method('setGridOption', 'quickFilterText', search_term)
             
-            with ui.column().classes("w-full pl-4 mb-3 gap-1"):
-                for res in resources:
-                    with ui.row().classes("w-full items-center gap-2"):
-                        ui.icon("shield", size="xs").classes("text-blue-400")
-                        ui.label(res.name).classes("text-sm")
-                        ui.label(f"({res.resource_key})").classes("text-xs text-slate-400")
+            # For type filter, we need to update rowData since AG Grid quick filter
+            # doesn't support complex type filtering - filter the data and update
+            if panel_state["type"] != "all":
+                filtered = [r for r in all_protected_rows if r.get("type_code") == panel_state["type"]]
+                grid.options["rowData"] = filtered
+                grid.update()
+            else:
+                grid.options["rowData"] = all_protected_rows
+                grid.update()
+            
+            # Update badge
+            badge = panel_state.get("badge")
+            if badge:
+                if panel_state["type"] == "all" and not panel_state["search"]:
+                    badge.set_text("Will be SKIPPED")
+                else:
+                    visible_count = len([r for r in all_protected_rows if r.get("type_code") == panel_state["type"]]) if panel_state["type"] != "all" else len(all_protected_rows)
+                    badge.set_text(f"{visible_count} shown / {len(all_protected_rows)} total")
         
-        # Unprotect All button (US-DP-05)
-        with ui.row().classes("w-full justify-end mt-2"):
+        # Helper to select all visible rows
+        async def select_all_protected():
+            grid = panel_state.get("grid")
+            if grid:
+                await grid.run_grid_method("selectAll")
+        
+        # Helper to clear selection
+        async def clear_protected_selection():
+            grid = panel_state.get("grid")
+            if grid:
+                await grid.run_grid_method("deselectAll")
+        
+        # Helper to update selection label
+        def _update_selection_label():
+            label = panel_state.get("selection_label")
+            count = get_selected_count()
+            if label:
+                label.set_text(f"Selected: {count}")
+            # Update unprotect selected button
+            btn = panel_state.get("unprotect_selected_btn")
+            if btn:
+                btn.set_text(f"Unprotect Selected ({count})")
+                if count > 0:
+                    btn.enable()
+                else:
+                    btn.disable()
+        
+        # Handle selection changes from AG Grid
+        async def handle_selection_changed():
+            grid = panel_state.get("grid")
+            if not grid:
+                return
+            selected_rows = await grid.get_selected_rows()
+            panel_state["selected_keys"] = {row.get("key") for row in selected_rows if row.get("key")}
+            _update_selection_label()
+        
+        # Export CSV handler
+        def export_protected_csv():
+            grid = panel_state.get("grid")
+            if grid:
+                grid.run_grid_method('exportDataAsCsv', {
+                    'fileName': 'protected_resources.csv',
+                    'columnSeparator': ',',
+                })
+        
+        # Unprotect selected handler
+        async def on_unprotect_selected():
+            # Get selected keys from panel state (updated by selectionChanged event)
+            selected_keys = get_selected_keys()
+            
+            if not selected_keys:
+                ui.notify("No resources selected", type="warning")
+                return
+            
+            # Find matching resources by their display key and get the resource_key
+            keys_to_unprotect = set()
+            for res in protected_resources:
+                display_key = f"{res.resource_type}_{res.name}"
+                if display_key in selected_keys:
+                    keys_to_unprotect.add(res.resource_key)
+            
+            if not keys_to_unprotect:
+                ui.notify("No matching protected resources found", type="warning")
+                return
+            
+            # Add to state.map.unprotected_keys so they'll be filtered out on reload
+            if state.map.unprotected_keys is None:
+                state.map.unprotected_keys = set()
+            state.map.unprotected_keys.update(keys_to_unprotect)
+            
+            save_state()
+            ui.notify(
+                f"Unprotected {len(keys_to_unprotect)} resource(s). Regenerate Terraform to apply.",
+                type="warning",
+                timeout=6000,
+            )
+            ui.navigate.reload()
+        
+        # Action buttons row (above filters)
+        with ui.row().classes("w-full items-center gap-2 mb-3 flex-wrap"):
+            ui.button(
+                "Select All",
+                icon="select_all",
+                on_click=lambda: select_all_protected(),
+            ).props("outline size=sm padding='4px 12px'")
+            
+            ui.button(
+                "Clear",
+                icon="close",
+                on_click=lambda: clear_protected_selection(),
+            ).props("outline size=sm padding='4px 12px'")
+            
+            ui.separator().props("vertical").classes("mx-1")
+            
+            # Unprotect Selected button (amber, black text)
+            unprotect_selected_btn = ui.button(
+                "Unprotect Selected (0)",
+                icon="lock_open",
+                on_click=lambda: on_unprotect_selected(),
+            ).props("color=amber size=sm padding='4px 12px'").style("color: black !important;")
+            unprotect_selected_btn.disable()
+            panel_state["unprotect_selected_btn"] = unprotect_selected_btn
+            
+            # Unprotect All button
             ui.button(
                 "Unprotect All",
-                icon="shield_outlined",
-                on_click=lambda: _show_destroy_unprotection_dialog(
-                    protected_resources,
-                    state,
-                    save_state,
-                ),
-            ).props("flat color=amber dense").classes("text-xs")
+                icon="lock_open",
+                on_click=lambda pr=_protected_res, st=_state, sf=_save_fn: _show_destroy_unprotection_dialog(pr, st, sf),
+            ).props("color=amber size=sm padding='4px 12px'").style("color: black !important;")
+            
+            ui.space()
+            
+            # Export CSV button
+            ui.button(
+                "Export CSV",
+                icon="download",
+                on_click=export_protected_csv,
+            ).props("outline size=sm padding='4px 12px'")
+        
+        # Filter handlers
+        def on_type_change(e):
+            new_value = e.value if e.value else "all"
+            panel_state["type"] = new_value
+            update_grid_filter()
+        
+        def on_search_change(e):
+            new_value = e.value if e.value else ""
+            panel_state["search"] = new_value
+            update_grid_filter()
+        
+        # Filter row: Type dropdown | Search input | Selection counter
+        with ui.row().classes("w-full items-center gap-3 mb-3"):
+            ui.select(
+                options=type_options,
+                value="all",
+                label="Filter by Type",
+                on_change=on_type_change,
+            ).props("outlined dense").classes("min-w-[180px]")
+            
+            ui.input(
+                placeholder="Search by name or ID...",
+                on_change=on_search_change,
+            ).props("outlined dense clearable").classes("flex-grow min-w-[200px]")
+            
+            selection_label = ui.label("Selected: 0").classes(
+                "text-sm text-slate-600 dark:text-slate-400 whitespace-nowrap"
+            )
+            panel_state["selection_label"] = selection_label
+        
+        # AG Grid column definitions with explicit colId (per standards)
+        column_defs = [
+            {
+                "field": "type",
+                "colId": "type",
+                "headerName": "Type",
+                "width": 100,
+                "sortable": True,
+                "filter": "agTextColumnFilter",
+            },
+            {
+                "field": "name",
+                "colId": "name",
+                "headerName": "Name",
+                "width": 200,
+                "sortable": True,
+                "filter": "agTextColumnFilter",
+            },
+            {
+                "field": "id",
+                "colId": "id",
+                "headerName": "ID",
+                "width": 100,
+                "filter": "agTextColumnFilter",
+            },
+        ]
+        
+        # AG Grid with v32+ rowSelection API (replaces deprecated checkbox column)
+        protected_grid = ui.aggrid({
+            "columnDefs": column_defs,
+            "rowData": protected_rows,
+            "rowSelection": {
+                "mode": "multiRow",
+                "headerCheckbox": True,
+                "checkboxes": True,
+            },
+            "suppressRowClickSelection": True,
+            "pagination": False,
+            "headerHeight": 36,
+            "defaultColDef": {
+                "resizable": True,
+                "sortable": True,
+                "filter": True,
+            },
+            "stopEditingWhenCellsLoseFocus": True,
+            "animateRows": False,
+        }, theme="quartz").classes("w-full").style("height: 200px;")
+        
+        panel_state["grid"] = protected_grid
+        
+        # Handle selection changes with AG Grid v32+ selectionChanged event
+        protected_grid.on("selectionChanged", lambda: handle_selection_changed())
+        
+        # Row click shows protected resource detail popup
+        def on_cell_clicked(e):
+            """Handle cell click - show details (checkbox clicks are handled by selectionChanged)."""
+            if e.args and "data" in e.args:
+                row = e.args["data"]
+                _show_protected_resource_dialog(row)
+        
+        protected_grid.on("cellClicked", on_cell_clicked)
+        
+        ui.label(
+            "Click a row to view details. Check resources and click 'Unprotect Selected' to remove protection."
+        ).classes("text-xs text-slate-500 mt-2")
+
+
+def _show_protected_resource_dialog(row: dict) -> None:
+    """Show a dialog with protected resource details.
+    
+    Protected resources may not exist in the Terraform state file
+    (they're in the YAML config), so we show info from the row data.
+    """
+    display_name = row.get("name", "Unknown")
+    resource_type = row.get("type", "Unknown")
+    resource_id = row.get("id", "")
+    tf_address = row.get("tf_address", "")
+    
+    with ui.dialog() as dialog:
+        with ui.card().classes("w-full max-w-lg p-6"):
+            # Header
+            with ui.row().classes("w-full items-center justify-between mb-4"):
+                with ui.column().classes("gap-1"):
+                    ui.label(display_name).classes("text-lg font-semibold")
+                    with ui.row().classes("items-center gap-2"):
+                        ui.badge(resource_type).props("color=primary outline")
+                        ui.badge("Protected").props("color=blue")
+                ui.button(icon="close", on_click=dialog.close).props("flat round size=sm")
+            
+            # Resource info
+            with ui.column().classes("gap-3"):
+                if resource_id:
+                    with ui.row().classes("items-center gap-2"):
+                        ui.icon("badge", size="xs").classes("text-slate-400")
+                        ui.label(f"ID: {resource_id}").classes("text-sm font-mono")
+                
+                if tf_address:
+                    with ui.row().classes("items-start gap-2"):
+                        ui.icon("link", size="xs").classes("text-slate-400 mt-1")
+                        ui.label(tf_address).classes("text-sm font-mono text-slate-600 break-all")
+                
+                # Protection status
+                with ui.card().classes("w-full p-3 mt-2").style(
+                    "background-color: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.3);"
+                ):
+                    with ui.row().classes("items-center gap-2"):
+                        ui.icon("shield", size="sm").classes("text-blue-500")
+                        ui.label("This resource has lifecycle.prevent_destroy = true").classes(
+                            "text-sm text-blue-700"
+                        )
+                    ui.label(
+                        "It will be skipped during destroy operations. Use 'Unprotect Selected' to remove protection."
+                    ).classes("text-xs text-blue-600 mt-2")
+            
+            # Close button
+            with ui.row().classes("w-full justify-end mt-4"):
+                ui.button("Close", on_click=dialog.close).props("outline")
+    
+    dialog.open()
 
 
 def _show_destroy_unprotection_dialog(
@@ -611,13 +1248,12 @@ def _show_destroy_unprotection_dialog(
     
     Only shown when user explicitly clicks 'Unprotect All'.
     """
-    dialog = ui.dialog()
-    
-    with dialog, ui.card().classes("p-4 min-w-96"):
-        # Header with warning icon
-        with ui.row().classes("items-center gap-2 mb-4"):
-            ui.icon("warning", size="md").classes("text-amber-500")
-            ui.label("Unprotect Resources").classes("text-lg font-semibold")
+    with ui.dialog() as dialog:
+        with ui.card().classes("p-6 w-full max-w-xl"):
+            # Header with warning icon
+            with ui.row().classes("items-center gap-2 mb-4"):
+                ui.icon("warning", size="md").classes("text-amber-500")
+                ui.label("Unprotect All Resources").classes("text-lg font-semibold")
         
         # Warning message
         with ui.column().classes("gap-2 mb-4"):
@@ -660,9 +1296,9 @@ def _show_destroy_unprotection_dialog(
             
             ui.button(
                 "Unprotect All",
-                icon="shield_outlined",
+                icon="lock_open",
                 on_click=on_confirm,
-            ).props("color=amber")
+            ).props("color=amber").style("color: black !important;")
     
     dialog.open()
 
@@ -716,9 +1352,6 @@ def _create_bulk_actions_panel(
                 on_click=on_destroy_selected,
             ).style(f"background-color: {STATUS_ERROR}; color: white;")
 
-        # Protected resources panel (US-DP-04)
-        _create_destroy_protection_panel(state, save_state)
-
         # Danger zone
         ui.separator().classes("my-2")
         with ui.row().classes("w-full items-center gap-2"):
@@ -735,40 +1368,40 @@ def _create_bulk_actions_panel(
         ).classes("w-full mt-2").style(f"background-color: {STATUS_ERROR}; color: white;")
 
 
-def _select_all(destroy_state: dict) -> None:
-    """Select all rows in the table."""
-    table = destroy_state.get("table")
-    if not table:
-        return
-    table.selected = list(table.rows)
-    table.update()
-    destroy_state["selected"] = {row["address"] for row in table.rows}
+async def _select_all(destroy_state: dict) -> None:
+    """Select all rows in the grid."""
+    grid = destroy_state.get("grid")
+    if grid:
+        await grid.run_grid_method("selectAll")
 
 
-def _clear_selection(destroy_state: dict) -> None:
+async def _clear_selection(destroy_state: dict) -> None:
     """Clear all selections."""
-    table = destroy_state.get("table")
-    if not table:
-        return
-    table.selected = []
-    table.update()
-    destroy_state["selected"] = set()
+    grid = destroy_state.get("grid")
+    if grid:
+        await grid.run_grid_method("deselectAll")
+        destroy_state["selected"] = set()
 
 
-def _refresh_resources(state: AppState, destroy_state: dict) -> None:
-    """Reload resources from state file."""
-    table = destroy_state.get("table")
-    if not table:
+def _refresh_resources_aggrid(state: AppState, destroy_state: dict) -> None:
+    """Reload resources from state file and update the AG Grid."""
+    grid = destroy_state.get("grid")
+    if not grid:
         return
-    # Filter out data sources (mode="data") - same as initial table population
+    
+    # Filter out data sources (mode="data") - same as initial grid population
     all_resources = _load_state_resources(state, destroy_state)
     managed_resources = [r for r in all_resources if r.get("mode") != "data"]
     
-    # Modify in place for reactivity (don't replace the list reference)
-    table.rows.clear()
-    table.rows.extend(managed_resources)
-    table.selected.clear()
-    table.update()
+    # Pre-sort data by display_name
+    managed_resources = sorted(managed_resources, key=lambda x: x.get("display_name", ""))
+    
+    # Update AG Grid rowData
+    grid.options["rowData"] = managed_resources
+    grid.update()
+    
+    # Update stored resources for filtering
+    destroy_state["all_resources"] = managed_resources
     
     # Update the resource count badge
     resource_badge = destroy_state.get("resource_badge")
@@ -776,7 +1409,18 @@ def _refresh_resources(state: AppState, destroy_state: dict) -> None:
         resource_badge.set_text(f"{len(managed_resources)} managed")
     
     destroy_state["selected"] = set()
+    
+    # Update selection label
+    label = destroy_state.get("selection_label")
+    if label:
+        label.set_text("Selected: 0")
+    
     ui.notify(f"Refreshed: {len(managed_resources)} managed resources", type="info")
+
+
+def _refresh_resources(state: AppState, destroy_state: dict) -> None:
+    """Legacy refresh function - redirects to AG Grid version."""
+    _refresh_resources_aggrid(state, destroy_state)
 
 
 async def _confirm_destroy_selected(
@@ -932,45 +1576,121 @@ async def _confirm_destroy_all(
     terminal.set_title("Output — DESTROY ALL PLAN")
     terminal.warning("━━━ TERRAFORM DESTROY ALL PLAN ━━━")
     terminal.info("")
-    terminal.info(f"Planning destruction of ALL {resource_count} managed resource{'s' if resource_count != 1 else ''}...")
-    terminal.info("")
     
+    # Calculate protected vs unprotected from terraform state
     tf_dir = state.deploy.terraform_dir or "deployments/migration"
     env = _get_terraform_env(state)
     
-    # Run plan -destroy for everything (no -target flags)
-    result = await asyncio.to_thread(
+    # Get actual resources from terraform state to determine protected count
+    terminal.info("Analyzing terraform state...")
+    state_result = await asyncio.to_thread(
         subprocess.run,
-        ["terraform", "plan", "-destroy", "-no-color"],
+        ["terraform", "state", "list"],
         cwd=tf_dir,
         capture_output=True,
         text=True,
         env=env,
     )
     
-    # Parse plan output to count resources
-    plan_output = result.stdout + result.stderr
-    destroy_count = 0
+    if state_result.returncode == 0:
+        all_state_resources = [r.strip() for r in state_result.stdout.strip().split("\n") if r.strip()]
+        
+        # Categorize resources based on protected_ prefix (lifecycle.prevent_destroy)
+        protected_resources = [r for r in all_state_resources if "protected_" in r]
+        unprotected_resources = [r for r in all_state_resources if "protected_" not in r]
+        
+        protected_count = len(protected_resources)
+        unprotected_count = len(unprotected_resources)
+        
+        terminal.info("")
+        terminal.info(f"📊 Resource Breakdown:")
+        terminal.info(f"    Total in state: {len(all_state_resources)}")
+        if protected_count > 0:
+            terminal.success(f"    🛡️  Protected (will be PRESERVED): {protected_count}")
+            terminal.warning(f"    🗑️  Unprotected (will be DESTROYED): {unprotected_count}")
+        else:
+            terminal.warning(f"    🗑️  To be destroyed: {unprotected_count}")
+        terminal.info("")
+        
+        if unprotected_count == 0:
+            terminal.warning("⚠️  All resources are protected - nothing to destroy")
+            terminal.info("To destroy protected resources, use 'Unprotect All' first.")
+            ui.notify("All resources are protected", type="warning")
+            return
+        
+        # Store for later use in dialog
+        actual_protected_count = protected_count
+        # Build list of unprotected resources for targeted plan
+        unprotected_targets = unprotected_resources
+        
+        # When there are protected resources, skip the full terraform plan
+        # because Terraform's -target with -destroy still evaluates prevent_destroy rules
+        # on dependencies, causing errors. The actual destroy with -target will work correctly.
+        terminal.info(f"✅ {unprotected_count} resource{'s' if unprotected_count != 1 else ''} will be destroyed")
+        terminal.info(f"🛡️  {protected_count} protected resource{'s' if protected_count != 1 else ''} will be preserved")
+        terminal.info("")
+        terminal.info("Skipping full terraform plan (protected resources require targeted destroy)...")
+        
+        # Use the calculated count as destroy_count
+        destroy_count = unprotected_count
+        
+        # Create a summary for the "View Plan" button since we skipped the actual plan
+        plan_output = f"""Protected resources detected - full plan skipped.
+
+Resource Breakdown:
+  Protected resources (prevent_destroy=true): {protected_count}
+  Unprotected resources: {unprotected_count}
+
+Protected resources that will be PRESERVED:
+""" + "\n".join(f"  - {r}" for r in protected_resources) + f"""
+
+The following {unprotected_count} unprotected resources will be destroyed:
+""" + "\n".join(f"  - {r}" for r in unprotected_resources[:50])
+        if len(unprotected_resources) > 50:
+            plan_output += f"\n  ... and {len(unprotected_resources) - 50} more"
+        
+    else:
+        # Fall back to original behavior if state list fails
+        terminal.info(f"Planning destruction of {resource_count} managed resource{'s' if resource_count != 1 else ''}...")
+        actual_protected_count = 0
+        unprotected_targets = []  # Empty means plan all
+        terminal.info("")
     
-    for line in plan_output.split("\n"):
-        if line.strip():
-            if "will be destroyed" in line:
-                terminal.warning(line)
-                destroy_count += 1
-            elif "Error:" in line or "error:" in line.lower():
-                terminal.error(line)
-            elif "Warning:" in line:
-                terminal.warning(line)
-            elif "Plan:" in line:
-                terminal.success(line)
-            else:
-                terminal.info_auto(line)
+        # Run plan -destroy (full plan, no protected resources)
+        plan_cmd = ["terraform", "plan", "-destroy", "-no-color"]
     
-    if result.returncode != 0:
-        terminal.error("")
-        terminal.error(f"Plan failed with exit code {result.returncode}")
-        ui.notify("Destroy plan failed", type="negative")
-        return
+        result = await asyncio.to_thread(
+            subprocess.run,
+            plan_cmd,
+            cwd=tf_dir,
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+    
+        # Parse plan output to count resources
+        plan_output = result.stdout + result.stderr
+        destroy_count = 0
+    
+        for line in plan_output.split("\n"):
+            if line.strip():
+                if "will be destroyed" in line:
+                    terminal.warning(line)
+                    destroy_count += 1
+                elif "Error:" in line or "error:" in line.lower():
+                    terminal.error(line)
+                elif "Warning:" in line:
+                    terminal.warning(line)
+                elif "Plan:" in line:
+                    terminal.success(line)
+                else:
+                    terminal.info_auto(line)
+    
+        if result.returncode != 0:
+            terminal.error("")
+            terminal.error(f"Plan failed with exit code {result.returncode}")
+            ui.notify("Destroy plan failed", type="negative")
+            return
     
     terminal.info("")
     terminal.warning(f"⚠️  {destroy_count} resource(s) will be destroyed")
@@ -984,10 +1704,18 @@ async def _confirm_destroy_all(
                 ui.icon("warning", size="lg").classes("text-red-500")
                 ui.label("Destroy All Resources").classes("text-xl font-bold text-red-500")
 
-            ui.label(
-                f"You are about to destroy ALL {destroy_count} resources in the target account. "
-                "This action is permanent and cannot be undone."
-            ).classes("text-sm text-slate-600 dark:text-slate-400 mt-2")
+            # Show protected info if any
+            if actual_protected_count > 0:
+                ui.label(
+                    f"You are about to destroy {destroy_count} unprotected resources. "
+                    f"{actual_protected_count} protected resource(s) will be preserved. "
+                    "This action is permanent and cannot be undone."
+                ).classes("text-sm text-slate-600 dark:text-slate-400 mt-2")
+            else:
+                ui.label(
+                    f"You are about to destroy ALL {destroy_count} resources in the target account. "
+                    "This action is permanent and cannot be undone."
+                ).classes("text-sm text-slate-600 dark:text-slate-400 mt-2")
 
             # Strong warning banner
             with ui.column().classes("w-full p-4 rounded mt-4 gap-2").style(
@@ -1087,12 +1815,21 @@ def _load_state_resources(state: AppState, destroy_state: dict) -> list[dict]:
             # Try to get index_key from single instance if available
             single_index = instances[0].get("index_key") if instances else None
             display = single_index if single_index else name
+            # Extract dbt_id from instance attributes if available
+            dbt_id = None
+            if instances:
+                attrs = instances[0].get("attributes", {})
+                dbt_id = attrs.get("id") or attrs.get("project_id")
+            # Check if resource is protected (address contains "protected_")
+            is_protected = "protected_" in base_address
             rows.append({
                 "address": base_address,
                 "type": rtype,
                 "name": name,
                 "display_name": str(display),
                 "mode": mode,
+                "protected": is_protected,
+                "dbt_id": dbt_id,
             })
         else:
             # Multiple instances - expand with index_key
@@ -1109,12 +1846,20 @@ def _load_state_resources(state: AppState, destroy_state: dict) -> list[dict]:
                     full_address = base_address
                     display = name
                 
+                # Extract dbt_id from instance attributes if available
+                attrs = inst.get("attributes", {})
+                dbt_id = attrs.get("id") or attrs.get("project_id")
+                # Check if resource is protected (address contains "protected_")
+                is_protected = "protected_" in full_address
+                
                 rows.append({
                     "address": full_address,
                     "type": rtype,
                     "name": name,
                     "display_name": display,
                     "mode": mode,
+                    "protected": is_protected,
+                    "dbt_id": dbt_id,
                 })
 
     return rows

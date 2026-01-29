@@ -9,6 +9,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.3] - 2026-01-29
+
+### Changed
+- **AG Grid Standardization**: Migrated all grids to use `quartz` theme for automatic dark/light mode support
+  - `match_grid.py`: Migrated from `balham` to `quartz`, removed manual dark mode CSS overrides
+  - `job_grid.py`: Added `quartz` theme, migrated to AG Grid v32+ row selection API
+  - Added `colId` to all column definitions to prevent phantom column bug
+  - Added `animateRows: False` for stability across all grids
+  
+- **Export CSV Feature**: Added export functionality to all data grids
+  - `mapping.py`: Added Export CSV button to toolbar
+  - `scope.py`: Added Export CSV button to toolbar  
+  - `job_grid.py`: Added `create_export_button()` helper function
+
+### Added
+- **AG Grid Standards Rule**: Created comprehensive `.cursor/rules/ag-grid-standards.mdc` with:
+  - Critical MUST DO / MUST NOT rules
+  - Column definition patterns (colId, boolean handling)
+  - Layout patterns (CSS Grid for sizing)
+  - Selection patterns (AG Grid v32+ API)
+  - Dialog patterns with standard sizing
+  - Dark mode CSS patterns
+  - Troubleshooting guide
+
+- **Grid Standardization PRD**: Created `tasks/prd-web-ui-11-grid-standardization.md` documenting:
+  - Current state analysis of all grids
+  - Migration plan and user stories
+  - Test plan for dark/light mode
+
+### Removed
+- **Deprecated Patterns Doc**: Removed `dev_support/AGGRID_NICEGUI_PATTERNS.md` (superseded by `.cursor/rules/ag-grid-standards.mdc`)
+
 ## [0.15.2] - 2026-01-29
 
 ### Fixed

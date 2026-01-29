@@ -888,6 +888,111 @@ def get_resources_to_protect(resource_type: str, resource_key: str, yaml_config:
 
 ---
 
+## Phase 12: Destroy Page Integration
+
+Extended attributes must integrate with the Destroy page refactor defined in `prd-web-ui-10-destroy-page-refactor.md`.
+
+### US-12.1: Extended Attributes in Terraform Address Mapping
+**As a** developer  
+**I want** extended attributes in the Terraform address mapping  
+**So that** the destroy page can generate correct Terraform commands
+
+**Acceptance Criteria:**
+- [ ] Add `EXTATTR` -> `dbtcloud_extended_attributes` to address mapping
+- [ ] Protected EXTATTR uses `dbtcloud_extended_attributes.protected_extended_attrs`
+- [ ] Unprotected EXTATTR uses `dbtcloud_extended_attributes.extended_attrs`
+
+**Code Addition to `destroy.py`:**
+```python
+# Add to Terraform address mapping
+TERRAFORM_TYPE_MAP = {
+    "PRJ": "dbtcloud_project",
+    "ENV": "dbtcloud_environment",
+    "JOB": "dbtcloud_job",
+    "REP": "dbtcloud_repository",
+    "CON": "dbtcloud_connection",
+    "EXTATTR": "dbtcloud_extended_attributes",
+}
+
+# For protected resources
+PROTECTED_RESOURCE_MAP = {
+    "PRJ": ("dbtcloud_project", "protected_projects"),
+    "ENV": ("dbtcloud_environment", "protected_environments"),
+    "JOB": ("dbtcloud_job", "protected_jobs"),
+    "REP": ("dbtcloud_repository", "protected_repositories"),
+    "EXTATTR": ("dbtcloud_extended_attributes", "protected_extended_attrs"),
+}
+```
+
+### US-12.2: Extended Attributes in Type Filter Dropdowns
+**As a** Terraform operator  
+**I want** to filter by Extended Attributes type on the Destroy page  
+**So that** I can find and manage extended attributes resources
+
+**Acceptance Criteria:**
+- [ ] "Extended Attributes" option appears in Protected Resources type filter
+- [ ] "Extended Attributes" option appears in Destroy Resources type filter
+- [ ] Filtering by type shows only EXTATTR resources
+- [ ] Type label displays as "Extended Attributes" (not "EXTATTR")
+
+### US-12.3: Protected Extended Attributes in Panel
+**As a** Terraform operator  
+**I want** to see protected extended attributes in the Protected Resources panel  
+**So that** I know which extended attributes are protected from destruction
+
+**Acceptance Criteria:**
+- [ ] Protected EXTATTR appears in Protected Resources table
+- [ ] Row shows: Type="Extended Attributes", Name/Key, ID
+- [ ] Clicking row opens detail dialog with all attributes
+- [ ] Can select EXTATTR for bulk unprotection
+
+### US-12.4: Extended Attributes Detail Dialog
+**As a** Terraform operator  
+**I want** to view extended attributes details in the detail popup  
+**So that** I can verify the configuration before actions
+
+**Acceptance Criteria:**
+- [ ] Detail dialog shows resource type: "Extended Attributes"
+- [ ] Shows key, project_id, state, and the JSON attributes
+- [ ] Shows Terraform address: `module.dbt_cloud.dbtcloud_extended_attributes.extended_attrs["key"]`
+- [ ] JSON attributes displayed in formatted/readable way
+
+### US-12.5: Unprotect Extended Attributes from Destroy Page
+**As a** Terraform operator  
+**I want** to unprotect extended attributes from the Destroy page  
+**So that** I can prepare them for destruction
+
+**Acceptance Criteria:**
+- [ ] Can select EXTATTR in Protected Resources panel
+- [ ] "Unprotect Selected" removes protection from EXTATTR
+- [ ] Unprotected EXTATTR moves to Destroy Resources table
+- [ ] Warning shown if environments reference the EXTATTR
+
+### US-12.6: Destroy/Taint Extended Attributes
+**As a** Terraform operator  
+**I want** to destroy or taint extended attributes  
+**So that** I can tear down or refresh these resources
+
+**Acceptance Criteria:**
+- [ ] EXTATTR appears in Destroy Resources table
+- [ ] Can select EXTATTR for targeted destroy
+- [ ] "Taint Selected" generates: `terraform taint 'dbtcloud_extended_attributes.extended_attrs["key"]'`
+- [ ] "Destroy Selected" generates: `terraform destroy -target='dbtcloud_extended_attributes.extended_attrs["key"]'`
+- [ ] Warning when destroying EXTATTR that environments reference
+
+### US-12.7: Cascade Warning for EXTATTR Destruction
+**As a** Terraform operator  
+**I want** a warning when destroying extended attributes referenced by environments  
+**So that** I don't accidentally break environment configurations
+
+**Acceptance Criteria:**
+- [ ] Before destroying EXTATTR, check if any environments reference it
+- [ ] Warning dialog: "This extended attributes is used by [N] environment(s): [list]. Destroying will set their extended_attributes_id to null."
+- [ ] User can proceed or cancel
+- [ ] Same warning for tainting
+
+---
+
 ## Phase 11: Matching with Dependency Awareness
 
 ### US-11.1: Extended Attributes Match Dependency Indicator
@@ -977,6 +1082,23 @@ def get_resources_to_protect(resource_type: str, resource_key: str, yaml_config:
 | DEP-EA-03 | EXTATTR becomes orphan (no ENV references) | Warning in validation |
 | DEP-EA-04 | Match ENV with linked EXTATTR | Suggest matching EXTATTR too |
 
+### Destroy Page Tests
+
+| Test ID | Test Case | Expected Result |
+|---------|-----------|-----------------|
+| DEST-EA-01 | EXTATTR in Terraform address mapping | Returns `dbtcloud_extended_attributes` |
+| DEST-EA-02 | Protected EXTATTR address | Returns `protected_extended_attrs["key"]` |
+| DEST-EA-03 | EXTATTR in type filter dropdown | "Extended Attributes" option present |
+| DEST-EA-04 | Filter Protected Resources by EXTATTR | Shows only EXTATTR resources |
+| DEST-EA-05 | Filter Destroy Resources by EXTATTR | Shows only EXTATTR resources |
+| DEST-EA-06 | Protected EXTATTR in panel | Row shows type, key, ID |
+| DEST-EA-07 | EXTATTR detail dialog | Shows JSON attributes formatted |
+| DEST-EA-08 | Select and unprotect EXTATTR | Moves to Destroy Resources |
+| DEST-EA-09 | Taint EXTATTR command | Correct `terraform taint` generated |
+| DEST-EA-10 | Destroy EXTATTR command | Correct `terraform destroy -target` generated |
+| DEST-EA-11 | Destroy EXTATTR with ENV reference | Warning dialog shown |
+| DEST-EA-12 | Taint EXTATTR with ENV reference | Warning dialog shown |
+
 ---
 
 ## Updated File Changes Summary
@@ -991,11 +1113,19 @@ def get_resources_to_protect(resource_type: str, resource_key: str, yaml_config:
 |------|---------|
 | `schemas/v2.json` | Add `protected` field to extendedAttributes |
 | `modules/extended_attributes/main.tf` | Split into protected/unprotected resource blocks |
-| `importer/web/utils/protection_manager.py` | Add EXTATTR resource type |
+| `importer/web/utils/protection_manager.py` | Add EXTATTR resource type, PARENT_CHAIN cascade |
 | `importer/web/utils/dependency_analyzer.py` | Add environment→extended_attributes dependency |
 | `importer/web/pages/match.py` | Extended attributes dependency indicators, cascade matching |
 | `importer/web/pages/deploy.py` | Extended attributes in protected resources panel |
-| `importer/web/components/match_grid.py` | "Used by N environments" column for extended attributes |
+| `importer/web/components/match_grid.py` | "Used by N environments" column, protection checkbox for extended attributes |
+
+### Additional Modified Files for Destroy Page (Sprint 7)
+| File | Changes |
+|------|---------|
+| `importer/web/pages/destroy.py` | Add EXTATTR to TERRAFORM_TYPE_MAP and PROTECTED_RESOURCE_MAP |
+| `importer/web/pages/destroy.py` | Add "Extended Attributes" to type filter dropdowns |
+| `importer/web/pages/destroy.py` | EXTATTR detail dialog with formatted JSON |
+| `importer/web/pages/destroy.py` | Cascade warning when destroying/tainting EXTATTR with ENV references |
 
 ---
 
@@ -1045,9 +1175,20 @@ def get_resources_to_protect(resource_type: str, resource_key: str, yaml_config:
 1. US-10.1: Protection Field in Schema
 2. US-10.2: Protected Terraform Block
 3. US-10.3: Protection Manager Support
-4. US-10.4: Environment Dependency Tracking
-5. US-10.5: Cascade Protection UI
-6. US-10.6: Deploy Panel Integration
+4. US-10.4: Cascade Protection to Project
+5. US-10.5: Environment Protection with Linked EXTATTR
+6. US-10.6: Unprotect Project with EXTATTR Children
+7. US-10.7: Deploy Panel Integration
+8. US-10.8: Match Grid Protection Column
+
+### Sprint 7: Destroy Page Integration
+1. US-12.1: Terraform Address Mapping
+2. US-12.2: Type Filter Dropdowns
+3. US-12.3: Protected EXTATTR in Panel
+4. US-12.4: Extended Attributes Detail Dialog
+5. US-12.5: Unprotect EXTATTR from Destroy Page
+6. US-12.6: Destroy/Taint Extended Attributes
+7. US-12.7: Cascade Warning for EXTATTR Destruction
 
 ---
 

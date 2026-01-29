@@ -994,6 +994,7 @@ def create_match_grid(
     column_defs = [
         {
             "field": "details_btn",
+            "colId": "details_btn",
             "headerName": "",
             "width": 50,
             "maxWidth": 50,
@@ -1005,6 +1006,7 @@ def create_match_grid(
         },
         {
             "field": "source_type",
+            "colId": "source_type",
             "headerName": "Type",
             "width": 110,
             # Use valueFormatter for display text
@@ -1033,6 +1035,7 @@ def create_match_grid(
         },
         {
             "field": "source_name",
+            "colId": "source_name",
             "headerName": "Source Name",
             "width": 200,
             "filter": "agTextColumnFilter",
@@ -1040,12 +1043,14 @@ def create_match_grid(
         },
         {
             "field": "source_id",
+            "colId": "source_id",
             "headerName": "Source ID",
             "width": 90,
             "cellStyle": {"fontFamily": "monospace", "fontSize": "11px"},
         },
         {
             "field": "action",
+            "colId": "action",
             "headerName": "Action",
             "width": 130,
             "editable": True,
@@ -1071,6 +1076,7 @@ def create_match_grid(
         },
         {
             "field": "protected",
+            "colId": "protected",
             "headerName": "🛡️",
             "headerTooltip": "Protect from destroy - Terraform will refuse to delete protected resources",
             "width": 55,
@@ -1082,6 +1088,7 @@ def create_match_grid(
         },
         {
             "field": "target_id",
+            "colId": "target_id",
             "headerName": "Target ID",
             "width": 100,
             "editable": True,
@@ -1089,6 +1096,7 @@ def create_match_grid(
         },
         {
             "field": "target_name",
+            "colId": "target_name",
             "headerName": "Target Name",
             "width": 180,
             "cellStyle": {"fontFamily": "monospace", "fontSize": "12px"},
@@ -1099,6 +1107,7 @@ def create_match_grid(
         },
         {
             "field": "state_id",
+            "colId": "state_id",
             "headerName": "State ID",
             "width": 90,
             "cellStyle": {"fontFamily": "monospace", "fontSize": "11px"},
@@ -1106,6 +1115,7 @@ def create_match_grid(
         },
         {
             "field": "drift_status",
+            "colId": "drift_status",
             "headerName": "Drift",
             "width": 110,
             ":valueFormatter": """params => {
@@ -1128,6 +1138,7 @@ def create_match_grid(
         },
         {
             "field": "status",
+            "colId": "status",
             "headerName": "Status",
             "width": 110,
             ":valueFormatter": """params => {
@@ -1148,6 +1159,7 @@ def create_match_grid(
         },
         {
             "field": "project_name",
+            "colId": "project_name",
             "headerName": "Project",
             "width": 140,
             "filter": "agTextColumnFilter",
@@ -1155,6 +1167,7 @@ def create_match_grid(
         },
         {
             "field": "clone_name",
+            "colId": "clone_name",
             "headerName": "Clone Name",
             "width": 160,
             "cellStyle": {"fontSize": "12px"},
@@ -1181,12 +1194,13 @@ def create_match_grid(
         },
         "stopEditingWhenCellsLoseFocus": True,
         "singleClickEdit": True,
+        "animateRows": False,  # Stability - per ag-grid-standards.mdc
         # Remove getRowId - can cause issues with NiceGUI's AG Grid wrapper
     }
     
-    # Create the grid - use balham theme which has both light and dark variants
+    # Create the grid - use quartz theme for automatic dark/light mode support
     # Use flex-grow to fill available space, with min-height for smaller viewports
-    grid = ui.aggrid(grid_options, theme="balham").classes("w-full flex-grow").style("height: 100%; min-height: 300px;")
+    grid = ui.aggrid(grid_options, theme="quartz").classes("w-full flex-grow").style("height: 100%; min-height: 300px;")
     
     # Handle cell value changes
     def on_cell_changed(e):
@@ -1375,19 +1389,6 @@ def create_match_grid(
         .dark .drift-missing, .body--dark .drift-missing { color: #FCD34D !important; }
         .dark .drift-state-only, .body--dark .drift-state-only { color: #60A5FA !important; background-color: rgba(96, 165, 250, 0.25) !important; }
         .dark .drift-none, .body--dark .drift-none { color: #6B7280 !important; }
-        
-        /* Use balham-dark theme in dark mode */
-        .dark .ag-theme-balham,
-        .body--dark .ag-theme-balham {
-            --ag-background-color: #1e293b;
-            --ag-foreground-color: #e2e8f0;
-            --ag-header-background-color: #334155;
-            --ag-header-foreground-color: #f1f5f9;
-            --ag-odd-row-background-color: #1e293b;
-            --ag-row-hover-color: #334155;
-            --ag-selected-row-background-color: #475569;
-            --ag-range-selection-background-color: rgba(71, 85, 105, 0.4);
-        }
     """)
     
     return grid, row_data

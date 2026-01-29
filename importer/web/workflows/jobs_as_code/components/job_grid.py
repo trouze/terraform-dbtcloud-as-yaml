@@ -82,18 +82,11 @@ def create_job_grid(
         }
         rows.append(row)
     
-    # Build column definitions
+    # Build column definitions - all columns must have explicit colId per ag-grid-standards.mdc
     columns = [
         {
-            "headerCheckboxSelection": True,
-            "checkboxSelection": True,
-            "width": 50,
-            "headerName": "",
-            "field": "selected",
-            "pinned": "left",
-        },
-        {
             "field": "name",
+            "colId": "name",
             "headerName": "Job Name",
             "flex": 2,
             "filter": "agTextColumnFilter",
@@ -105,18 +98,21 @@ def create_job_grid(
         },
         {
             "field": "project_name",
+            "colId": "project_name",
             "headerName": "Project",
             "flex": 1,
             "filter": "agTextColumnFilter",
         },
         {
             "field": "environment_name",
+            "colId": "environment_name",
             "headerName": "Environment",
             "flex": 1,
             "filter": "agTextColumnFilter",
         },
         {
             "field": "job_type",
+            "colId": "job_type",
             "headerName": "Type",
             "width": 100,
             "filter": "agSetColumnFilter",
@@ -132,6 +128,7 @@ def create_job_grid(
         },
         {
             "field": "identifier",
+            "colId": "identifier",
             "headerName": "Identifier",
             "flex": 1,
             "editable": editable_identifiers,
@@ -141,29 +138,36 @@ def create_job_grid(
     
     # Add new name column for clone workflow
     if show_new_name:
-        columns.insert(2, {
+        columns.insert(1, {
             "field": "new_name",
+            "colId": "new_name",
             "headerName": "New Name",
             "flex": 2,
             "editable": True,
         })
     
-    # Create grid options
+    # Create grid options - using AG Grid v32+ row selection API per ag-grid-standards.mdc
     grid_options = {
         "columnDefs": columns,
         "rowData": rows,
-        "rowSelection": "multiple",
+        "rowSelection": {
+            "mode": "multiRow",
+            "headerCheckbox": True,
+            "checkboxes": True,
+        },
         "suppressRowClickSelection": True,
-        "animateRows": True,
+        "animateRows": False,  # Stability - per ag-grid-standards.mdc
         "defaultColDef": {
             "sortable": True,
             "resizable": True,
+            "filter": True,
         },
+        "stopEditingWhenCellsLoseFocus": True,
         # Note: getRowId removed - can cause issues with NiceGUI's AG Grid wrapper
         "domLayout": "autoHeight",
     }
     
-    grid = ui.aggrid(grid_options).classes("w-full")
+    grid = ui.aggrid(grid_options, theme="quartz").classes("w-full")
     
     # Handle selection changes
     async def handle_selection():
@@ -278,3 +282,26 @@ def create_selection_summary(
                 ui.label(f"{managed_count} already managed").classes(
                     "text-sm text-amber-600"
                 )
+
+
+def create_export_button(grid: ui.aggrid, filename: str = "jobs_export.csv") -> ui.button:
+    """Create an export CSV button for a grid.
+    
+    Args:
+        grid: The AG Grid instance to export from
+        filename: The filename for the CSV export
+        
+    Returns:
+        The export button element
+    """
+    def export_csv():
+        grid.run_grid_method('exportDataAsCsv', {
+            'fileName': filename,
+            'columnSeparator': ',',
+        })
+    
+    return ui.button(
+        "Export CSV",
+        icon="download",
+        on_click=export_csv
+    ).props("outline dense")

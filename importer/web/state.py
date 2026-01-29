@@ -473,6 +473,10 @@ class MapState:
     # When protecting a resource, its ancestors (parents) are also automatically protected
     protected_resources: set = field(default_factory=set)
     
+    # Set of resource_keys that the user has unprotected via the Destroy page
+    # These will be filtered out from the Protected Resources panel
+    unprotected_keys: set = field(default_factory=set)
+    
     # Resource cloning state
     cloned_resources: list = field(default_factory=list)  # List of CloneConfig
 
