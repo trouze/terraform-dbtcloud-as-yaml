@@ -257,11 +257,6 @@ def setup_page(state: AppState) -> None:
             font-size: 12px !important;
         }
         
-        /* Global dialog/popup styling - 90% width of viewport */
-        .q-dialog__inner > .q-card {
-            width: 90vw !important;
-            max-width: 90vw !important;
-        }
     """)
 
     # Create navigation drawer with callbacks

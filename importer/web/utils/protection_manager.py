@@ -647,3 +647,539 @@ def build_key_to_mapping_id(source_items: list[dict]) -> dict[str, str]:
             # Also map mapping_id to itself for direct lookups
             result[mapping_id] = mapping_id
     return result
+
+
+# ============================================================================
+# Protection Mismatch Detection and Repair
+# ============================================================================
+
+@dataclass
+class ProtectionMismatch:
+    """A mismatch between YAML config and Terraform state protection status."""
+    
+    resource_key: str  # e.g., "sse_dm_fin_fido"
+    resource_type: str  # PRJ, REP, PREP (project_repository)
+    yaml_protected: bool  # Protection status in YAML
+    state_protected: bool  # Protection status in Terraform state
+    state_address: str  # Current address in state
+    expected_address: str  # Expected address based on YAML
+    
+    @property
+    def needs_move_to_protected(self) -> bool:
+        """True if resource needs to move from unprotected to protected."""
+        return self.yaml_protected and not self.state_protected
+    
+    @property
+    def needs_move_to_unprotected(self) -> bool:
+        """True if resource needs to move from protected to unprotected."""
+        return not self.yaml_protected and self.state_protected
+    
+    @property
+    def move_direction(self) -> str:
+        """'protect' or 'unprotect'."""
+        return "protect" if self.needs_move_to_protected else "unprotect"
+
+
+@dataclass
+class ProtectionRepairResult:
+    """Result of protection mismatch detection and repair."""
+    
+    mismatches: list[ProtectionMismatch]
+    moved_blocks_content: str
+    repair_applied: bool = False
+    repair_path: Optional[Path] = None
+    error_message: Optional[str] = None
+
+
+# Extended resource type map including project_repository
+EXTENDED_RESOURCE_TYPE_MAP = {
+    "PRJ": ("dbtcloud_project", "projects", "protected_projects"),
+    "REP": ("dbtcloud_repository", "repositories", "protected_repositories"),
+    "PREP": ("dbtcloud_project_repository", "project_repositories", "protected_project_repositories"),
+    "ENV": ("dbtcloud_environment", "environments", "protected_environments"),
+    "JOB": ("dbtcloud_job", "jobs", "protected_jobs"),
+}
+
+
+@dataclass
+class SingleResourceProtectionInfo:
+    """Protection analysis for a single resource."""
+    
+    resource_type: str
+    resource_key: str
+    state_protected: Optional[bool]  # None if not in state
+    yaml_protected: bool
+    has_mismatch: bool
+    mismatch_direction: Optional[str]  # "protect" or "unprotect" or None
+    linked_resources: list[str]  # For REP/PREP, lists related resource types that would also need moving
+    
+    @property
+    def state_address_prefix(self) -> str:
+        """Get the state address prefix (protected vs unprotected)."""
+        if self.state_protected is None:
+            return "not_in_state"
+        tf_type, unprotected, protected = EXTENDED_RESOURCE_TYPE_MAP.get(
+            self.resource_type, ("unknown", "unknown", "unknown")
+        )
+        return protected if self.state_protected else unprotected
+    
+    @property
+    def expected_address_prefix(self) -> str:
+        """Get the expected address prefix based on YAML."""
+        tf_type, unprotected, protected = EXTENDED_RESOURCE_TYPE_MAP.get(
+            self.resource_type, ("unknown", "unknown", "unknown")
+        )
+        return protected if self.yaml_protected else unprotected
+
+
+def check_single_resource_protection(
+    resource_type: str,
+    resource_key: str,
+    state_address: Optional[str],
+    yaml_protected: bool,
+    project_has_repository: bool = True,
+) -> SingleResourceProtectionInfo:
+    """Check protection status for a single resource.
+    
+    This is useful for diagnostic displays and per-row analysis.
+    
+    Args:
+        resource_type: Element type code (PRJ, ENV, JOB, REP, PREP)
+        resource_key: Resource key (e.g., project name for REP)
+        state_address: Full Terraform state address (None if not in state)
+        yaml_protected: Whether the resource should be protected per YAML
+        project_has_repository: Whether the project has a repository (for REP/PREP linking)
+        
+    Returns:
+        SingleResourceProtectionInfo with analysis
+    """
+    # Determine state protection status from address
+    state_protected: Optional[bool] = None
+    if state_address:
+        state_protected = "protected_" in state_address
+    
+    # Determine if there's a mismatch
+    has_mismatch = False
+    mismatch_direction = None
+    
+    if state_protected is not None and state_protected != yaml_protected:
+        has_mismatch = True
+        mismatch_direction = "protect" if yaml_protected else "unprotect"
+    
+    # Determine linked resources
+    linked_resources = []
+    if resource_type in ("REP", "PREP") and project_has_repository:
+        # REP and PREP are linked to each other
+        if resource_type == "REP":
+            linked_resources = ["PREP"]
+        else:
+            linked_resources = ["REP"]
+    
+    return SingleResourceProtectionInfo(
+        resource_type=resource_type,
+        resource_key=resource_key,
+        state_protected=state_protected,
+        yaml_protected=yaml_protected,
+        has_mismatch=has_mismatch,
+        mismatch_direction=mismatch_direction,
+        linked_resources=linked_resources,
+    )
+
+
+def detect_protection_mismatches(
+    yaml_config: dict,
+    terraform_state: dict,
+    module_prefix: str = "module.dbt_cloud.module.projects_v2[0]",
+) -> list[ProtectionMismatch]:
+    """Detect mismatches between YAML protection status and Terraform state.
+    
+    This checks if resources in state are in the correct protected/unprotected
+    resource block based on the YAML configuration.
+    
+    Protection rules:
+    - Project (PRJ): Completely independent - can be protected/unprotected on its own
+    - Repository (REP) and Project_Repository (PREP): Linked to EACH OTHER (not to project)
+      - If REP is protected, PREP must also be protected
+      - If PREP is protected, REP must also be protected
+      - Their expected protection status comes from the YAML project config
+    
+    Args:
+        yaml_config: Parsed YAML configuration
+        terraform_state: Parsed terraform.tfstate JSON
+        module_prefix: Module path prefix for resources
+        
+    Returns:
+        List of detected mismatches
+    """
+    mismatches = []
+    
+    # Build map of project keys and their protection status from YAML
+    # Also track which projects have repositories
+    yaml_protection = {}  # key -> protected (bool)
+    projects_with_repos = set()  # keys of projects that have repositories
+    
+    for project in yaml_config.get("projects", []):
+        project_key = project.get("key", "")
+        if project_key:
+            yaml_protection[project_key] = project.get("protected", False)
+            # Check if project has a repository reference
+            if project.get("repository"):
+                projects_with_repos.add(project_key)
+    
+    # Parse Terraform state to find resource addresses
+    state_resources = {}  # (type, key) -> info dict
+    
+    for resource in terraform_state.get("resources", []):
+        module = resource.get("module", "")
+        rtype = resource.get("type", "")
+        name = resource.get("name", "")
+        
+        # Only process relevant dbt Cloud resources
+        if not rtype.startswith("dbtcloud_"):
+            continue
+        
+        for inst in resource.get("instances", []):
+            index_key = inst.get("index_key")
+            if index_key is None:
+                continue
+            
+            # Build full address
+            if module:
+                base = f"{module}.{rtype}.{name}"
+            else:
+                base = f"{rtype}.{name}"
+            
+            if isinstance(index_key, str):
+                full_address = f'{base}["{index_key}"]'
+            else:
+                full_address = f"{base}[{index_key}]"
+            
+            # Determine if in protected or unprotected block
+            is_protected_in_state = "protected_" in name
+            
+            # Map resource type to our codes
+            type_code = None
+            if rtype == "dbtcloud_project":
+                type_code = "PRJ"
+            elif rtype == "dbtcloud_repository":
+                type_code = "REP"
+            elif rtype == "dbtcloud_project_repository":
+                type_code = "PREP"
+            
+            if type_code:
+                state_resources[(type_code, index_key)] = {
+                    "address": full_address,
+                    "protected": is_protected_in_state,
+                    "name": name,
+                    "module": module,
+                }
+    
+    # Compare YAML protection with state for each project
+    for project_key, yaml_protected in yaml_protection.items():
+        # Check PROJECT protection status - completely independent
+        prj_state_info = state_resources.get(("PRJ", project_key))
+        if prj_state_info:
+            state_protected = prj_state_info["protected"]
+            if yaml_protected != state_protected:
+                tf_type, unprotected_name, protected_name = EXTENDED_RESOURCE_TYPE_MAP["PRJ"]
+                resource_name = protected_name if yaml_protected else unprotected_name
+                expected_address = f'{module_prefix}.{tf_type}.{resource_name}["{project_key}"]'
+                
+                mismatches.append(ProtectionMismatch(
+                    resource_key=project_key,
+                    resource_type="PRJ",
+                    yaml_protected=yaml_protected,
+                    state_protected=state_protected,
+                    state_address=prj_state_info["address"],
+                    expected_address=expected_address,
+                ))
+        
+        # Check REPOSITORY and PROJECT_REPOSITORY
+        # These are linked to EACH OTHER - if one needs to move, both need to move
+        # Only check if project has a repository
+        if project_key not in projects_with_repos:
+            continue
+        
+        rep_state_info = state_resources.get(("REP", project_key))
+        prep_state_info = state_resources.get(("PREP", project_key))
+        
+        # Check if either REP or PREP has a mismatch with YAML protection
+        rep_needs_move = rep_state_info and rep_state_info["protected"] != yaml_protected
+        prep_needs_move = prep_state_info and prep_state_info["protected"] != yaml_protected
+        
+        # If either needs to move, add mismatches for BOTH (they're linked)
+        if rep_needs_move or prep_needs_move:
+            # Add REP mismatch if it exists in state
+            if rep_state_info:
+                tf_type, unprotected_name, protected_name = EXTENDED_RESOURCE_TYPE_MAP["REP"]
+                resource_name = protected_name if yaml_protected else unprotected_name
+                expected_address = f'{module_prefix}.{tf_type}.{resource_name}["{project_key}"]'
+                
+                mismatches.append(ProtectionMismatch(
+                    resource_key=project_key,
+                    resource_type="REP",
+                    yaml_protected=yaml_protected,
+                    state_protected=rep_state_info["protected"],
+                    state_address=rep_state_info["address"],
+                    expected_address=expected_address,
+                ))
+            
+            # Add PREP mismatch if it exists in state
+            if prep_state_info:
+                tf_type, unprotected_name, protected_name = EXTENDED_RESOURCE_TYPE_MAP["PREP"]
+                resource_name = protected_name if yaml_protected else unprotected_name
+                expected_address = f'{module_prefix}.{tf_type}.{resource_name}["{project_key}"]'
+                
+                mismatches.append(ProtectionMismatch(
+                    resource_key=project_key,
+                    resource_type="PREP",
+                    yaml_protected=yaml_protected,
+                    state_protected=prep_state_info["protected"],
+                    state_address=prep_state_info["address"],
+                    expected_address=expected_address,
+                ))
+    
+    return mismatches
+
+
+def generate_repair_moved_blocks(
+    mismatches: list[ProtectionMismatch],
+    module_prefix: str = "module.dbt_cloud.module.projects_v2[0]",
+) -> str:
+    """Generate Terraform moved blocks to repair protection mismatches.
+    
+    Args:
+        mismatches: List of detected mismatches
+        module_prefix: Module path prefix
+        
+    Returns:
+        Terraform HCL content with moved blocks
+    """
+    if not mismatches:
+        return ""
+    
+    lines = [
+        "# Generated moved blocks for protection status changes",
+        "# These tell Terraform to move existing resources between protected/unprotected blocks",
+        "# without destroying and recreating them",
+        "",
+    ]
+    
+    # Group mismatches by project key for better organization
+    by_project = {}
+    for m in mismatches:
+        if m.resource_key not in by_project:
+            by_project[m.resource_key] = []
+        by_project[m.resource_key].append(m)
+    
+    type_names = {
+        "PRJ": "project",
+        "REP": "repository",
+        "PREP": "project_repository link",
+    }
+    
+    for project_key, project_mismatches in sorted(by_project.items()):
+        direction = project_mismatches[0].move_direction
+        action = "protected back to unprotected" if direction == "unprotect" else "unprotected to protected"
+        lines.append(f"# Move {project_key} resources from {action}")
+        
+        for m in sorted(project_mismatches, key=lambda x: x.resource_type):
+            tf_type, unprotected_name, protected_name = EXTENDED_RESOURCE_TYPE_MAP[m.resource_type]
+            
+            # Determine from/to addresses based on direction
+            if m.needs_move_to_unprotected:
+                from_name = protected_name
+                to_name = unprotected_name
+            else:
+                from_name = unprotected_name
+                to_name = protected_name
+            
+            from_addr = f'{module_prefix}.{tf_type}.{from_name}["{m.resource_key}"]'
+            to_addr = f'{module_prefix}.{tf_type}.{to_name}["{m.resource_key}"]'
+            
+            type_name = type_names.get(m.resource_type, m.resource_type)
+            lines.extend([
+                f"# Move {type_name} from {('protected' if m.state_protected else 'unprotected')} to {('protected' if m.yaml_protected else 'unprotected')}",
+                "moved {",
+                f'  from = {from_addr}',
+                f'  to   = {to_addr}',
+                "}",
+                "",
+            ])
+    
+    return "\n".join(lines)
+
+
+def detect_and_repair_protection_mismatches(
+    yaml_path: Union[str, Path],
+    terraform_dir: Union[str, Path],
+    module_prefix: str = "module.dbt_cloud.module.projects_v2[0]",
+    auto_repair: bool = False,
+) -> ProtectionRepairResult:
+    """Detect protection mismatches and optionally repair them.
+    
+    This function:
+    1. Loads the YAML config and Terraform state
+    2. Detects mismatches between protection status
+    3. Generates correct moved blocks
+    4. Optionally writes the repair file
+    
+    Args:
+        yaml_path: Path to YAML config file
+        terraform_dir: Directory containing Terraform files and state
+        module_prefix: Module path prefix for resources
+        auto_repair: If True, write the repair file automatically
+        
+    Returns:
+        ProtectionRepairResult with mismatches and repair content
+    """
+    yaml_path = Path(yaml_path)
+    terraform_dir = Path(terraform_dir)
+    state_file = terraform_dir / "terraform.tfstate"
+    
+    result = ProtectionRepairResult(mismatches=[], moved_blocks_content="")
+    
+    # Load YAML config
+    try:
+        yaml_config = load_yaml_config(yaml_path)
+    except Exception as e:
+        result.error_message = f"Failed to load YAML config: {e}"
+        return result
+    
+    # Load Terraform state
+    if not state_file.exists():
+        result.error_message = "Terraform state file not found"
+        return result
+    
+    try:
+        with open(state_file, "r", encoding="utf-8") as f:
+            terraform_state = json.load(f)
+    except Exception as e:
+        result.error_message = f"Failed to load Terraform state: {e}"
+        return result
+    
+    # Detect mismatches
+    result.mismatches = detect_protection_mismatches(
+        yaml_config, terraform_state, module_prefix
+    )
+    
+    if not result.mismatches:
+        return result
+    
+    # Generate repair moved blocks
+    result.moved_blocks_content = generate_repair_moved_blocks(
+        result.mismatches, module_prefix
+    )
+    
+    # Optionally apply repair
+    if auto_repair and result.moved_blocks_content:
+        repair_path = terraform_dir / "protection_moves.tf"
+        try:
+            repair_path.write_text(result.moved_blocks_content, encoding="utf-8")
+            result.repair_applied = True
+            result.repair_path = repair_path
+            logger.info(f"Wrote protection repair to {repair_path}")
+        except Exception as e:
+            result.error_message = f"Failed to write repair file: {e}"
+    
+    return result
+
+
+def parse_terraform_validate_errors(output: str) -> list[dict]:
+    """Parse terraform validate output for protection-related errors.
+    
+    Looks for:
+    - "Moved object still exists" errors
+    - "Instance cannot be destroyed" errors with lifecycle.prevent_destroy
+    
+    Args:
+        output: Combined stdout/stderr from terraform validate
+        
+    Returns:
+        List of dicts with error details
+    """
+    errors = []
+    
+    # Pattern for "Moved object still exists"
+    # Example: "module.dbt_cloud.module.projects_v2[0].dbtcloud_project.projects["sse_dm_fin_fido"]"
+    import re
+    
+    moved_pattern = re.compile(
+        r'Moved object still exists.*?'
+        r'from\s+([\w\.\[\]"_]+).*?'
+        r'still declared at',
+        re.DOTALL | re.IGNORECASE
+    )
+    
+    for match in moved_pattern.finditer(output):
+        address = match.group(1).strip()
+        errors.append({
+            "type": "moved_object_exists",
+            "address": address,
+            "message": "Resource still exists in original location - move direction may be wrong",
+        })
+    
+    # Pattern for "Instance cannot be destroyed"
+    destroy_pattern = re.compile(
+        r'Instance cannot be destroyed.*?'
+        r'Resource\s+([\w\.\[\]"_]+).*?'
+        r'lifecycle\.prevent_destroy',
+        re.DOTALL | re.IGNORECASE
+    )
+    
+    for match in destroy_pattern.finditer(output):
+        address = match.group(1).strip()
+        errors.append({
+            "type": "prevent_destroy",
+            "address": address,
+            "message": "Protected resource would be destroyed - missing moved block",
+        })
+    
+    return errors
+
+
+def format_mismatches_for_display(mismatches: list[ProtectionMismatch]) -> str:
+    """Format mismatches for user display.
+    
+    Args:
+        mismatches: List of mismatches
+        
+    Returns:
+        Human-readable summary
+    """
+    if not mismatches:
+        return "No protection mismatches detected."
+    
+    lines = [
+        f"Found {len(mismatches)} protection mismatch(es):",
+        "",
+    ]
+    
+    type_names = {
+        "PRJ": "Project",
+        "REP": "Repository",
+        "PREP": "Project-Repository Link",
+    }
+    
+    by_project = {}
+    for m in mismatches:
+        if m.resource_key not in by_project:
+            by_project[m.resource_key] = []
+        by_project[m.resource_key].append(m)
+    
+    for project_key, project_mismatches in sorted(by_project.items()):
+        direction = project_mismatches[0].move_direction
+        yaml_status = "protected" if project_mismatches[0].yaml_protected else "unprotected"
+        state_status = "protected" if project_mismatches[0].state_protected else "unprotected"
+        
+        lines.append(f"📦 {project_key}:")
+        lines.append(f"   YAML: {yaml_status}, State: {state_status}")
+        lines.append(f"   Action needed: Move from {state_status} → {yaml_status}")
+        
+        for m in project_mismatches:
+            type_name = type_names.get(m.resource_type, m.resource_type)
+            lines.append(f"   • {type_name}")
+        
+        lines.append("")
+    
+    return "\n".join(lines)

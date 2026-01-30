@@ -38,7 +38,7 @@ def _show_job_detail_dialog(job: dict, config: Optional[JACJobConfig]) -> None:
     execution = job.get("execution") or {}
     triggers = job.get("triggers") or {}
     
-    with ui.dialog() as dialog, ui.card().classes("w-full max-w-4xl").style("height: 80vh;"):
+    with ui.dialog() as dialog, ui.card().classes("w-full").style("width: 90vw; max-width: 90vw; height: 80vh;"):
         # Header with close button (per pattern 10.1)
         with ui.row().classes("w-full items-center justify-between p-4 border-b"):
             with ui.column().classes("gap-1"):

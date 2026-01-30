@@ -11,6 +11,10 @@ from typing import Callable, Optional, List, Dict, Any
 from nicegui import ui
 
 from importer.web.state import AppState
+from importer.web.utils.protection_manager import (
+    check_single_resource_protection,
+    EXTENDED_RESOURCE_TYPE_MAP,
+)
 
 
 # Sensitive field patterns for masking
@@ -986,7 +990,7 @@ def show_entity_detail_dialog(row_data: dict, state: Optional["AppState"] = None
     full_data = _get_full_entity_data(state, row_data, is_target) if state else None
     display_data = full_data if full_data else row_data
     
-    with ui.dialog() as dialog, ui.card().classes("w-full max-w-6xl").style("height: 80vh;"):
+    with ui.dialog() as dialog, ui.card().classes("w-full").style("width: 90vw; max-width: 90vw; height: 80vh;"):
         # Header
         with ui.row().classes("w-full items-center justify-between p-4 border-b"):
             with ui.row().classes("items-center gap-2"):
@@ -1934,6 +1938,36 @@ def _build_llm_diagnostic(
     issues = []
     informational = []  # Non-critical observations
     
+    # Protection mismatch analysis
+    # Determine YAML protection status (from source_data or grid_row)
+    yaml_protected = source_data.get("protected", False) if source_data else False
+    # Determine state protection status (from state_address)
+    state_protected = "protected_" in (state_address or "") if state_address else None
+    # Check if project has a repository (for REP/PREP linking)
+    project_has_repo = bool(source_data.get("repository")) if source_data and source_type == "PRJ" else True
+    
+    # Create protection info for this resource
+    protection_info = check_single_resource_protection(
+        resource_type=source_type,
+        resource_key=state_resource_index or source_key or "",
+        state_address=state_address,
+        yaml_protected=yaml_protected,
+        project_has_repository=project_has_repo,
+    ) if source_type in EXTENDED_RESOURCE_TYPE_MAP else None
+    
+    # Check for protection mismatch
+    if protection_info and protection_info.has_mismatch:
+        direction = protection_info.mismatch_direction
+        state_status = "protected" if state_protected else "unprotected"
+        yaml_status = "protected" if yaml_protected else "unprotected"
+        issues.append(
+            f"**PROTECTION MISMATCH**: State has resource as {state_status}, "
+            f"but YAML expects {yaml_status} (needs '{direction}' moved block)"
+        )
+        if protection_info.linked_resources:
+            linked = ", ".join(protection_info.linked_resources)
+            issues.append(f"  → Linked resources also need moving: {linked}")
+    
     if drift_status == "state_only":
         issues.append("Resource exists in Terraform state but has no matched target")
     if drift_status == "not_in_state" and target_id:
@@ -1992,6 +2026,61 @@ def _build_llm_diagnostic(
     lines.append(f"- **State resource_index (for_each key)**: `{state_resource_index or 'None'}`")
     lines.append(f"- **Protected**: {is_protected}")
     lines.append(f"- **Drift Status**: {drift_status}")
+    lines.append("")
+    
+    # Protection Analysis section
+    lines.append("## Protection Analysis")
+    if protection_info:
+        lines.append(f"- **Resource Type**: {source_type}")
+        if source_type in EXTENDED_RESOURCE_TYPE_MAP:
+            tf_type, unprotected_name, protected_name = EXTENDED_RESOURCE_TYPE_MAP[source_type]
+            lines.append(f"- **Terraform Resource**: `{tf_type}`")
+            lines.append(f"- **Unprotected Block**: `{unprotected_name}`")
+            lines.append(f"- **Protected Block**: `{protected_name}`")
+        lines.append("")
+        lines.append(f"- **YAML Protection Status**: `{yaml_protected}` ({'protected' if yaml_protected else 'unprotected'})")
+        if state_protected is not None:
+            lines.append(f"- **State Protection Status**: `{state_protected}` ({'protected' if state_protected else 'unprotected'})")
+            lines.append(f"- **State Address Block**: `{protection_info.state_address_prefix}`")
+        else:
+            lines.append("- **State Protection Status**: N/A (not in state)")
+        lines.append(f"- **Expected Address Block**: `{protection_info.expected_address_prefix}`")
+        lines.append("")
+        
+        if protection_info.has_mismatch:
+            lines.append("### ⚠️ PROTECTION MISMATCH DETECTED")
+            lines.append(f"- **Direction**: {protection_info.mismatch_direction}")
+            lines.append(f"- **Current**: resource is in `{protection_info.state_address_prefix}`")
+            lines.append(f"- **Expected**: resource should be in `{protection_info.expected_address_prefix}`")
+            lines.append("")
+            lines.append("**Required Action**: Generate a `moved` block to move the resource:")
+            lines.append("```hcl")
+            # Generate example moved block
+            module_prefix = "module.dbt_cloud.module.projects_v2[0]"
+            tf_type, unprotected_name, protected_name = EXTENDED_RESOURCE_TYPE_MAP[source_type]
+            from_block = protected_name if state_protected else unprotected_name
+            to_block = unprotected_name if state_protected else protected_name
+            resource_key = state_resource_index or source_key or "RESOURCE_KEY"
+            lines.append("moved {")
+            lines.append(f'  from = {module_prefix}.{tf_type}.{from_block}["{resource_key}"]')
+            lines.append(f'  to   = {module_prefix}.{tf_type}.{to_block}["{resource_key}"]')
+            lines.append("}")
+            lines.append("```")
+            if protection_info.linked_resources:
+                lines.append("")
+                lines.append(f"**Linked Resources**: {', '.join(protection_info.linked_resources)} also need `moved` blocks")
+                lines.append("")
+                lines.append("Protection relationships:")
+                lines.append("- **PRJ** (Project): Independent - can be protected/unprotected on its own")
+                lines.append("- **REP** (Repository) ↔ **PREP** (Project-Repository): Linked - must move together")
+        else:
+            lines.append("### ✅ Protection Status OK")
+            if state_protected is not None:
+                lines.append(f"- State and YAML agree: resource is `{'protected' if yaml_protected else 'unprotected'}`")
+            else:
+                lines.append("- Resource not yet in state - will be created in correct block")
+    else:
+        lines.append(f"- Resource type `{source_type}` does not have protection tracking")
     lines.append("")
     
     # Key matching analysis
