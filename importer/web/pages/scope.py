@@ -1598,7 +1598,7 @@ def _create_results_display(state: AppState, on_step_change: Callable[[WorkflowS
                 try:
                     yaml_content = yaml_path.read_text(encoding="utf-8")
                     
-                    with ui.dialog() as dialog, ui.card().classes("w-full max-w-6xl").style("max-height: 80vh;"):
+                    with ui.dialog() as dialog, ui.card().classes("w-full").style("width: 90vw; max-width: 90vw; max-height: 80vh;"):
                         with ui.row().classes("w-full items-center justify-between mb-2"):
                             ui.label("Generated YAML Preview").classes("text-lg font-bold")
                             ui.button(icon="close", on_click=dialog.close).props("flat round")

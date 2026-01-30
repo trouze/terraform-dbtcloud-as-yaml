@@ -20,7 +20,13 @@ from nicegui import ui
 from importer.web.components.terminal_output import TerminalOutput
 from importer.web.pages.deploy import _get_state_file_path, _get_terraform_env
 from importer.web.state import AppState, WorkflowStep
-from importer.web.utils.protection_manager import extract_protected_resources, load_yaml_config
+from importer.web.utils.protection_manager import (
+    extract_protected_resources,
+    load_yaml_config,
+    detect_and_repair_protection_mismatches,
+    format_mismatches_for_display,
+    ProtectionRepairResult,
+)
 from importer.web.utils.yaml_viewer import create_state_viewer_dialog
 
 
@@ -60,6 +66,9 @@ def create_destroy_page(
 
         # Protected resources panel (full width, self-contained with actions)
         _create_destroy_protection_panel(state, save_state, destroy_state)
+
+        # Protection mismatch detection and repair panel
+        _create_protection_repair_panel(state, save_state, destroy_state, terminal)
 
         # Destroy resources table (full width, self-contained with actions)
         _create_resource_table(state, destroy_state, terminal, save_state)
@@ -697,7 +706,7 @@ def _show_resource_detail_dialog(
     
     # Create the dialog
     with ui.dialog() as dialog:
-        with ui.card().classes("w-full max-w-5xl max-h-[90vh] p-6"):
+        with ui.card().classes("w-full max-h-[90vh] p-6").style("width: 90vw; max-width: 90vw;"):
             # Header
             with ui.row().classes("w-full items-center justify-between mb-4"):
                 with ui.column().classes("gap-1"):
@@ -1259,6 +1268,208 @@ def _create_destroy_protection_panel(
         ui.label(
             "Click a row to view details. Check resources and click 'Unprotect Selected' to remove protection."
         ).classes("text-xs text-slate-500 mt-2")
+
+
+def _create_protection_repair_panel(
+    state: AppState,
+    save_state: Callable[[], None],
+    destroy_state: dict,
+    terminal: TerminalOutput,
+) -> None:
+    """Create a panel to detect and repair protection mismatches.
+    
+    This panel detects when the protection status in the YAML config doesn't match
+    the Terraform state (e.g., resource is protected in state but not in YAML),
+    and offers to generate/repair the moved blocks file.
+    """
+    tf_dir = state.deploy.terraform_dir if state.deploy.terraform_dir else "deployments/migration"
+    project_root = Path(__file__).parent.parent.parent.parent.resolve()
+    terraform_dir = project_root / tf_dir
+    
+    # Find YAML config file
+    possible_paths = [
+        terraform_dir / "dbt-cloud-config.yml",
+        terraform_dir / "dbt_cloud_config.yml",
+        terraform_dir / "config.yml",
+    ]
+    if state.map.last_yaml_file:
+        possible_paths.append(Path(state.map.last_yaml_file))
+    
+    yaml_path = None
+    for path in possible_paths:
+        if path.exists():
+            yaml_path = path
+            break
+    
+    # Check if state file exists
+    state_file = terraform_dir / "terraform.tfstate"
+    if not yaml_path or not state_file.exists():
+        return  # Can't detect mismatches without both files
+    
+    # Detect mismatches
+    try:
+        repair_result = detect_and_repair_protection_mismatches(
+            yaml_path=yaml_path,
+            terraform_dir=terraform_dir,
+            auto_repair=False,  # Don't auto-repair, let user confirm
+        )
+    except Exception as e:
+        # Silent failure - don't show panel if detection fails
+        return
+    
+    if not repair_result.mismatches:
+        return  # No mismatches to show
+    
+    # Panel state for UI updates
+    panel_state = {"expanded": False}
+    
+    with ui.card().classes("w-full").style("border-left: 4px solid #F59E0B;"):
+        # Header with warning
+        with ui.row().classes("w-full items-center gap-3 mb-2"):
+            ui.icon("warning", size="md").classes("text-amber-500")
+            ui.label(f"Protection Mismatch Detected ({len(repair_result.mismatches)})").classes(
+                "font-semibold text-amber-600"
+            )
+            ui.badge("Needs Repair").props("color=amber outline")
+        
+        # Explanation
+        ui.label(
+            "The Terraform state has resources in different protection blocks than the YAML config expects. "
+            "This typically happens when protection status was changed but the moved blocks weren't updated correctly."
+        ).classes("text-xs text-slate-500 mb-3")
+        
+        # Show mismatch summary
+        with ui.expansion("View Mismatches", icon="list").classes("w-full mb-3"):
+            type_names = {
+                "PRJ": "Project",
+                "REP": "Repository",
+                "PREP": "Project-Repo Link",
+            }
+            
+            # Group by project key
+            by_project = {}
+            for m in repair_result.mismatches:
+                if m.resource_key not in by_project:
+                    by_project[m.resource_key] = []
+                by_project[m.resource_key].append(m)
+            
+            for project_key, project_mismatches in sorted(by_project.items()):
+                yaml_status = "protected" if project_mismatches[0].yaml_protected else "unprotected"
+                
+                with ui.card().classes("w-full p-3 mb-2").style(
+                    "background-color: rgba(245, 158, 11, 0.1);"
+                ):
+                    with ui.row().classes("items-center gap-2 mb-1"):
+                        ui.icon("folder", size="xs").classes("text-amber-600")
+                        ui.label(project_key).classes("font-semibold text-sm")
+                    
+                    # Separate PRJ from REP+PREP (they have different linkage)
+                    prj_mismatches = [m for m in project_mismatches if m.resource_type == "PRJ"]
+                    repo_mismatches = [m for m in project_mismatches if m.resource_type in ("REP", "PREP")]
+                    
+                    # Show project mismatch (independent)
+                    if prj_mismatches:
+                        prj = prj_mismatches[0]
+                        state_status = "protected" if prj.state_protected else "unprotected"
+                        with ui.row().classes("items-center gap-2 mb-1"):
+                            ui.badge("Project").props("color=primary outline")
+                            ui.label(f"State: {state_status}").classes("text-xs text-slate-500")
+                            ui.icon("arrow_forward", size="xs").classes("text-amber-500")
+                            ui.label(f"Move to {yaml_status}").classes("text-xs text-amber-600")
+                            ui.label("(independent)").classes("text-xs text-slate-400 italic")
+                    
+                    # Show repository mismatches (linked together)
+                    if repo_mismatches:
+                        rep_m = next((m for m in repo_mismatches if m.resource_type == "REP"), None)
+                        state_status = "protected" if rep_m and rep_m.state_protected else "unprotected"
+                        with ui.row().classes("items-center gap-2"):
+                            ui.badge("Repository").props("color=grey outline")
+                            ui.label("+").classes("text-xs text-slate-400")
+                            ui.badge("Project-Repo Link").props("color=grey outline")
+                            ui.label(f"State: {state_status}").classes("text-xs text-slate-500")
+                            ui.icon("arrow_forward", size="xs").classes("text-amber-500")
+                            ui.label(f"Move to {yaml_status}").classes("text-xs text-amber-600")
+                            ui.label("(linked)").classes("text-xs text-slate-400 italic")
+        
+        # Show generated moved blocks preview
+        if repair_result.moved_blocks_content:
+            with ui.expansion("Preview Repair (protection_moves.tf)", icon="code").classes("w-full mb-3"):
+                ui.code(repair_result.moved_blocks_content, language="hcl").classes(
+                    "w-full max-h-[200px] overflow-auto"
+                )
+        
+        # Action buttons
+        with ui.row().classes("w-full items-center gap-3"):
+            async def apply_repair():
+                """Apply the repair by writing the moved blocks file."""
+                repair_path = terraform_dir / "protection_moves.tf"
+                try:
+                    repair_path.write_text(repair_result.moved_blocks_content, encoding="utf-8")
+                    terminal.success(f"✅ Wrote protection repair to {repair_path}")
+                    terminal.info("")
+                    terminal.info("Next steps:")
+                    terminal.info("  1. Run 'terraform plan' to verify the moves")
+                    terminal.info("  2. Run 'terraform apply' to apply the state moves")
+                    terminal.info("  3. After successful apply, you can delete protection_moves.tf")
+                    ui.notify(
+                        f"Repair written to protection_moves.tf. Run terraform plan to verify.",
+                        type="positive",
+                        timeout=6000,
+                    )
+                    # Reload to refresh the panel
+                    ui.navigate.reload()
+                except Exception as e:
+                    terminal.error(f"Failed to write repair file: {e}")
+                    ui.notify(f"Failed to write repair: {e}", type="negative")
+            
+            ui.button(
+                "Apply Repair",
+                icon="build",
+                on_click=apply_repair,
+            ).props("color=amber").style("color: black !important;")
+            
+            async def run_validate():
+                """Run terraform validate to check for other errors."""
+                terminal.clear()
+                terminal.set_title("Output — TERRAFORM VALIDATE")
+                terminal.info("Running terraform validate...")
+                terminal.info("")
+                
+                env = _get_terraform_env(state)
+                result = await asyncio.to_thread(
+                    subprocess.run,
+                    ["terraform", "validate", "-no-color"],
+                    cwd=str(terraform_dir),
+                    capture_output=True,
+                    text=True,
+                    env=env,
+                )
+                
+                for line in (result.stdout + result.stderr).split("\n"):
+                    if line.strip():
+                        if "Error:" in line or "error:" in line.lower():
+                            terminal.error(line)
+                        elif "Warning:" in line:
+                            terminal.warning(line)
+                        elif "Success" in line:
+                            terminal.success(line)
+                        else:
+                            terminal.info(line)
+                
+                if result.returncode == 0:
+                    ui.notify("Validation passed!", type="positive")
+                else:
+                    ui.notify("Validation failed - see output for details", type="warning")
+            
+            ui.button(
+                "Run Validate",
+                icon="check_circle",
+                on_click=run_validate,
+            ).props("outline")
+            
+            ui.label(
+                "Click 'Apply Repair' to generate the correct moved blocks, then run terraform plan/apply."
+            ).classes("text-xs text-slate-500 flex-grow")
 
 
 def _show_protected_resource_dialog(row: dict) -> None:

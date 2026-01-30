@@ -580,7 +580,7 @@ def _show_edit_dialog(
         if auth_field not in form_data:
             form_data[auth_field] = auth_default
 
-    with ui.dialog() as dialog, ui.card().classes("w-full max-w-6xl"):
+    with ui.dialog() as dialog, ui.card().classes("w-full").style("width: 90vw; max-width: 90vw;"):
         # Header
         with ui.row().classes("w-full items-center justify-between mb-2"):
             with ui.row().classes("items-center gap-2"):

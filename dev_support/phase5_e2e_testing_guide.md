@@ -2,7 +2,7 @@
 
 **Version:** 2.0  
 **Date:** 2026-01-29  
-**Importer Version:** 0.15.3  
+**Importer Version:** 0.15.4  
 **Status:** Ready for Execution
 
 ---

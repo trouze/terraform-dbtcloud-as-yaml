@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.4] - 2026-01-29
+
+### Fixed
+- **Dialog Width Consistency**: Fixed confirmation dialogs being too wide (90vw) and AG Grid popups being too narrow
+  - Removed global 90vw CSS rule that affected all dialogs
+  - Small confirmation dialogs (e.g., "Existing Fetch Data Detected") now use appropriate content-based widths (`max-w-md`)
+  - Large data dialogs (entity detail, YAML preview, resource detail) now have explicit `width: 90vw; max-width: 90vw` to override Tailwind constraints
+  - Fixed dialogs: explore source/target entity popups, destroy resource detail, scope/mapping YAML preview, target credentials edit, jobs detail
+
 ## [0.15.3] - 2026-01-29
 
 ### Changed
