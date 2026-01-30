@@ -9,6 +9,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.7] - 2026-01-29
+
+### Fixed
+- **Protection Mismatch Fix**: Fixed catastrophic bug where adoption overrides defaulted `protected=True` for ALL adopted resources
+  - Changed default in `apply_adoption_overrides` from `protected=True` to `protected=False`
+  - This prevented Terraform from destroying and recreating all projects as "protected" when only one resource needed protection status change
+  - Protection status is now opt-in rather than opt-out
+- **State Persistence**: Fixed protection state persistence for `protected_resources`, `unprotected_keys`, and related backup fields
+  - Sets are now properly converted to lists for JSON serialization in `MapState.to_dict()`
+- **Unprotection Logic**: Added `apply_unprotection_from_set()` function to explicitly remove `protected: true` flags from resources
+
+## [0.15.6] - 2026-01-30
+
+### Fixed
+- **Protection Mismatch Dialog**: Fixed dialog width and centering issues in the View Details dialog
+  - Dialog now properly centers with `position=standard` Quasar prop
+  - Set width to 950px (max 90vw) for better readability with AI Debug Summary expanded
+  - Fixed layout issues where dialog was offset to the left
+
+### Changed
+- **Protection Mismatch Panel**: Improved layout of "Pending Fix" status tile
+  - Moved fix status container to card level for proper proportions
+  - Added `flex-grow` and `flex-shrink-0` for better button row layout
+
+## [0.15.5] - 2026-01-29
+
+### Fixed
+- **Name Lookup Matching**: Fixed auto-matching failing for hierarchical resources (repositories, env vars) due to display prefixes
+  - Added `_normalize_name_for_lookup()` helper to strip display prefixes ("  ↳ ", "    ↳ ") before lookups
+  - Updated `build_grid_rows()` to use normalized names for `target_by_type_name` and `state_by_name` lookups
+  - Updated `_compute_drift_status()` to normalize names consistently
+  - Improved diagnostic output to show both original and normalized names when they differ
+
 ## [0.15.4] - 2026-01-29
 
 ### Fixed

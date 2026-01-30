@@ -1332,6 +1332,7 @@ def show_match_detail_dialog(
                         available_targets=same_type_targets,
                         on_target_selected=on_target_selected,
                         on_adopt=on_adopt,
+                        app_state=app_state,
                     )
             
             # Source details tab
@@ -2152,7 +2153,18 @@ def _build_llm_diagnostic(
     
     # Lookup attempts
     lines.append("## Lookup Methods Attempted")
-    lines.append(f"1. **Name lookup**: `target_by_type_name[(\"{source_type}\", \"{source_name}\")]`")
+    # Show normalized name for lookup (strips display prefixes like "  ↳ ")
+    normalized_name = source_name
+    for prefix in ("    ↳ ", "  ↳ "):
+        if normalized_name.startswith(prefix):
+            normalized_name = normalized_name[len(prefix):]
+            break
+    if normalized_name != source_name:
+        lines.append(f"1. **Name lookup**: `target_by_type_name[(\"{source_type}\", \"{normalized_name}\")]`")
+        lines.append(f"   - Original name (with display prefix): `{source_name}`")
+        lines.append(f"   - Normalized for lookup: `{normalized_name}`")
+    else:
+        lines.append(f"1. **Name lookup**: `target_by_type_name[(\"{source_type}\", \"{source_name}\")]`")
     if state_id:
         lines.append(f"2. **State ID lookup**: `target_by_id[{state_id}]` for type {source_type}")
     if source_type == "REP" and project_name:
@@ -2211,12 +2223,31 @@ def _render_drift_comparison(
     available_targets: Optional[list] = None,
     on_target_selected: Optional[callable] = None,
     on_adopt: Optional[callable] = None,
+    app_state: Optional[AppState] = None,
 ) -> None:
     """Render the drift comparison view."""
     drift_status = grid_row.get("drift_status", "no_state")
     state_id = grid_row.get("state_id")
     target_id = grid_row.get("target_id")
     action = grid_row.get("action", "")
+    source_type = grid_row.get("source_type", "")
+    state_address = grid_row.get("state_address")
+    state_resource_index = grid_row.get("state_resource_index") or state_resource.get("resource_index") if state_resource else None
+    project_name = grid_row.get("project_name", "")
+    
+    # Check for protection mismatch
+    yaml_protected = source_data.get("protected", False) if source_data else False
+    project_has_repo = bool(source_data.get("repository")) if source_data and source_type == "PRJ" else True
+    
+    protection_info = None
+    if source_type in EXTENDED_RESOURCE_TYPE_MAP and state_address:
+        protection_info = check_single_resource_protection(
+            resource_type=source_type,
+            resource_key=state_resource_index or grid_row.get("source_key", ""),
+            state_address=state_address,
+            yaml_protected=yaml_protected,
+            project_has_repository=project_has_repo,
+        )
     
     with ui.column().classes("w-full gap-4 p-4"):
         # Status summary cards
@@ -2350,6 +2381,260 @@ def _render_drift_comparison(
                                 icon="download",
                                 on_click=lambda: on_adopt(protected=protection_state["protected"]),
                             ).props("color=warning dense")
+        
+        # Protection Mismatch card
+        if protection_info and protection_info.has_mismatch:
+            ui.separator()
+            with ui.card().classes("w-full p-4").style("border: 2px solid #F59E0B;"):
+                with ui.row().classes("items-center gap-2 mb-2"):
+                    ui.icon("warning", color="amber", size="md")
+                    ui.label("Protection Mismatch Detected").classes("font-bold text-lg text-amber-600")
+                
+                # Explain the mismatch
+                state_status = "protected" if protection_info.state_protected else "unprotected"
+                yaml_status = "protected" if protection_info.yaml_protected else "unprotected"
+                direction = protection_info.mismatch_direction
+                
+                ui.label(
+                    f"This resource is {state_status} in Terraform state but should be {yaml_status} according to YAML configuration."
+                ).classes("text-sm mb-2")
+                
+                with ui.row().classes("gap-4 mb-3"):
+                    with ui.column().classes("gap-1"):
+                        ui.label("Current (State)").classes("text-xs text-slate-500 font-semibold")
+                        ui.badge(
+                            f"🛡️ {state_status.upper()}" if protection_info.state_protected else f"📝 {state_status.upper()}",
+                            color="purple" if protection_info.state_protected else "grey"
+                        )
+                    ui.icon("arrow_forward", size="sm").classes("text-slate-400 self-center")
+                    with ui.column().classes("gap-1"):
+                        ui.label("Expected (YAML)").classes("text-xs text-slate-500 font-semibold")
+                        ui.badge(
+                            f"🛡️ {yaml_status.upper()}" if protection_info.yaml_protected else f"📝 {yaml_status.upper()}",
+                            color="green" if protection_info.yaml_protected else "blue"
+                        )
+                
+                # Show linked resources warning
+                if protection_info.linked_resources:
+                    with ui.row().classes("items-center gap-2 mb-3 p-2 bg-amber-50 rounded"):
+                        ui.icon("link", size="sm").classes("text-amber-600")
+                        linked = ", ".join(protection_info.linked_resources)
+                        ui.label(f"Linked resources also need moving: {linked}").classes("text-sm text-amber-700")
+                
+                # Generate moved blocks for display and copy
+                module_prefix = "module.dbt_cloud.module.projects_v2[0]"
+                tf_type, unprotected_name, protected_name = EXTENDED_RESOURCE_TYPE_MAP[source_type]
+                from_block = protected_name if protection_info.state_protected else unprotected_name
+                to_block = unprotected_name if protection_info.state_protected else protected_name
+                resource_key = state_resource_index or grid_row.get("source_key", "RESOURCE_KEY")
+                
+                moved_block = f'''moved {{
+  from = {module_prefix}.{tf_type}.{from_block}["{resource_key}"]
+  to   = {module_prefix}.{tf_type}.{to_block}["{resource_key}"]
+}}'''
+                
+                # Also generate linked resource moves
+                all_moved_blocks = [moved_block]
+                if protection_info.linked_resources:
+                    for linked_type in protection_info.linked_resources:
+                        if linked_type in EXTENDED_RESOURCE_TYPE_MAP:
+                            l_tf_type, l_unprotected, l_protected = EXTENDED_RESOURCE_TYPE_MAP[linked_type]
+                            l_from = l_protected if protection_info.state_protected else l_unprotected
+                            l_to = l_unprotected if protection_info.state_protected else l_protected
+                            linked_block = f'''moved {{
+  from = {module_prefix}.{l_tf_type}.{l_from}["{resource_key}"]
+  to   = {module_prefix}.{l_tf_type}.{l_to}["{resource_key}"]
+}}'''
+                            all_moved_blocks.append(linked_block)
+                
+                full_content = "\n\n".join(all_moved_blocks)
+                
+                # Show the required moved block
+                with ui.expansion("View Required Moved Block", icon="code").classes("w-full mb-3"):
+                    ui.html(f'<pre style="background: #1e1e1e; color: #d4d4d4; padding: 12px; border-radius: 4px; font-size: 0.75rem; overflow-x: auto;">{html.escape(full_content)}</pre>')
+                
+                # Status tracking for this card - use a mutable ref
+                fix_status_ref = {"pending": False, "file_path": "", "previous_content": ""}
+                
+                # Create a container for the status message that we'll update
+                status_container = ui.element("div").classes("w-full")
+                
+                # Undo function
+                def undo_protection_fix(fix_btn, undo_btn, status_container):
+                    """Restore the previous protection_moves.tf content."""
+                    if not fix_status_ref["pending"]:
+                        ui.notify("No pending fix to undo", type="warning")
+                        return
+                    
+                    try:
+                        file_path = Path(fix_status_ref["file_path"])
+                        previous = fix_status_ref["previous_content"]
+                        
+                        if previous:
+                            file_path.write_text(previous)
+                            ui.notify("Restored previous protection_moves.tf", type="positive")
+                        else:
+                            # No previous content - delete or clear the file
+                            file_path.write_text("# Protection moves cleared\n")
+                            ui.notify("Cleared protection_moves.tf", type="positive")
+                        
+                        # Reset status
+                        fix_status_ref["pending"] = False
+                        fix_status_ref["file_path"] = ""
+                        fix_status_ref["previous_content"] = ""
+                        
+                        # Reset button states - remove disabled and reset color
+                        fix_btn.props(remove="disabled")
+                        fix_btn.props("color=warning")
+                        fix_btn.set_text("Fix Protection Mismatch")
+                        fix_btn.set_icon("build")
+                        undo_btn.set_visibility(False)
+                        
+                        # Clear status container
+                        status_container.clear()
+                        
+                    except Exception as e:
+                        ui.notify(f"Error undoing fix: {e}", type="negative")
+                
+                # Fix button
+                async def fix_protection_mismatch(fix_btn, undo_btn, status_container):
+                    """Write the moved blocks to protection_moves.tf."""
+                    if not app_state:
+                        ui.notify("App state not available", type="negative")
+                        return
+                    
+                    # Get deployment path from app_state.deploy.terraform_dir or default to deployments/migration
+                    tf_dir = ""
+                    deploy_state = getattr(app_state, "deploy", None)
+                    if deploy_state:
+                        tf_dir = getattr(deploy_state, "terraform_dir", "")
+                    
+                    # Fall back to deployments/migration (same as destroy page)
+                    if not tf_dir:
+                        tf_dir = "deployments/migration"
+                    
+                    # Resolve to absolute path
+                    project_root = Path(__file__).parent.parent.parent.parent.resolve()
+                    deployment_path = project_root / tf_dir
+                    
+                    if not deployment_path.exists():
+                        ui.notify(f"Deployment path not found: {deployment_path}", type="negative")
+                        return
+                    
+                    moves_file = deployment_path / "protection_moves.tf"
+                    
+                    # Generate all moved blocks
+                    module_prefix = "module.dbt_cloud.module.projects_v2[0]"
+                    tf_type, unprotected_name, protected_name = EXTENDED_RESOURCE_TYPE_MAP[source_type]
+                    from_block = protected_name if protection_info.state_protected else unprotected_name
+                    to_block = unprotected_name if protection_info.state_protected else protected_name
+                    resource_key = state_resource_index or grid_row.get("source_key", "RESOURCE_KEY")
+                    
+                    blocks = []
+                    blocks.append(f'''# Move {source_type} from {from_block} to {to_block}
+moved {{
+  from = {module_prefix}.{tf_type}.{from_block}["{resource_key}"]
+  to   = {module_prefix}.{tf_type}.{to_block}["{resource_key}"]
+}}''')
+                    
+                    if protection_info.linked_resources:
+                        for linked_type in protection_info.linked_resources:
+                            if linked_type in EXTENDED_RESOURCE_TYPE_MAP:
+                                l_tf_type, l_unprotected, l_protected = EXTENDED_RESOURCE_TYPE_MAP[linked_type]
+                                l_from = l_protected if protection_info.state_protected else l_unprotected
+                                l_to = l_unprotected if protection_info.state_protected else l_protected
+                                blocks.append(f'''# Move linked {linked_type} from {l_from} to {l_to}
+moved {{
+  from = {module_prefix}.{l_tf_type}.{l_from}["{resource_key}"]
+  to   = {module_prefix}.{l_tf_type}.{l_to}["{resource_key}"]
+}}''')
+                    
+                    content = f'''# Generated moved blocks for protection status changes
+# Resource: {resource_key}
+# Direction: {direction}
+# Generated: {datetime.now().isoformat()}
+
+''' + "\n\n".join(blocks) + "\n"
+                    
+                    try:
+                        # Read existing content if file exists - save for undo
+                        existing = ""
+                        if moves_file.exists():
+                            existing = moves_file.read_text()
+                        
+                        # Store previous content for undo
+                        fix_status_ref["previous_content"] = existing
+                        
+                        # Append or write new content
+                        if existing.strip() and not existing.strip().startswith("# Protection moved blocks will be regenerated"):
+                            # Append to existing file
+                            content = existing.rstrip() + "\n\n" + "\n\n".join(blocks) + "\n"
+                        
+                        moves_file.write_text(content)
+                        
+                        # Update status
+                        fix_status_ref["pending"] = True
+                        fix_status_ref["file_path"] = str(moves_file)
+                        
+                        # Update the button to show success state
+                        fix_btn.props("color=positive disabled")
+                        fix_btn.set_text("Fix Queued")
+                        
+                        # Show undo button
+                        undo_btn.set_visibility(True)
+                        
+                        # Show pending status in the status container
+                        with status_container:
+                            status_container.clear()
+                            with ui.card().classes("w-full p-3 mt-3").style("background: #ECFDF5; border: 1px solid #10B981;"):
+                                with ui.row().classes("items-center justify-between"):
+                                    with ui.row().classes("items-center gap-2"):
+                                        ui.icon("hourglass_empty", size="sm").classes("text-green-600")
+                                        ui.label("PENDING FIX").classes("font-bold text-green-700")
+                                ui.label(f"Moved blocks written to: {moves_file.name}").classes("text-sm text-green-700 mt-1")
+                                ui.label("Run 'terraform plan' then 'terraform apply' to complete").classes("text-xs text-green-600")
+                        
+                        # Show clear confirmation notification
+                        ui.notify(
+                            f"SUCCESS: Wrote {len(blocks)} moved block(s) to protection_moves.tf",
+                            type="positive",
+                            timeout=5000,
+                        )
+                        ui.notify(
+                            "Next: Run 'terraform plan' to verify, then 'terraform apply' to execute",
+                            type="info",
+                            timeout=8000,
+                        )
+                    except Exception as e:
+                        ui.notify(f"Error writing file: {e}", type="negative")
+                
+                with ui.row().classes("gap-2"):
+                    fix_btn = ui.button(
+                        "Fix Protection Mismatch",
+                        icon="build",
+                    ).props("color=warning")
+                    
+                    # Undo button - hidden initially
+                    undo_btn = ui.button(
+                        "Undo",
+                        icon="undo",
+                    ).props("color=grey outline")
+                    undo_btn.set_visibility(False)
+                    
+                    # Wire up click handlers with references
+                    fix_btn.on_click(lambda: fix_protection_mismatch(fix_btn, undo_btn, status_container))
+                    undo_btn.on_click(lambda: undo_protection_fix(fix_btn, undo_btn, status_container))
+                    
+                    # Capture full_content value for the lambda
+                    copy_content = full_content
+                    ui.button(
+                        "Copy Moved Block",
+                        icon="content_copy",
+                        on_click=lambda c=copy_content: (
+                            ui.run_javascript(f"navigator.clipboard.writeText({json.dumps(c)})"),
+                            ui.notify("Moved block copied to clipboard", type="positive"),
+                        ),
+                    ).props("color=grey outline")
         
         # Target selector dropdown (for manual matching)
         if available_targets and not target_id:

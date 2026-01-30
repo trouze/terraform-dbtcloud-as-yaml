@@ -290,6 +290,7 @@ def write_moved_blocks_file(
     changes: list[ProtectionChange],
     output_dir: Union[str, Path],
     filename: str = "protection_moves.tf",
+    preserve_existing: bool = True,
 ) -> Optional[Path]:
     """Write moved blocks to a Terraform file.
     
@@ -297,6 +298,7 @@ def write_moved_blocks_file(
         changes: List of protection changes
         output_dir: Directory to write to
         filename: Output filename
+        preserve_existing: If True, preserve existing manual blocks and append new ones
         
     Returns:
         Path to the file if written, None if no changes
@@ -304,10 +306,36 @@ def write_moved_blocks_file(
     if not changes:
         return None
     
-    content = generate_moved_blocks(changes)
     output_path = Path(output_dir) / filename
-    output_path.write_text(content, encoding="utf-8")
+    new_content = generate_moved_blocks(changes)
     
+    # If preserve_existing is True and file exists, check for existing blocks
+    if preserve_existing and output_path.exists():
+        existing_content = output_path.read_text(encoding="utf-8")
+        
+        # Don't overwrite if the file has substantial content that's not just a placeholder
+        if existing_content.strip() and not existing_content.strip().startswith("# Protection moves cleared"):
+            # Extract resource keys from new changes to avoid duplicates
+            new_keys = set()
+            for change in changes:
+                new_keys.add(f'"{change.resource_key}"')
+            
+            # Check if any of our new keys already exist in the file
+            has_overlap = any(key in existing_content for key in new_keys)
+            
+            if not has_overlap:
+                # No overlap - append new blocks to existing content
+                merged_content = existing_content.rstrip() + "\n\n# Additional protection changes (auto-detected)\n" + new_content
+                output_path.write_text(merged_content, encoding="utf-8")
+                logger.info(f"Appended {len(changes)} moved block(s) to existing {output_path}")
+                return output_path
+            else:
+                # Overlap exists - preserve existing file, don't overwrite
+                logger.info(f"Skipping write to {output_path} - existing file contains matching resources")
+                return output_path
+    
+    # No existing file or preserve_existing is False - write new content
+    output_path.write_text(new_content, encoding="utf-8")
     logger.info(f"Wrote {len(changes)} moved block(s) to {output_path}")
     return output_path
 

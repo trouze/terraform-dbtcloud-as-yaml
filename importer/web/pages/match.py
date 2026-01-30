@@ -26,6 +26,9 @@ from importer.web.utils.protection_manager import (
     get_resources_to_protect,
     get_resources_to_unprotect,
     CascadeResource,
+    check_single_resource_protection,
+    EXTENDED_RESOURCE_TYPE_MAP,
+    generate_repair_moved_blocks,
 )
 from importer.web.components.hierarchy_index import HierarchyIndex
 
@@ -1705,6 +1708,415 @@ def _create_matching_content(
                         icon="article",
                         on_click=show_execution_logs,
                     ).props("flat").classes("text-slate-600")
+    
+    # Protection mismatch section - detect and fix state/YAML protection mismatches
+    # Scan grid data for protection mismatches (state says protected but YAML says not, or vice versa)
+    protection_mismatches = []
+    
+    def _extract_resource_key_from_address(address: str) -> str:
+        """Extract the resource key from a Terraform state address.
+        
+        Address format: module.dbt_cloud.module.projects_v2[0].dbtcloud_project.protected_projects["key"]
+        Returns: "key"
+        """
+        import re
+        match = re.search(r'\["([^"]+)"\]$', address)
+        if match:
+            return match.group(1)
+        return ""
+    
+    for row in grid_row_data:
+        source_type = row.get("source_type", "")
+        state_address = row.get("state_address")
+        
+        if source_type in EXTENDED_RESOURCE_TYPE_MAP and state_address:
+            # Use the separate protection fields from grid row
+            # yaml_protected = what user wants (from protected_resources set / YAML config)
+            # state_protected = what TF state actually has (from address containing "protected_")
+            yaml_protected = row.get("yaml_protected", False)
+            state_protected = row.get("state_protected", False)
+            
+            # Check for mismatch
+            if state_protected != yaml_protected:
+                # Extract resource key from the state address (most reliable source)
+                # Address format: module.dbt_cloud.module.projects_v2[0].dbtcloud_project.protected_projects["key"]
+                resource_key = _extract_resource_key_from_address(state_address)
+                
+                # Fallback to source_key or project_name if extraction failed
+                if not resource_key:
+                    if source_type == "PRJ":
+                        # For projects, source_key is the project key
+                        resource_key = row.get("source_key", "")
+                    else:
+                        # For REP/PREP, project_name is the key (repos are keyed by project)
+                        resource_key = row.get("project_name", row.get("source_key", ""))
+                
+                # Skip if we still don't have a key
+                if not resource_key:
+                    continue
+                
+                project_name = row.get("project_name") or resource_key
+                protection_mismatches.append({
+                    "type": source_type,
+                    "key": resource_key,
+                    "name": row.get("source_name", resource_key),
+                    "state_protected": state_protected,
+                    "yaml_protected": yaml_protected,
+                    "project_name": project_name,
+                })
+    
+    # Group mismatches by project to identify all related resources
+    # And deduplicate since PRJ, REP, PREP may all show for same project
+    unique_projects_with_mismatches = set()
+    for m in protection_mismatches:
+        unique_projects_with_mismatches.add(m.get("project_name") or m.get("key"))
+    
+    if has_state and protection_mismatches:
+        with ui.card().classes("w-full p-4 mt-4").style("border: 2px solid #F59E0B;"):
+            # Container for pending status - placed at card level, not inside button row
+            fix_status_container = ui.element("div").classes("w-full")
+            
+            with ui.row().classes("w-full items-center justify-between"):
+                with ui.column().classes("gap-1 flex-grow"):
+                    with ui.row().classes("items-center gap-2"):
+                        ui.icon("warning", size="sm").classes("text-amber-600")
+                        ui.label("Protection Mismatches Detected").classes("font-semibold text-amber-600")
+                    
+                    ui.label(
+                        f"{len(protection_mismatches)} resources in {len(unique_projects_with_mismatches)} project(s) have protection status mismatch"
+                    ).classes("text-sm text-amber-600")
+                    
+                    # Show preview of mismatches
+                    preview_items = []
+                    for m in protection_mismatches[:3]:
+                        direction = "protect" if m["yaml_protected"] else "unprotect"
+                        preview_items.append(f"{m['type']}:{m['key']} ({direction})")
+                    preview_text = ", ".join(preview_items)
+                    if len(protection_mismatches) > 3:
+                        preview_text += f" (+{len(protection_mismatches) - 3} more)"
+                    ui.label(preview_text).classes("text-xs text-slate-500")
+                    
+                    ui.label(
+                        "State protection status differs from YAML config. Generate moved blocks to reconcile."
+                    ).classes("text-xs text-slate-500")
+                
+                with ui.row().classes("gap-2 flex-shrink-0"):
+                    def show_protection_details():
+                        """Show details of all protection mismatches"""
+                        # Use standard dialog with explicit centering via Quasar classes
+                        with ui.dialog() as detail_dialog:
+                            detail_dialog.props("position=standard")
+                            with ui.card().classes("q-pa-md max-h-screen overflow-auto").style("width: 950px; max-width: 90vw; margin: 0 auto;"):
+                                ui.label("Protection Mismatches").classes("text-lg font-semibold mb-4")
+                                
+                                # Group by project
+                                by_project: dict[str, list] = {}
+                                for m in protection_mismatches:
+                                    pkey = m.get("project_name") or m.get("key")
+                                    if pkey not in by_project:
+                                        by_project[pkey] = []
+                                    by_project[pkey].append(m)
+                                
+                                for project_key, items in sorted(by_project.items()):
+                                    direction = "unprotect" if items[0]["state_protected"] else "protect"
+                                    with ui.card().classes("w-full p-3 mb-2"):
+                                        with ui.row().classes("items-center gap-2 mb-2"):
+                                            ui.icon("folder", size="sm").classes("text-blue-500")
+                                            ui.label(project_key).classes("font-semibold")
+                                            ui.badge(direction, color="amber")
+                                        
+                                        for m in items:
+                                            state_status = "protected" if m["state_protected"] else "unprotected"
+                                            yaml_status = "protected" if m["yaml_protected"] else "unprotected"
+                                            with ui.row().classes("items-center gap-2 ml-4"):
+                                                ui.badge(m["type"], color="grey").props("dense")
+                                                ui.label(f"State: {state_status} → YAML: {yaml_status}").classes("text-sm")
+                                
+                                # AI Debug Summary section
+                                ui.separator().classes("my-4")
+                                with ui.expansion("AI Debug Summary", icon="smart_toy").classes("w-full"):
+                                    # Build AI-friendly summary
+                                    ai_summary_lines = [
+                                        "# Protection Mismatch Summary",
+                                        "",
+                                        f"**Total mismatches**: {len(protection_mismatches)} resources in {len(by_project)} project(s)",
+                                        "",
+                                        "## Mismatches by Project",
+                                    ]
+                                    
+                                    for project_key, items in sorted(by_project.items()):
+                                        direction = "unprotect" if items[0]["state_protected"] else "protect"
+                                        ai_summary_lines.append(f"\n### Project: `{project_key}` ({direction})")
+                                        
+                                        for m in items:
+                                            state_status = "protected" if m["state_protected"] else "unprotected"
+                                            yaml_status = "protected" if m["yaml_protected"] else "unprotected"
+                                            # EXTENDED_RESOURCE_TYPE_MAP returns (terraform_resource, unprotected_block, protected_block)
+                                            resource_tuple = EXTENDED_RESOURCE_TYPE_MAP.get(m["type"], ("unknown", "unknown", "unknown"))
+                                            tf_resource, unprotected_block, protected_block = resource_tuple
+                                            
+                                            ai_summary_lines.append(f"- **{m['type']}** (`{m['key']}`): {state_status} → {yaml_status}")
+                                            ai_summary_lines.append(f"  - Terraform resource: `{tf_resource}`")
+                                            if direction == "unprotect":
+                                                ai_summary_lines.append(f"  - Move from: `{protected_block}` → `{unprotected_block}`")
+                                            else:
+                                                ai_summary_lines.append(f"  - Move from: `{unprotected_block}` → `{protected_block}`")
+                                    
+                                    ai_summary_lines.extend([
+                                        "",
+                                        "## Required Actions",
+                                        "Generate `moved` blocks to reconcile Terraform state with YAML configuration.",
+                                        "",
+                                        "## Protection Relationships",
+                                        "- **PRJ** (Project): Independent - can be protected/unprotected on its own",
+                                        "- **REP** (Repository) ↔ **PREP** (Project-Repository): Linked - must move together",
+                                    ])
+                                    
+                                    ai_summary_text = "\n".join(ai_summary_lines)
+                                    
+                                    with ui.row().classes("w-full justify-end mb-2"):
+                                        ui.button(
+                                            "Copy to Clipboard",
+                                            icon="content_copy",
+                                            on_click=lambda: (
+                                                ui.run_javascript(f'navigator.clipboard.writeText({repr(ai_summary_text)})'),
+                                                ui.notify("Copied to clipboard!", type="positive"),
+                                            ),
+                                        ).props("flat dense")
+                                    
+                                    ui.markdown(ai_summary_text).classes("text-sm")
+                                
+                                ui.button("Close", on_click=detail_dialog.close).props("flat").classes("mt-4")
+                        detail_dialog.open()
+                    
+                    ui.button(
+                        "View Details",
+                        icon="visibility",
+                        on_click=show_protection_details,
+                    ).props("outline").classes("text-amber-600")
+                    
+                    # Use persistent state for fix tracking (survives page re-renders)
+                    # state.map.protection_fix_pending, protection_fix_file_path, protection_fix_previous_content
+                    
+                    def undo_all_protection_fixes(fix_btn, undo_btn, status_container):
+                        """Restore the previous protection_moves.tf content."""
+                        if not state.map.protection_fix_pending:
+                            ui.notify("No pending fix to undo", type="warning")
+                            return
+                        
+                        try:
+                            file_path = Path(state.map.protection_fix_file_path)
+                            previous = state.map.protection_fix_previous_content
+                            
+                            if previous:
+                                file_path.write_text(previous)
+                                ui.notify("Restored previous protection_moves.tf", type="positive")
+                            else:
+                                # No previous content - clear the file
+                                file_path.write_text("# Protection moves cleared\n")
+                                ui.notify("Cleared protection_moves.tf", type="positive")
+                            
+                            # Reset persistent state
+                            state.map.protection_fix_pending = False
+                            state.map.protection_fix_file_path = ""
+                            state.map.protection_fix_previous_content = ""
+                            
+                            # Restore protection sets from backup
+                            if state.map.protection_fix_backup_protected:
+                                state.map.protected_resources = set(state.map.protection_fix_backup_protected)
+                            if state.map.protection_fix_backup_unprotected:
+                                state.map.unprotected_keys = set(state.map.protection_fix_backup_unprotected)
+                            state.map.protection_fix_backup_protected = set()
+                            state.map.protection_fix_backup_unprotected = set()
+                            
+                            save_state()
+                            
+                            # Reset button states - remove disabled and reset color
+                            fix_btn.props(remove="disabled")
+                            fix_btn.props("color=warning")
+                            fix_btn.set_text(f"Fix All ({len(protection_mismatches)})")
+                            fix_btn.set_icon("build")
+                            undo_btn.set_visibility(False)
+                            
+                            # Clear status container
+                            status_container.clear()
+                            
+                        except Exception as e:
+                            ui.notify(f"Error undoing fix: {e}", type="negative")
+                    
+                    def fix_all_protection_mismatches(fix_btn, undo_btn, status_container):
+                        """Generate moved blocks for all protection mismatches"""
+                        from datetime import datetime
+                        
+                        # Resolve terraform directory
+                        tf_dir = state.deploy.terraform_dir or "deployments/migration"
+                        tf_path = Path(tf_dir)
+                        if not tf_path.is_absolute():
+                            project_root = Path(state.fetch.output_dir).parent.parent if state.fetch.output_dir else Path.cwd()
+                            tf_path = project_root / tf_dir
+                        
+                        if not tf_path.exists():
+                            ui.notify(f"Terraform directory not found: {tf_path}", type="negative")
+                            return
+                        
+                        moves_file = tf_path / "protection_moves.tf"
+                        module_prefix = "module.dbt_cloud.module.projects_v2[0]"
+                        
+                        # Save previous content for undo in persistent state
+                        previous_content = ""
+                        if moves_file.exists():
+                            previous_content = moves_file.read_text()
+                        state.map.protection_fix_previous_content = previous_content
+                        
+                        # Group mismatches by project to generate all moves together
+                        by_project: dict[str, list] = {}
+                        for m in protection_mismatches:
+                            pkey = m.get("project_name") or m.get("key")
+                            if pkey not in by_project:
+                                by_project[pkey] = []
+                            by_project[pkey].append(m)
+                        
+                        # Generate moved blocks
+                        # Track which types we've generated for each key to avoid duplicates
+                        generated_moves: set[tuple[str, str]] = set()  # (type, key)
+                        blocks = []
+                        block_count = 0
+                        
+                        for project_key, items in sorted(by_project.items()):
+                            blocks.append(f"# Protection moves for {project_key}")
+                            for m in items:
+                                rtype = m["type"]
+                                rkey = m["key"]
+                                state_protected = m["state_protected"]
+                                
+                                if rtype in EXTENDED_RESOURCE_TYPE_MAP and (rtype, rkey) not in generated_moves:
+                                    tf_type, unprotected, protected = EXTENDED_RESOURCE_TYPE_MAP[rtype]
+                                    from_block = protected if state_protected else unprotected
+                                    to_block = unprotected if state_protected else protected
+                                    blocks.append(f'''moved {{
+  from = {module_prefix}.{tf_type}.{from_block}["{rkey}"]
+  to   = {module_prefix}.{tf_type}.{to_block}["{rkey}"]
+}}''')
+                                    block_count += 1
+                                    generated_moves.add((rtype, rkey))
+                                    
+                                    # REP and PREP are linked - if REP moves, PREP must also move
+                                    # Add PREP moved block automatically when REP is detected
+                                    if rtype == "REP" and ("PREP", rkey) not in generated_moves:
+                                        prep_tf_type, prep_unprotected, prep_protected = EXTENDED_RESOURCE_TYPE_MAP["PREP"]
+                                        prep_from = prep_protected if state_protected else prep_unprotected
+                                        prep_to = prep_unprotected if state_protected else prep_protected
+                                        blocks.append(f'''moved {{
+  from = {module_prefix}.{prep_tf_type}.{prep_from}["{rkey}"]
+  to   = {module_prefix}.{prep_tf_type}.{prep_to}["{rkey}"]
+}}''')
+                                        block_count += 1
+                                        generated_moves.add(("PREP", rkey))
+                            blocks.append("")  # Empty line between projects
+                        
+                        content = f'''# Generated moved blocks for protection status changes
+# Reconciles state protection status with YAML configuration
+# Generated: {datetime.now().isoformat()}
+# Projects: {', '.join(sorted(by_project.keys()))}
+
+''' + "\n".join(blocks)
+                        
+                        try:
+                            moves_file.write_text(content)
+                            
+                            # Update persistent state
+                            state.map.protection_fix_pending = True
+                            state.map.protection_fix_file_path = str(moves_file)
+                            
+                            # Backup current protection state for undo
+                            state.map.protection_fix_backup_protected = set(state.map.protected_resources)
+                            state.map.protection_fix_backup_unprotected = set(state.map.unprotected_keys)
+                            
+                            # CRITICAL: Also update protected_resources to reflect the new protection status
+                            # This ensures that when "Generate Files" is re-run, the YAML is updated
+                            for m in protection_mismatches:
+                                rkey = m["key"]
+                                if m["state_protected"] and not m.get("yaml_protected", False):
+                                    # Moving from protected to unprotected - remove from set
+                                    state.map.protected_resources.discard(rkey)
+                                    state.map.unprotected_keys.add(rkey)
+                                elif not m["state_protected"] and m.get("yaml_protected", True):
+                                    # Moving from unprotected to protected - add to set
+                                    state.map.protected_resources.add(rkey)
+                                    state.map.unprotected_keys.discard(rkey)
+                            
+                            save_state()
+                            
+                            # Update button to show success
+                            fix_btn.props("color=positive disabled")
+                            fix_btn.set_text("Fix Queued")
+                            fix_btn.set_icon("check_circle")
+                            
+                            # Show undo button
+                            undo_btn.set_visibility(True)
+                            
+                            # Show pending status in container
+                            with status_container:
+                                status_container.clear()
+                                with ui.card().classes("w-full p-3 mt-3").style("background: #ECFDF5; border: 1px solid #10B981;"):
+                                    with ui.row().classes("items-center justify-between"):
+                                        with ui.row().classes("items-center gap-2"):
+                                            ui.icon("hourglass_empty", size="sm").classes("text-green-600")
+                                            ui.label("PENDING FIX").classes("font-bold text-green-700")
+                                    ui.label(f"Wrote {block_count} moved blocks to: {moves_file.name}").classes("text-sm text-green-700 mt-1")
+                                    ui.label("Run 'terraform plan' then 'terraform apply' to complete the fix").classes("text-xs text-green-600")
+                            
+                            # Clear confirmation notifications
+                            ui.notify(
+                                f"SUCCESS: Generated {block_count} moved blocks for {len(unique_projects_with_mismatches)} project(s)",
+                                type="positive",
+                                timeout=5000,
+                            )
+                            ui.notify(
+                                "Next: Go to Generate tab and run 'terraform plan' to verify",
+                                type="info", 
+                                timeout=8000,
+                            )
+                        except Exception as e:
+                            ui.notify(f"Error writing file: {e}", type="negative")
+                    
+                    # Check if there's already a pending fix from persistent state
+                    has_pending_fix = state.map.protection_fix_pending
+                    
+                    if has_pending_fix:
+                        # Restore "Fix Queued" state
+                        fix_btn = ui.button(
+                            "Fix Queued",
+                            icon="check_circle",
+                        ).props("color=positive disabled")
+                    else:
+                        fix_btn = ui.button(
+                            f"Fix All ({len(protection_mismatches)})",
+                            icon="build",
+                        ).props("color=warning")
+                    
+                    # Undo button - shown if there's a pending fix
+                    undo_btn = ui.button(
+                        "Undo",
+                        icon="undo",
+                    ).props("color=grey outline")
+                    undo_btn.set_visibility(has_pending_fix)
+                    
+                    # Wire up click handlers
+                    fix_btn.on_click(lambda: fix_all_protection_mismatches(fix_btn, undo_btn, fix_status_container))
+                    undo_btn.on_click(lambda: undo_all_protection_fixes(fix_btn, undo_btn, fix_status_container))
+                    
+                    # Show pending status if there's already a fix queued
+                    if has_pending_fix and state.map.protection_fix_file_path:
+                        with fix_status_container:
+                            with ui.card().classes("w-full p-3 mt-3").style("background: #ECFDF5; border: 1px solid #10B981;"):
+                                with ui.row().classes("items-center justify-between"):
+                                    with ui.row().classes("items-center gap-2"):
+                                        ui.icon("hourglass_empty", size="sm").classes("text-green-600")
+                                        ui.label("PENDING FIX").classes("font-bold text-green-700")
+                                moves_file_name = Path(state.map.protection_fix_file_path).name
+                                ui.label(f"Moved blocks written to: {moves_file_name}").classes("text-sm text-green-700 mt-1")
+                                ui.label("Run 'terraform plan' then 'terraform apply' to complete the fix").classes("text-xs text-green-600")
     
     # Save mapping file section (show if there are any confirmed or pending matches)
     has_matches = any(r.get("action") == "match" and r.get("target_id") for r in grid_row_data)

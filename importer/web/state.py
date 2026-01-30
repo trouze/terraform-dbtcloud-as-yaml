@@ -479,6 +479,14 @@ class MapState:
     
     # Resource cloning state
     cloned_resources: list = field(default_factory=list)  # List of CloneConfig
+    
+    # Protection fix state - tracks pending protection moves.tf changes for undo
+    protection_fix_pending: bool = False
+    protection_fix_file_path: str = ""
+    protection_fix_previous_content: str = ""
+    # Backup of protection sets before fix was applied (for undo)
+    protection_fix_backup_protected: set = field(default_factory=set)
+    protection_fix_backup_unprotected: set = field(default_factory=set)
 
 
 @dataclass
@@ -900,11 +908,23 @@ class AppState:
                 "confirmed_mappings": self.map.confirmed_mappings,
                 "mapping_file_path": self.map.mapping_file_path,
                 "mapping_file_valid": self.map.mapping_file_valid,
+                # Resource protection state
+                "protected_resources": list(self.map.protected_resources),
+                "unprotected_keys": list(self.map.unprotected_keys),
+                # Protection fix state
+                "protection_fix_pending": self.map.protection_fix_pending,
+                "protection_fix_file_path": self.map.protection_fix_file_path,
+                "protection_fix_backup_protected": list(self.map.protection_fix_backup_protected),
+                "protection_fix_backup_unprotected": list(self.map.protection_fix_backup_unprotected),
             },
             "deploy": {
                 "import_completed": self.deploy.import_completed,
                 "import_mode": self.deploy.import_mode,
                 "terraform_version": self.deploy.terraform_version,
+                "terraform_dir": self.deploy.terraform_dir,
+                "files_generated": self.deploy.files_generated,
+                # Adoption data - critical for re-applying target values on regenerate
+                "reconcile_adopt_rows": self.deploy.reconcile_adopt_rows,
             },
             "env_credentials": self.env_credentials.to_dict(),
             "jobs_as_code": {
@@ -1052,12 +1072,24 @@ class AppState:
             state.map.confirmed_mappings = m.get("confirmed_mappings", [])
             state.map.mapping_file_path = m.get("mapping_file_path")
             state.map.mapping_file_valid = m.get("mapping_file_valid", False)
+            # Resource protection state
+            state.map.protected_resources = set(m.get("protected_resources", []))
+            state.map.unprotected_keys = set(m.get("unprotected_keys", []))
+            # Protection fix state
+            state.map.protection_fix_pending = m.get("protection_fix_pending", False)
+            state.map.protection_fix_file_path = m.get("protection_fix_file_path", "")
+            state.map.protection_fix_backup_protected = set(m.get("protection_fix_backup_protected", []))
+            state.map.protection_fix_backup_unprotected = set(m.get("protection_fix_backup_unprotected", []))
 
         if "deploy" in data:
             d = data["deploy"]
             state.deploy.import_completed = d.get("import_completed", False)
             state.deploy.import_mode = d.get("import_mode", "modern")
             state.deploy.terraform_version = d.get("terraform_version")
+            state.deploy.terraform_dir = d.get("terraform_dir", "")
+            state.deploy.files_generated = d.get("files_generated", False)
+            # Restore adoption data - critical for re-applying target values on regenerate
+            state.deploy.reconcile_adopt_rows = d.get("reconcile_adopt_rows", [])
 
         if "env_credentials" in data:
             state.env_credentials = EnvironmentCredentialsState.from_dict(data["env_credentials"])
