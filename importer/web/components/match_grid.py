@@ -28,6 +28,21 @@ def _debug_log(payload: dict) -> None:
 DBT_ORANGE = "#FF694A"
 DBT_TEAL = "#047377"
 
+# Display prefixes used for hierarchy visualization
+DISPLAY_PREFIXES = ("    ↳ ", "  ↳ ")  # Double-indented first (longer match)
+
+
+def _normalize_name_for_lookup(name: str) -> str:
+    """Strip display prefixes from names for lookup purposes.
+    
+    Names like "  ↳ repo_name" are display-formatted for hierarchy visualization
+    but need to be normalized to "repo_name" for matching against target names.
+    """
+    for prefix in DISPLAY_PREFIXES:
+        if name.startswith(prefix):
+            return name[len(prefix):]
+    return name
+
 
 @dataclass
 class GridRow:
@@ -92,6 +107,10 @@ def _compute_drift_status(
     """
     if not has_state:
         return None, DRIFT_NO_STATE, None
+    
+    # Normalize source_name by stripping display prefixes (e.g., "  ↳ ")
+    # These are added for hierarchy visualization but shouldn't affect lookups
+    source_name = _normalize_name_for_lookup(source_name)
     
     # Name-keyed resources (VAR, JEVO) don't have single numeric IDs
     # They use composite keys like project_id:name, so we only check by name
@@ -550,7 +569,9 @@ def build_grid_data(
         
         # Try auto-match by exact name in target
         # Note: We match by name only. Source IDs are from different account and not used.
-        lookup_key = (source_type, source_name)
+        # Strip display prefixes (e.g., "  ↳ ") for lookup - these are added for hierarchy display
+        normalized_source_name = _normalize_name_for_lookup(source_name)
+        lookup_key = (source_type, normalized_source_name)
         clone_config = clone_by_key.get(source_key)
         target = target_by_type_name.get(lookup_key)
         match_confidence = "exact_match" if target else "none"
@@ -575,8 +596,9 @@ def build_grid_data(
             if source_type == "REP" and project_name:
                 state_resource = state_repo_by_project.get(project_name)
             # Fall back to name-based lookup for other types or if not found
+            # Use normalized name to strip display prefixes
             if not state_resource:
-                state_resource = state_by_name.get((source_type, source_name))
+                state_resource = state_by_name.get((source_type, normalized_source_name))
             
             # If we have a state resource with a valid ID, look up in targets
             if state_resource and state_resource.get("dbt_id"):
@@ -930,9 +952,10 @@ def build_grid_data(
                         rows.append(link_row)
     
     # Post-process: Add protection status to all rows
-    # Protection is True if:
-    # 1. User has set it (source_key in protected_resources), OR
-    # 2. Resource is in a protected_* map in Terraform state (state_address contains ".protected_")
+    # We track TWO separate protection fields:
+    # 1. yaml_protected: User's desired state (from protected_resources set, i.e., YAML config)
+    # 2. state_protected: Actual TF state (from state_address containing ".protected_")
+    # 3. protected: Combined value for UI display (protected if EITHER is true)
     for row in rows:
         source_key = row.get("source_key", "")
         state_address = row.get("state_address", "")
@@ -940,8 +963,15 @@ def build_grid_data(
         # Check if resource is in a protected Terraform map (e.g., protected_repositories, protected_projects)
         is_state_protected = ".protected_" in state_address if state_address else False
         
-        # Protected if user-set OR state indicates protection
-        row["protected"] = source_key in protected_resources or is_state_protected
+        # Check if user wants it protected (from YAML config)
+        is_yaml_protected = source_key in protected_resources
+        
+        # Store both values separately for mismatch detection
+        row["yaml_protected"] = is_yaml_protected
+        row["state_protected"] = is_state_protected
+        
+        # Combined value for UI display (protected if either source says so)
+        row["protected"] = is_yaml_protected or is_state_protected
     
     # Post-process: CRD drift status inheritance from parent ENV
     # CRDs don't exist in Terraform state directly - they're embedded in environment resources.

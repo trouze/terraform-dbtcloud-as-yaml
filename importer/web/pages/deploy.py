@@ -1343,6 +1343,54 @@ async def _run_generate(
         adopt_rows = getattr(state.deploy, "reconcile_adopt_rows", []) or []
         terminal.info(f"Checking adoption overrides: {len(adopt_rows)} row(s) in reconcile_adopt_rows")
         
+        # Auto-populate adopt_rows from confirmed_mappings if empty
+        # This ensures adoption overrides work even after server restart (when reconcile_adopt_rows was lost)
+        if not adopt_rows and state.map.confirmed_mappings:
+            terminal.info("  Auto-populating adopt_rows from confirmed_mappings...")
+            confirmed_with_action = [m for m in state.map.confirmed_mappings if m.get("action") == "adopt" and m.get("target_id")]
+            if confirmed_with_action:
+                adopt_rows = [
+                    {
+                        "source_key": m.get("source_key"),
+                        "source_type": m.get("resource_type") or m.get("source_type"),
+                        "source_name": m.get("source_name", m.get("source_key", "")),
+                        "target_id": m.get("target_id"),
+                        "target_name": m.get("target_name", ""),
+                        "project_name": m.get("project_name", ""),
+                        "drift_status": m.get("drift_status", "unknown"),
+                    }
+                    for m in confirmed_with_action
+                ]
+                terminal.info(f"  Derived {len(adopt_rows)} adopt rows from confirmed_mappings")
+        
+        # Fallback: Load from saved mapping file if still empty and mapping_file_path exists
+        if not adopt_rows and state.map.mapping_file_path:
+            mapping_file = Path(state.map.mapping_file_path)
+            if mapping_file.exists():
+                terminal.info(f"  Loading mappings from saved file: {mapping_file}")
+                try:
+                    import yaml as _yaml_loader
+                    with open(mapping_file, "r") as f:
+                        mapping_data = _yaml_loader.safe_load(f)
+                    if mapping_data and "mappings" in mapping_data:
+                        # All mappings from file have target_id and represent existing target resources to adopt
+                        file_mappings = [
+                            {
+                                "source_key": m.get("source_key"),
+                                "source_type": m.get("resource_type"),
+                                "source_name": m.get("source_name", m.get("source_key", "")),
+                                "target_id": m.get("target_id"),
+                                "target_name": m.get("target_name", ""),
+                            }
+                            for m in mapping_data["mappings"]
+                            if m.get("target_id") and m.get("target_id") != "None"
+                        ]
+                        if file_mappings:
+                            adopt_rows = file_mappings
+                            terminal.info(f"  Loaded {len(adopt_rows)} adopt rows from mapping file")
+                except Exception as e:
+                    terminal.warning(f"  Failed to load mapping file: {e}")
+        
         if adopt_rows:
             terminal.info(f"Applying {len(adopt_rows)} adoption override(s) to YAML...")
             # Debug: show what we're trying to adopt
@@ -1491,22 +1539,37 @@ async def _run_generate(
             import traceback
             terminal.warning(f"  {traceback.format_exc()[:500]}")
 
-        # Apply protection from the protected_resources set
-        if state.map.protected_resources:
+        # Apply protection changes from both protected_resources and unprotected_keys sets
+        # protected_resources: resources that should have protected=True
+        # unprotected_keys: resources that should have protected removed/False
+        has_protection_changes = bool(state.map.protected_resources) or bool(state.map.unprotected_keys)
+        if has_protection_changes:
             terminal.info("")
-            terminal.info(f"Applying resource protection to {len(state.map.protected_resources)} resource(s)...")
+            terminal.info(f"Applying protection changes: {len(state.map.protected_resources)} to protect, {len(state.map.unprotected_keys)} to unprotect...")
             try:
-                from importer.web.utils.adoption_yaml_updater import apply_protection_from_set
+                from importer.web.utils.adoption_yaml_updater import apply_protection_from_set, apply_unprotection_from_set
                 
                 yaml_output_path = output_path / "dbt-cloud-config.yml"
-                await asyncio.to_thread(
-                    apply_protection_from_set,
-                    str(yaml_output_path),
-                    state.map.protected_resources,
-                )
-                terminal.success("  Protection flags applied to YAML")
+                
+                # First apply protection (set protected=True)
+                if state.map.protected_resources:
+                    await asyncio.to_thread(
+                        apply_protection_from_set,
+                        str(yaml_output_path),
+                        state.map.protected_resources,
+                    )
+                    terminal.success(f"  Protection applied to {len(state.map.protected_resources)} resource(s)")
+                
+                # Then apply unprotection (set protected=False or remove flag)
+                if state.map.unprotected_keys:
+                    await asyncio.to_thread(
+                        apply_unprotection_from_set,
+                        str(yaml_output_path),
+                        state.map.unprotected_keys,
+                    )
+                    terminal.success(f"  Unprotection applied to {len(state.map.unprotected_keys)} resource(s)")
             except Exception as e:
-                terminal.warning(f"  Failed to apply protection: {e}")
+                terminal.warning(f"  Failed to apply protection changes: {e}")
                 import traceback
                 terminal.warning(f"  {traceback.format_exc()[:500]}")
 

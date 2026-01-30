@@ -1,8 +1,8 @@
 # Importer Implementation Status & Tracking
 
 **Last Updated:** 2026-01-29  
-**Current Importer Version:** 0.15.4  
-**Status:** Phase 3 Complete + Interactive Mode + Web UI + E2E Testing Infrastructure + Destroy Workflow + Target Match Feature + Jobs as Code Generator + dbt-jobs-as-code Validation + SAO Support + Native Integration Detection + Target Credentials Redesign + Resource Protection with Cascade + Destroy Page Enhancements + State-Aware Matching Fix + Match Diagnostics Improvements + AG Grid Standardization + Dialog Width Fix
+**Current Importer Version:** 0.15.7  
+**Status:** Phase 3 Complete + Interactive Mode + Web UI + E2E Testing Infrastructure + Destroy Workflow + Target Match Feature + Jobs as Code Generator + dbt-jobs-as-code Validation + SAO Support + Native Integration Detection + Target Credentials Redesign + Resource Protection with Cascade + Destroy Page Enhancements + State-Aware Matching Fix + Match Diagnostics Improvements + AG Grid Standardization + Dialog Width Fix + Protection Mismatch Fix
 
 > **⚠️ IMPORTANT: Keep This Document Updated**
 > 
@@ -666,6 +666,14 @@ The following items require API endpoint research before implementation can begi
 ---
 
 ## Change Log
+
+### 2026-01-29 (v0.15.7)
+- **Version:** Incremented to 0.15.7 (patch release - Protection Mismatch Fix)
+- **Critical Bug Fix**: Fixed catastrophic bug in `apply_adoption_overrides` that defaulted `protected=True` for ALL adopted resources
+  - Changed default from `protected=True` to `protected=False` - protection must be explicitly opted-in
+  - Prevented Terraform from destroying and recreating all projects when only one resource needed status change
+- **State Persistence**: Fixed JSON serialization of protection sets in `MapState.to_dict()`
+- **Unprotection Logic**: Added `apply_unprotection_from_set()` to explicitly remove `protected: true` flags
 
 ### 2026-01-29 (v0.15.1)
 - **Version:** Incremented to 0.15.1 (patch release - State-Aware Matching Fix)

@@ -113,7 +113,10 @@ def apply_adoption_overrides(
             continue
         
         # Get protection flag from adoption data
-        protected = row.get("protected", True)  # Default to protected for adopted resources
+        # IMPORTANT: Default to False - protection should be explicitly opted-in
+        # Setting protected=True would move resources to protected_projects collection
+        # which requires corresponding moved blocks to avoid destroy+recreate
+        protected = row.get("protected", False)
         
         # Apply updates based on resource type
         if resource_type == "REP":
@@ -524,5 +527,86 @@ def apply_protection_from_set(
         yaml.dump(config, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
     
     logger.info(f"Applied protection to {updated_count} resources in {output}")
+    
+    return output
+
+
+def apply_unprotection_from_set(
+    yaml_file: str,
+    unprotected_keys: set[str],
+    output_path: Optional[str] = None,
+) -> str:
+    """Remove protection flag from all resources in the unprotected_keys set.
+    
+    This function scans the YAML config and removes the protected flag or sets 
+    protected=False on any resources whose key matches one in the unprotected_keys set.
+    
+    Args:
+        yaml_file: Path to the YAML config file
+        unprotected_keys: Set of source_keys that should have protection removed
+        output_path: Optional path to write updated YAML (defaults to overwriting input)
+        
+    Returns:
+        Path to the updated YAML file
+    """
+    if not unprotected_keys:
+        logger.info("No resources to unprotect")
+        return yaml_file
+    
+    # Load YAML
+    with open(yaml_file, "r") as f:
+        config = yaml.safe_load(f)
+    
+    if not config:
+        logger.warning(f"Empty YAML config: {yaml_file}")
+        return yaml_file
+    
+    updated_count = 0
+    
+    def key_matches(key: str, possible_keys: list[str]) -> bool:
+        """Check if a key matches any of the possible keys."""
+        return any(k and k in unprotected_keys for k in [key] + possible_keys)
+    
+    # Process projects
+    for project in config.get("projects", []):
+        project_key = project.get("key", "")
+        # Check project key and common variations
+        if project_key in unprotected_keys:
+            if "protected" in project:
+                del project["protected"]
+                updated_count += 1
+                logger.info(f"  Removed protection from project {project_key}")
+        
+        # Process repository in project
+        if "repository" in project and isinstance(project["repository"], dict):
+            repo = project["repository"]
+            repo_key = repo.get("key", "")
+            # Check multiple key formats for repos
+            possible_keys = [repo_key, project_key, f"{project_key}_repo"]
+            
+            if key_matches(repo_key, possible_keys):
+                if "protected" in repo:
+                    del repo["protected"]
+                    updated_count += 1
+                    logger.info(f"  Removed protection from repository (key: {repo_key or project_key})")
+    
+    # Process globals section
+    globals_section = config.get("globals", {})
+    
+    # Process global repositories
+    for repo in globals_section.get("repositories", []):
+        repo_key = repo.get("key", "")
+        if repo_key in unprotected_keys:
+            if "protected" in repo:
+                del repo["protected"]
+                updated_count += 1
+                logger.info(f"  Removed protection from global repository {repo_key}")
+    
+    # Save updated YAML
+    output = output_path or yaml_file
+    with open(output, "w") as f:
+        yaml.dump(config, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
+    
+    logger.info(f"Removed protection from {updated_count} resources in {output}")
     
     return output
