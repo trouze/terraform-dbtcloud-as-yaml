@@ -329,16 +329,25 @@ def parse_plan_stats(plan_output: str) -> Dict[str, int]:
         plan_output: Raw terraform plan output text
 
     Returns:
-        Dictionary with import/add/change/destroy counts
+        Dictionary with import/add/change/destroy/move counts
     """
+    # #region agent log STATS_PARSE
+    import json; open("/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug.log", "a").write(json.dumps({"hypothesisId": "STATS_PARSE", "location": "yaml_viewer.py:parse_plan_stats", "message": "Parsing plan stats", "data": {"plan_output_len": len(plan_output), "plan_output_preview": plan_output[:500] if plan_output else "EMPTY"}, "timestamp": __import__("time").time()}) + "\n")
+    # #endregion
     
-    stats = {"import": 0, "add": 0, "change": 0, "destroy": 0}
+    stats = {"import": 0, "add": 0, "change": 0, "destroy": 0, "move": 0}
     
     # Count from action comments like "# ... will be created", "# ... will be imported"
     stats["import"] = len(re.findall(r"# .+ will be imported", plan_output))
     stats["add"] = len(re.findall(r"# .+ will be created", plan_output))
     stats["change"] = len(re.findall(r"# .+ will be updated", plan_output))
     stats["destroy"] = len(re.findall(r"# .+ will be destroyed", plan_output))
+    # Count moves - "# xxx has moved to yyy"
+    stats["move"] = len(re.findall(r"# .+ has moved to ", plan_output))
+    
+    # #region agent log STATS_RESULT
+    import json; open("/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug.log", "a").write(json.dumps({"hypothesisId": "STATS_RESULT", "location": "yaml_viewer.py:parse_plan_stats:result", "message": "Stats calculated", "data": {"stats": stats, "move_matches": re.findall(r"# .+ has moved to ", plan_output)[:3]}, "timestamp": __import__("time").time()}) + "\n")
+    # #endregion
     
     # Also try the summary line with imports: "Plan: X to import, Y to add, Z to change, W to destroy"
     summary_match = re.search(
@@ -377,7 +386,13 @@ def create_plan_viewer_dialog(
     Returns:
         The dialog element (call .open() to show it)
     """
+    # #region agent log VIEWER_DIALOG
+    import json; open("/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug.log", "a").write(json.dumps({"hypothesisId": "VIEWER_DIALOG", "location": "yaml_viewer.py:create_plan_viewer_dialog", "message": "Creating plan viewer dialog", "data": {"title": title, "plan_output_len": len(plan_output)}, "timestamp": __import__("time").time()}) + "\n")
+    # #endregion
     stats = parse_plan_stats(plan_output)
+    # #region agent log VIEWER_STATS
+    import json; open("/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug.log", "a").write(json.dumps({"hypothesisId": "VIEWER_STATS", "location": "yaml_viewer.py:create_plan_viewer_dialog:stats", "message": "Stats computed for viewer", "data": {"stats": stats}, "timestamp": __import__("time").time()}) + "\n")
+    # #endregion
 
     # Search state
     search_results = {"count": 0, "current": 0}
@@ -397,6 +412,14 @@ def create_plan_viewer_dialog(
             # Plan stats bar
             with ui.row().classes("w-full gap-4 mb-2 p-3 bg-slate-100 dark:bg-slate-800 rounded items-center"):
                 ui.label("Plan Summary:").classes("font-semibold")
+                
+                # Move count (blue) - only show if > 0
+                if stats.get('move', 0) > 0:
+                    with ui.row().classes("items-center gap-1"):
+                        ui.icon("swap_horiz", size="sm").classes("text-blue-600")
+                        ui.label(f"{stats['move']} to move").classes(
+                            "text-blue-600 font-medium"
+                        )
                 
                 # Import count (purple) - only show if > 0
                 if stats.get('import', 0) > 0:
@@ -459,8 +482,11 @@ def create_plan_viewer_dialog(
                 import html
                 escaped = html.escape(line)
                 
+                # Resource move lines (blue)
+                if "has moved to" in line:
+                    return f'<span class="text-blue-600 dark:text-blue-400">{escaped}</span>'
                 # Resource import lines (purple)
-                if "will be imported" in line or "Preparing import" in line:
+                elif "will be imported" in line or "Preparing import" in line:
                     return f'<span class="text-purple-600 dark:text-purple-400">{escaped}</span>'
                 # Resource creation lines (green)
                 elif line.strip().startswith("+") or "will be created" in line:

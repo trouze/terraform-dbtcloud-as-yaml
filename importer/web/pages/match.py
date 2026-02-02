@@ -31,6 +31,7 @@ from importer.web.utils.protection_manager import (
     generate_repair_moved_blocks,
 )
 from importer.web.components.hierarchy_index import HierarchyIndex
+from importer.web.pages.deploy import _get_terraform_env
 
 if TYPE_CHECKING:
     from importer.web.utils.terraform_state_reader import StateReadResult
@@ -2242,21 +2243,173 @@ This will **UNPROTECT** all {len(protection_mismatches)} mismatched resource(s):
                 dialog.open()
             
             with ui.row().classes("w-full items-center gap-2"):
-                def run_generate_moved_blocks():
-                    """Generate or regenerate the moved blocks file based on current mismatches."""
+                async def run_generate_moved_blocks():
+                    """Generate or regenerate the moved blocks file based on current mismatches.
+                    
+                    This function:
+                    1. Updates the YAML file with protection flags based on mismatches
+                    2. Regenerates Terraform files from the updated YAML
+                    3. Generates moved blocks to migrate Terraform state
+                    """
+                    import asyncio
+                    import shutil
                     from datetime import datetime
+                    from importer.yaml_converter import YamlToTerraformConverter
+                    from importer.web.utils.adoption_yaml_updater import apply_protection_from_set, apply_unprotection_from_set
                     
                     moves_file = tf_path / "protection_moves.tf"
                     module_prefix = "module.dbt_cloud.module.projects_v2[0]"
+                    
+                    with match_terminal_output:
+                        match_terminal_output.clear()
+                        ui.label("Updating YAML with protection flags...").classes("text-xs text-slate-500")
+                    
+                    # Step 0: Find the YAML file
+                    yaml_file = tf_path / "dbt-cloud-config.yml"
+                    if not yaml_file.exists():
+                        # Fallback to fetch output dir
+                        if state.fetch.output_dir:
+                            fetch_yaml = Path(state.fetch.output_dir) / "dbt-cloud-config.yml"
+                            if fetch_yaml.exists():
+                                # Copy to deployment dir
+                                shutil.copy2(fetch_yaml, yaml_file)
+                    
+                    if not yaml_file.exists():
+                        ui.notify(f"YAML config file not found at {yaml_file}", type="negative")
+                        return
+                    
+                    # Step 1: Apply protection changes to the YAML file
+                    # Build TYPE-SPECIFIC sets of keys to protect/unprotect based on mismatches
+                    # We need to be precise about which resource types to update
+                    project_keys_to_protect: set[str] = set()
+                    project_keys_to_unprotect: set[str] = set()
+                    repo_keys_to_protect: set[str] = set()
+                    repo_keys_to_unprotect: set[str] = set()
+                    
+                    for m in protection_mismatches:
+                        rtype = m["type"]
+                        rkey = m["key"]
+                        yaml_protected = m.get("yaml_protected", False)
+                        state_protected = m["state_protected"]
+                        
+                        if yaml_protected and not state_protected:
+                            # User wants protected, state is not - need to add protection
+                            if rtype == "PRJ":
+                                project_keys_to_protect.add(rkey)
+                            elif rtype in ("REP", "PREP"):
+                                repo_keys_to_protect.add(rkey)
+                        elif not yaml_protected and state_protected:
+                            # User doesn't want protected, state is - need to remove protection
+                            if rtype == "PRJ":
+                                project_keys_to_unprotect.add(rkey)
+                            elif rtype in ("REP", "PREP"):
+                                repo_keys_to_unprotect.add(rkey)
+                    
+                    # Combine all keys for the YAML update
+                    # Since protection is at the PROJECT level, both PRJ and REP mismatches 
+                    # need to update the parent project's protection flag
+                    keys_to_protect = project_keys_to_protect | repo_keys_to_protect
+                    keys_to_unprotect = project_keys_to_unprotect | repo_keys_to_unprotect
+                    
+                    # #region agent log
+                    import json; open("/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug.log", "a").write(json.dumps({"hypothesisId": "H_YAML_UPDATE", "location": "match.py:run_generate_moved_blocks:yaml_update_start", "message": "Applying protection to YAML", "data": {"yaml_file": str(yaml_file), "project_keys_to_protect": list(project_keys_to_protect), "repo_keys_to_protect": list(repo_keys_to_protect), "keys_to_protect": list(keys_to_protect), "keys_to_unprotect": list(keys_to_unprotect), "mismatches_count": len(protection_mismatches), "mismatches": [{"type": m["type"], "key": m["key"], "yaml_protected": m.get("yaml_protected"), "state_protected": m["state_protected"]} for m in protection_mismatches]}, "timestamp": __import__("time").time()}) + "\n")
+                    # #endregion
+                    
+                    # NOTE: Protection is at the PROJECT level in the YAML/Terraform architecture.
+                    # When protecting a repository, the parent project is automatically protected too.
+                    # This cascades to the moved blocks generation which adds project moves for repo mismatches.
+                    
+                    try:
+                        # Apply protection changes to the YAML file
+                        if keys_to_protect:
+                            await asyncio.to_thread(
+                                apply_protection_from_set,
+                                str(yaml_file),
+                                keys_to_protect,
+                            )
+                        
+                        if keys_to_unprotect:
+                            await asyncio.to_thread(
+                                apply_unprotection_from_set,
+                                str(yaml_file),
+                                keys_to_unprotect,
+                            )
+                        
+                        with match_terminal_output:
+                            match_terminal_output.clear()
+                            ui.label(f"✅ YAML updated: {len(keys_to_protect)} protected, {len(keys_to_unprotect)} unprotected").classes("text-xs text-green-600 font-semibold")
+                        
+                        # #region agent log
+                        import json; open("/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug.log", "a").write(json.dumps({"hypothesisId": "H_YAML_UPDATE", "location": "match.py:run_generate_moved_blocks:yaml_update_complete", "message": "YAML protection updated", "data": {"yaml_file": str(yaml_file)}, "timestamp": __import__("time").time()}) + "\n")
+                        # #endregion
+                        
+                    except Exception as e:
+                        # #region agent log
+                        import json; open("/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug.log", "a").write(json.dumps({"hypothesisId": "H_YAML_UPDATE", "location": "match.py:run_generate_moved_blocks:yaml_update_error", "message": "YAML update failed", "data": {"error": str(e)}, "timestamp": __import__("time").time()}) + "\n")
+                        # #endregion
+                        ui.notify(f"Failed to update YAML: {e}", type="warning")
+                        # Continue anyway - we'll try the regeneration
+                    
+                    with match_terminal_output:
+                        match_terminal_output.clear()
+                        ui.label("Regenerating Terraform files...").classes("text-xs text-slate-500")
+                    
+                    # Step 2: Regenerate Terraform files from the updated YAML
+                    # This ensures the protected resources are declared in protected_* blocks
+                    try:
+                        # #region agent log
+                        import json; open("/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug.log", "a").write(json.dumps({"hypothesisId": "H_REGEN", "location": "match.py:run_generate_moved_blocks:regen_start", "message": "Starting TF regeneration", "data": {"yaml_file": str(yaml_file), "tf_path": str(tf_path)}, "timestamp": __import__("time").time()}) + "\n")
+                        # #endregion
+                        
+                        converter = YamlToTerraformConverter()
+                        await asyncio.to_thread(
+                            converter.convert,
+                            str(yaml_file),
+                            str(tf_path),
+                        )
+                        
+                        with match_terminal_output:
+                            match_terminal_output.clear()
+                            ui.label("✅ Terraform files regenerated").classes("text-xs text-green-600 font-semibold")
+                        
+                        # #region agent log
+                        import json; open("/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug.log", "a").write(json.dumps({"hypothesisId": "H_REGEN", "location": "match.py:run_generate_moved_blocks:regen_complete", "message": "TF regeneration complete", "data": {"yaml_file": str(yaml_file)}, "timestamp": __import__("time").time()}) + "\n")
+                        # #endregion
+                        
+                    except Exception as e:
+                        with match_terminal_output:
+                            match_terminal_output.clear()
+                            ui.label(f"⚠️ Regen warning: {e}").classes("text-xs text-amber-600")
+                        # Continue anyway - the moved blocks might still work
+                        # #region agent log
+                        import json; open("/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug.log", "a").write(json.dumps({"hypothesisId": "H_REGEN", "location": "match.py:run_generate_moved_blocks:regen_error", "message": "TF regeneration failed", "data": {"error": str(e)}, "timestamp": __import__("time").time()}) + "\n")
+                        # #endregion
+                    
+                    # Step 2: Generate moved blocks for all mismatches
+                    with match_terminal_output:
+                        match_terminal_output.clear()
+                        ui.label("Generating moved blocks...").classes("text-xs text-slate-500")
                     
                     # Determine direction based on majority of mismatches
                     protect_count = sum(1 for m in protection_mismatches if not m["state_protected"])
                     unprotect_count = sum(1 for m in protection_mismatches if m["state_protected"])
                     
                     # Generate moved blocks for all mismatches
+                    # IMPORTANT: When protecting a REP/PREP, we also need to move the parent PROJECT
+                    # because protection is at the project level in the YAML structure
                     generated_moves: set[tuple[str, str]] = set()
                     blocks = []
                     block_count = 0
+                    
+                    # First pass: identify all unique keys that will need protection changes
+                    keys_needing_protection = set()
+                    keys_needing_unprotection = set()
+                    for m in protection_mismatches:
+                        rkey = m["key"]
+                        if m["state_protected"]:
+                            keys_needing_unprotection.add(rkey)
+                        else:
+                            keys_needing_protection.add(rkey)
                     
                     for m in protection_mismatches:
                         rtype = m["type"]
@@ -2284,6 +2437,30 @@ moved {{
 }}''')
                             block_count += 1
                             generated_moves.add((rtype, rkey))
+                            
+                            # If this is a REP/PREP mismatch, also generate a PRJ moved block
+                            # since protecting a repo means the whole project is protected
+                            if rtype in ("REP", "PREP") and ("PRJ", rkey) not in generated_moves:
+                                prj_tf_type, prj_unprotected, prj_protected = EXTENDED_RESOURCE_TYPE_MAP["PRJ"]
+                                blocks.append(f'''# {direction} {rkey} (project - cascaded from repository)
+moved {{
+  from = {module_prefix}.{prj_tf_type}.{prj_unprotected if direction == "protect" else prj_protected}["{rkey}"]
+  to   = {module_prefix}.{prj_tf_type}.{prj_protected if direction == "protect" else prj_unprotected}["{rkey}"]
+}}''')
+                                block_count += 1
+                                generated_moves.add(("PRJ", rkey))
+                            
+                            # If this is a PRJ or REP mismatch, also generate a PREP moved block
+                            # since the project_repository link also needs to move
+                            if rtype in ("PRJ", "REP") and ("PREP", rkey) not in generated_moves:
+                                prep_tf_type, prep_unprotected, prep_protected = EXTENDED_RESOURCE_TYPE_MAP["PREP"]
+                                blocks.append(f'''# {direction} {rkey} (project_repository - cascaded)
+moved {{
+  from = {module_prefix}.{prep_tf_type}.{prep_unprotected if direction == "protect" else prep_protected}["{rkey}"]
+  to   = {module_prefix}.{prep_tf_type}.{prep_protected if direction == "protect" else prep_unprotected}["{rkey}"]
+}}''')
+                                block_count += 1
+                                generated_moves.add(("PREP", rkey))
                     
                     content = f'''# Generated moved blocks for protection status changes
 # Generated: {datetime.now().isoformat()}
@@ -2300,9 +2477,9 @@ moved {{
                         
                         with match_terminal_output:
                             match_terminal_output.clear()
-                            ui.label(f"✅ Generated {block_count} moved blocks").classes("text-xs text-green-600 font-semibold")
+                            ui.label(f"✅ Regenerated TF + {block_count} moved blocks").classes("text-xs text-green-600 font-semibold")
                         
-                        ui.notify(f"Generated {block_count} moved blocks to protection_moves.tf", type="positive")
+                        ui.notify(f"Regenerated Terraform and created {block_count} moved blocks", type="positive")
                     except Exception as e:
                         with match_terminal_output:
                             match_terminal_output.clear()
@@ -2334,14 +2511,8 @@ moved {{
                         match_terminal_output.clear()
                         ui.label("Running terraform init...").classes("text-xs text-slate-500")
                     
-                    env = os.environ.copy()
-                    if state.target_credentials.api_token:
-                        env["DBT_CLOUD_TOKEN"] = state.target_credentials.api_token
-                    if state.target_credentials.host_url:
-                        env["DBT_CLOUD_HOST_URL"] = state.target_credentials.host_url
-                    if state.target_credentials.account_id:
-                        env["DBT_CLOUD_ACCOUNT_ID"] = str(state.target_credentials.account_id)
-                        env["TF_VAR_dbt_account_id"] = str(state.target_credentials.account_id)
+                    # Use the same env setup as deploy/destroy pages
+                    env = _get_terraform_env(state)
                     
                     result = await asyncio.to_thread(
                         subprocess.run,
@@ -2383,15 +2554,8 @@ moved {{
                         match_terminal_output.clear()
                         ui.label("Running terraform validate...").classes("text-xs text-slate-500")
                     
-                    env = os.environ.copy()
-                    if state.target_credentials.api_token:
-                        env["DBT_CLOUD_TOKEN"] = state.target_credentials.api_token
-                    if state.target_credentials.host_url:
-                        env["DBT_CLOUD_HOST_URL"] = state.target_credentials.host_url
-                    if state.target_credentials.account_id:
-                        env["DBT_CLOUD_ACCOUNT_ID"] = str(state.target_credentials.account_id)
-                        env["TF_VAR_dbt_account_id"] = str(state.target_credentials.account_id)
-                        env["TF_VAR_dbt_account_id"] = str(state.target_credentials.account_id)
+                    # Use the same env setup as deploy/destroy pages
+                    env = _get_terraform_env(state)
                     
                     result = await asyncio.to_thread(
                         subprocess.run,
@@ -2433,15 +2597,8 @@ moved {{
                     plan_running["active"] = True
                     tf_outputs["plan"] = ""
                     
-                    env = os.environ.copy()
-                    if state.target_credentials.api_token:
-                        env["DBT_CLOUD_TOKEN"] = state.target_credentials.api_token
-                    if state.target_credentials.host_url:
-                        env["DBT_CLOUD_HOST_URL"] = state.target_credentials.host_url
-                    if state.target_credentials.account_id:
-                        env["DBT_CLOUD_ACCOUNT_ID"] = str(state.target_credentials.account_id)
-                        # Also set TF_VAR for terraform auto-loading
-                        env["TF_VAR_dbt_account_id"] = str(state.target_credentials.account_id)
+                    # Use the same env setup as deploy/destroy pages
+                    env = _get_terraform_env(state)
                     
                     # Create streaming log viewer dialog with timestamps, levels, search
                     from datetime import datetime
@@ -2661,13 +2818,8 @@ moved {{
                                     match_terminal_output.clear()
                                     ui.label("Running terraform apply...").classes("text-xs text-slate-500")
                                 
-                                env = os.environ.copy()
-                                if state.target_credentials.api_token:
-                                    env["DBT_CLOUD_TOKEN"] = state.target_credentials.api_token
-                                if state.target_credentials.host_url:
-                                    env["DBT_CLOUD_HOST_URL"] = state.target_credentials.host_url
-                                if state.target_credentials.account_id:
-                                    env["DBT_CLOUD_ACCOUNT_ID"] = str(state.target_credentials.account_id)
+                                # Use the same env setup as deploy/destroy pages
+                                env = _get_terraform_env(state)
                                 
                                 result = await asyncio.to_thread(
                                     subprocess.run,
@@ -2799,7 +2951,7 @@ moved {{
                 ui.button("AI Debug", icon="bug_report", on_click=show_match_ai_debug).props("flat color=purple")
                 
                 # Pre-create a reusable viewer dialog at page level
-                viewer_state = {"content": "", "title": ""}
+                viewer_state = {"content": "", "title": "", "step": ""}
                 viewer_dialog = ui.dialog().props("maximized")
                 with viewer_dialog:
                     with ui.card().classes("w-full h-full").style("display: flex; flex-direction: column;"):
@@ -2808,6 +2960,28 @@ moved {{
                                 ui.icon("assignment", size="lg").classes("text-orange-500")
                                 viewer_title_label = ui.label("Output Viewer").classes("text-xl font-bold")
                             ui.button(icon="close", on_click=viewer_dialog.close).props("flat round")
+                        
+                        # Stats bar for plan output (hidden initially)
+                        viewer_stats_row = ui.row().classes("w-full gap-4 mb-2 p-3 bg-slate-100 dark:bg-slate-800 rounded items-center")
+                        viewer_stats_row.set_visibility(False)
+                        with viewer_stats_row:
+                            ui.label("Plan Summary:").classes("font-semibold")
+                            viewer_stats_move = ui.row().classes("items-center gap-1")
+                            with viewer_stats_move:
+                                ui.icon("swap_horiz", size="sm").classes("text-blue-600")
+                                viewer_stats_move_label = ui.label("0 to move").classes("text-blue-600 font-medium")
+                            viewer_stats_add = ui.row().classes("items-center gap-1")
+                            with viewer_stats_add:
+                                ui.icon("add_circle", size="sm").classes("text-green-600")
+                                viewer_stats_add_label = ui.label("0 to add").classes("text-green-600 font-medium")
+                            viewer_stats_change = ui.row().classes("items-center gap-1")
+                            with viewer_stats_change:
+                                ui.icon("change_circle", size="sm").classes("text-amber-600")
+                                viewer_stats_change_label = ui.label("0 to change").classes("text-amber-600 font-medium")
+                            viewer_stats_destroy = ui.row().classes("items-center gap-1")
+                            with viewer_stats_destroy:
+                                ui.icon("remove_circle", size="sm").classes("text-red-600")
+                                viewer_stats_destroy_label = ui.label("0 to destroy").classes("text-red-600 font-medium")
                         
                         with ui.scroll_area().classes("w-full").style("flex: 1; min-height: 0;"):
                             viewer_code = ui.code("", language="text").classes("w-full text-sm")
@@ -2839,18 +3013,34 @@ moved {{
                                     menu_dialog.close()
                                     return
                                 
+                                menu_dialog.close()
+                                
                                 # Update the pre-created viewer dialog
                                 viewer_state["content"] = output
                                 viewer_state["title"] = title
+                                viewer_state["step"] = step
                                 viewer_title_label.set_text(title)
                                 viewer_code.content = output
                                 viewer_code.update()
                                 
+                                # Show/hide and update stats bar for plan output
+                                if step == "plan":
+                                    from importer.web.utils.yaml_viewer import parse_plan_stats
+                                    stats = parse_plan_stats(output)
+                                    viewer_stats_move_label.set_text(f"{stats.get('move', 0)} to move")
+                                    viewer_stats_add_label.set_text(f"{stats.get('add', 0)} to add")
+                                    viewer_stats_change_label.set_text(f"{stats.get('change', 0)} to change")
+                                    viewer_stats_destroy_label.set_text(f"{stats.get('destroy', 0)} to destroy")
+                                    # Show move stat only if > 0
+                                    viewer_stats_move.set_visibility(stats.get('move', 0) > 0)
+                                    viewer_stats_row.set_visibility(True)
+                                else:
+                                    viewer_stats_row.set_visibility(False)
+                                
                                 # #region agent log H8
-                                import json; open("/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug.log", "a").write(json.dumps({"hypothesisId": "H8", "location": "match.py:view_and_close:opening", "message": "Opening pre-created viewer", "data": {"title": title, "content_len": len(output)}, "timestamp": __import__("time").time()}) + "\n")
+                                import json; open("/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug.log", "a").write(json.dumps({"hypothesisId": "H8", "location": "match.py:view_and_close:opening", "message": "Opening pre-created viewer", "data": {"step": step, "title": title, "content_len": len(output)}, "timestamp": __import__("time").time()}) + "\n")
                                 # #endregion
                                 
-                                menu_dialog.close()
                                 viewer_dialog.open()
                             
                             ui.button(

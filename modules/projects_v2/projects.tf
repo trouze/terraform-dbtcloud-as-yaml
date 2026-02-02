@@ -277,7 +277,7 @@ resource "dbtcloud_project_repository" "protected_project_repositories" {
 
   project_id    = dbtcloud_project.protected_projects[each.key].id
   repository_id = dbtcloud_repository.protected_repositories[each.key].repository_id
-
+  
   lifecycle {
     prevent_destroy = true
   }
