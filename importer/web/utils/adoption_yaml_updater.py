@@ -486,6 +486,12 @@ def apply_protection_from_set(
     Returns:
         Path to the updated YAML file
     """
+    # #region agent log
+    import json as _json_prot
+    with open("/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug.log", "a") as f:
+        f.write(_json_prot.dumps({"hypothesisId": "H_APPLY_PROT", "location": "adoption_yaml_updater.py:apply_protection_from_set:entry", "message": "apply_protection_from_set called", "data": {"yaml_file": yaml_file, "protected_keys": list(protected_keys), "output_path": output_path}, "timestamp": __import__("time").time()}) + "\n")
+    # #endregion
+    
     if not protected_keys:
         logger.info("No protected resources to apply")
         return yaml_file
@@ -499,13 +505,21 @@ def apply_protection_from_set(
         return yaml_file
     
     updated_count = 0
+    projects_in_yaml = [p.get("key") for p in config.get("projects", [])]
+    
+    # #region agent log
+    with open("/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug.log", "a") as f:
+        f.write(_json_prot.dumps({"hypothesisId": "H_APPLY_PROT", "location": "adoption_yaml_updater.py:apply_protection_from_set:projects_loaded", "message": "Projects loaded from YAML", "data": {"num_projects": len(projects_in_yaml), "sample_projects": projects_in_yaml[:10], "looking_for": list(protected_keys)}, "timestamp": __import__("time").time()}) + "\n")
+    # #endregion
     
     # Process projects
+    matched_projects = []
     for project in config.get("projects", []):
         project_key = project.get("key", "")
         if project_key in protected_keys:
             project["protected"] = True
             updated_count += 1
+            matched_projects.append(project_key)
             logger.info(f"  Set protected=True for project {project_key}")
         elif "protected" in project and project_key not in protected_keys:
             # Remove protection if key is not in set
@@ -579,8 +593,19 @@ def apply_protection_from_set(
     
     # Save updated YAML
     output = output_path or yaml_file
+    
+    # #region agent log
+    with open("/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug.log", "a") as f:
+        f.write(_json_prot.dumps({"hypothesisId": "H_APPLY_PROT", "location": "adoption_yaml_updater.py:apply_protection_from_set:before_save", "message": "About to save YAML", "data": {"output": output, "updated_count": updated_count, "matched_projects": matched_projects}, "timestamp": __import__("time").time()}) + "\n")
+    # #endregion
+    
     with open(output, "w") as f:
         yaml.dump(config, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
+    
+    # #region agent log
+    with open("/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug.log", "a") as f:
+        f.write(_json_prot.dumps({"hypothesisId": "H_APPLY_PROT", "location": "adoption_yaml_updater.py:apply_protection_from_set:after_save", "message": "YAML saved", "data": {"output": output, "updated_count": updated_count}, "timestamp": __import__("time").time()}) + "\n")
+    # #endregion
     
     logger.info(f"Applied protection to {updated_count} resources in {output}")
     

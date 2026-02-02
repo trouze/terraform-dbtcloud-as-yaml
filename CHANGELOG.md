@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.10] - 2026-02-02
+
+### Fixed
+- **View Output Plan Dialog**: Fixed issue where clicking "View Output" > "Plan Output" on the Match page would not open the plan viewer dialog
+  - Replaced dynamic dialog creation with pre-created viewer dialog pattern for NiceGUI compatibility
+  - Added stats bar to the pre-created viewer that dynamically shows plan statistics (to move, to add, to change, to destroy)
+  - Stats bar only displays when viewing plan output, hidden for other output types
+
+### Changed
+- **Plan Viewer Stats**: Enhanced plan output viewer with move count display
+  - Added blue "X to move" indicator in stats bar for moved blocks
+  - Move stat only appears when there are resources to move (>0)
+
 ## [0.15.9] - 2026-01-30
 
 ### Added
