@@ -2,7 +2,11 @@
 
 from dataclasses import dataclass, field
 from enum import Enum, IntEnum
-from typing import Optional
+from pathlib import Path
+from typing import Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from importer.web.utils.protection_intent import ProtectionIntentManager
 
 
 class WorkflowStep(IntEnum):
@@ -716,6 +720,50 @@ class AppState:
     account_data: Optional[dict] = None
     # Raw target account data from target fetch
     target_account_data: Optional[dict] = None
+    
+    # Protection intent manager (not serialized - manages its own file)
+    # This is a cached reference, initialized lazily via get_protection_intent_manager()
+    _protection_intent_manager: Optional["ProtectionIntentManager"] = field(
+        default=None, repr=False, compare=False
+    )
+
+    def get_protection_intent_manager(self) -> "ProtectionIntentManager":
+        """Get or create the ProtectionIntentManager.
+        
+        The manager is initialized lazily using the deployment directory path.
+        Intent file is stored at: {terraform_dir}/protection-intent.json
+        
+        Returns:
+            ProtectionIntentManager instance (cached after first call)
+        """
+        if self._protection_intent_manager is None:
+            from importer.web.utils.protection_intent import ProtectionIntentManager
+            
+            # Determine the terraform directory
+            tf_dir = self.deploy.terraform_dir or "deployments/migration"
+            tf_path = Path(tf_dir)
+            
+            # Make relative paths absolute based on project root
+            if not tf_path.is_absolute():
+                # Get project root (parent of importer directory)
+                project_root = Path(__file__).parent.parent.parent.resolve()
+                tf_path = project_root / tf_dir
+            
+            # Intent file is stored in the terraform directory
+            intent_file = tf_path / "protection-intent.json"
+            
+            self._protection_intent_manager = ProtectionIntentManager(intent_file)
+            self._protection_intent_manager.load()
+        
+        return self._protection_intent_manager
+    
+    def save_protection_intent(self) -> None:
+        """Save the protection intent file if it has been initialized.
+        
+        This is a no-op if the manager hasn't been accessed yet.
+        """
+        if self._protection_intent_manager is not None:
+            self._protection_intent_manager.save()
 
     def step_is_complete(self, step: WorkflowStep) -> bool:
         """Check if a workflow step has been completed."""
