@@ -90,6 +90,8 @@ def save_state() -> None:
     global _app_state
     if _app_state:
         app.storage.user["app_state"] = _app_state.to_dict()
+        # Also save protection intent file if it was accessed
+        _app_state.save_protection_intent()
 
 
 def navigate_to_step(step: WorkflowStep) -> None:

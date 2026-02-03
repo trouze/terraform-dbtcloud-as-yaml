@@ -1,5 +1,6 @@
 """Match step page - match source resources to existing target resources."""
 
+import asyncio
 import json
 import logging
 import time
@@ -310,6 +311,9 @@ def _create_matching_content(
     rejected_keys = state.map.rejected_suggestions if isinstance(state.map.rejected_suggestions, set) else set(state.map.rejected_suggestions)
     clone_configs = getattr(state.map, "cloned_resources", [])
     
+    # Get protection intent manager for effective protection lookup
+    protection_intent_manager = state.get_protection_intent_manager()
+    
     grid_row_data = build_grid_data(
         source_items,
         target_items,
@@ -318,6 +322,7 @@ def _create_matching_content(
         clone_configs,
         state_result=state_ref["state_result"],
         protected_resources=state.map.protected_resources,
+        protection_intent_manager=protection_intent_manager,
     )
     
     # Stats from grid data - separate primary resources from derived resources
@@ -567,13 +572,41 @@ def _create_matching_content(
         dialog.open()
     
     def apply_protection(keys_to_protect: list[str]) -> None:
-        """Apply protection to multiple resources."""
+        """Apply protection to multiple resources.
+        
+        Records protection intent for each resource and updates the protected_resources set.
+        Intent is recorded with source="protect_all_button" for bulk actions.
+        """
         from importer.web.utils.ui_logger import log_action, log_state_change
         before = set(state.map.protected_resources) if state.map.protected_resources else set()
         before_fix_pending = state.map.protection_fix_pending
         
+        # Get protection intent manager and record intent for each resource
+        protection_intent = state.get_protection_intent_manager()
         for key in keys_to_protect:
+            # Get current TF state protection status for this resource
+            tf_state_at_decision = None
+            for row in grid_data_ref["data"]:
+                if row.get("source_key") == key:
+                    tf_state_at_decision = "protected" if row.get("state_protected") else "unprotected"
+                    yaml_state_before = row.get("yaml_protected", False)
+                    break
+            else:
+                yaml_state_before = key in before
+            
+            # Record intent - this is the source of truth for user decisions
+            protection_intent.set_intent(
+                key=key,
+                protected=True,
+                source="protect_all_button",
+                reason="Bulk protect from Match page",
+                tf_state_at_decision=tf_state_at_decision,
+                yaml_state_before=yaml_state_before,
+            )
             state.map.protected_resources.add(key)
+        
+        # Save intent file
+        protection_intent.save()
         
         # Reset any stale protection fix state - user has taken a new action
         fix_state_reset = False
@@ -600,13 +633,41 @@ def _create_matching_content(
         ui.navigate.reload()
     
     def remove_protection(keys_to_unprotect: list[str]) -> None:
-        """Remove protection from multiple resources."""
+        """Remove protection from multiple resources.
+        
+        Records unprotection intent for each resource and updates the protected_resources set.
+        Intent is recorded with source="unprotect_all_button" for bulk actions.
+        """
         from importer.web.utils.ui_logger import log_action, log_state_change
         before = set(state.map.protected_resources) if state.map.protected_resources else set()
         before_fix_pending = state.map.protection_fix_pending
         
+        # Get protection intent manager and record intent for each resource
+        protection_intent = state.get_protection_intent_manager()
         for key in keys_to_unprotect:
+            # Get current TF state protection status for this resource
+            tf_state_at_decision = None
+            for row in grid_data_ref["data"]:
+                if row.get("source_key") == key:
+                    tf_state_at_decision = "protected" if row.get("state_protected") else "unprotected"
+                    yaml_state_before = row.get("yaml_protected", False)
+                    break
+            else:
+                yaml_state_before = key in before
+            
+            # Record intent - this is the source of truth for user decisions
+            protection_intent.set_intent(
+                key=key,
+                protected=False,
+                source="unprotect_all_button",
+                reason="Bulk unprotect from Match page",
+                tf_state_at_decision=tf_state_at_decision,
+                yaml_state_before=yaml_state_before,
+            )
             state.map.protected_resources.discard(key)
+        
+        # Save intent file
+        protection_intent.save()
         
         # Reset any stale protection fix state - user has taken a new action
         fix_state_reset = False
@@ -668,6 +729,18 @@ def _create_matching_content(
                 return  # Don't save yet - wait for dialog
             else:
                 # No parents to protect, just protect this one
+                # Record intent
+                protection_intent = state.get_protection_intent_manager()
+                tf_state_at_decision = "protected" if row_data.get("state_protected") else "unprotected"
+                protection_intent.set_intent(
+                    key=source_key,
+                    protected=True,
+                    source="user_click",
+                    reason="Single resource protect from Match grid",
+                    tf_state_at_decision=tf_state_at_decision,
+                    yaml_state_before=old_protected,
+                )
+                protection_intent.save()
                 state.map.protected_resources.add(source_key)
                 save_state()
                 ui.notify(f"Protected: {target_resource.name}", type="positive")
@@ -693,6 +766,18 @@ def _create_matching_content(
                 return  # Don't save yet - wait for dialog
             else:
                 # No protected children, just unprotect
+                # Record intent
+                protection_intent = state.get_protection_intent_manager()
+                tf_state_at_decision = "protected" if row_data.get("state_protected") else "unprotected"
+                protection_intent.set_intent(
+                    key=source_key,
+                    protected=False,
+                    source="user_click",
+                    reason="Single resource unprotect from Match grid",
+                    tf_state_at_decision=tf_state_at_decision,
+                    yaml_state_before=old_protected,
+                )
+                protection_intent.save()
                 state.map.protected_resources.discard(source_key)
                 save_state()
                 ui.notify(f"Unprotected: {target_resource.name}", type="info")
@@ -1147,6 +1232,9 @@ def _create_matching_content(
     
     # Main grid in a card - flex container that grows to fill available space
     with ui.card().classes("w-full p-4 flex flex-col flex-grow").style("min-height: 350px;"):
+        # Get protection intent manager for effective protection lookup
+        protection_intent = state.get_protection_intent_manager()
+        
         grid, _ = create_match_grid(
             source_items,
             target_items,
@@ -1160,6 +1248,7 @@ def _create_matching_content(
             on_configure_clone=on_configure_clone,
             state_result=state_ref["state_result"],
             protected_resources=state.map.protected_resources,
+            protection_intent_manager=protection_intent,
         )
     
     # Adopt imports section - show when TF state is loaded so user can adopt resources
@@ -1679,6 +1768,83 @@ def _create_matching_content(
     for m in protection_mismatches:
         unique_projects_with_mismatches.add(m.get("project_name") or m.get("key"))
     
+    # Protection Intent Status Section
+    # Show badges for pending YAML updates, TF state moves, and synced intents
+    # Also show Recent Changes section with history from intent file
+    _pending_yaml = protection_intent_manager.get_pending_yaml_updates()
+    _pending_tf = protection_intent_manager.get_pending_tf_moves()
+    _history = protection_intent_manager._history[-5:] if protection_intent_manager._history else []
+    
+    # Count synced intents (applied_to_yaml=True AND applied_to_tf_state=True)
+    _synced_count = sum(
+        1 for intent in protection_intent_manager._intent.values()
+        if intent.applied_to_yaml and intent.applied_to_tf_state
+    )
+    
+    # Show intent status section if there are any intents recorded
+    if protection_intent_manager.intent_count > 0:
+        with ui.card().classes("w-full p-4 mt-4").style("border: 1px solid #CBD5E1;"):
+            with ui.row().classes("w-full items-center justify-between"):
+                with ui.column().classes("gap-2 flex-grow"):
+                    with ui.row().classes("items-center gap-2"):
+                        ui.icon("checklist", size="sm").classes("text-slate-600")
+                        ui.label("Protection Intent Status").classes("font-semibold text-slate-700")
+                    
+                    # Status badges
+                    with ui.row().classes("items-center gap-3 mt-2"):
+                        # Pending: Generate Protection Changes (orange)
+                        if len(_pending_yaml) > 0:
+                            ui.label(f"Pending: Generate Protection Changes ({len(_pending_yaml)})").classes(
+                                "bg-amber-100 text-amber-800 px-2 py-1 rounded text-xs font-medium"
+                            )
+                        
+                        # Pending: TF Init/Plan/Apply (blue)
+                        pending_tf_count = sum(
+                            1 for intent in protection_intent_manager._intent.values()
+                            if intent.applied_to_yaml and not intent.applied_to_tf_state
+                        )
+                        if pending_tf_count > 0:
+                            ui.label(f"Pending: TF Init/Plan/Apply ({pending_tf_count})").classes(
+                                "bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs font-medium"
+                            )
+                        
+                        # Synced (green)
+                        if _synced_count > 0:
+                            ui.label(f"Synced ({_synced_count})").classes(
+                                "bg-green-100 text-green-800 px-2 py-1 rounded text-xs font-medium"
+                            )
+                        
+                        # If no badges apply, show a neutral state
+                        if len(_pending_yaml) == 0 and pending_tf_count == 0 and _synced_count == 0:
+                            ui.label("No pending changes").classes("text-xs text-slate-500")
+            
+            # Recent Changes Section
+            if _history:
+                with ui.expansion("Recent Changes", icon="history").classes("w-full mt-3"):
+                    with ui.column().classes("gap-2"):
+                        for entry in reversed(_history):  # Most recent first
+                            action_emoji = "🛡️" if entry.action == "protect" else "🔓"
+                            # Parse and format timestamp
+                            try:
+                                from datetime import datetime
+                                ts = datetime.fromisoformat(entry.timestamp.replace("Z", "+00:00"))
+                                ts_display = ts.strftime("%Y-%m-%d %H:%M")
+                            except Exception:
+                                ts_display = entry.timestamp[:16] if len(entry.timestamp) > 16 else entry.timestamp
+                            
+                            with ui.row().classes("items-center gap-2 text-sm"):
+                                ui.label(action_emoji)
+                                ui.label(ts_display).classes("text-slate-500 font-mono text-xs")
+                                ui.label(entry.resource_key).classes("font-medium")
+                                ui.label(f"({entry.action})").classes("text-slate-500")
+                                ui.label(f"via {entry.source}").classes("text-xs text-slate-400")
+                        
+                        # Link to Utilities page (placeholder until Phase 4)
+                        ui.separator().classes("my-2")
+                        ui.label("View full audit trail in Utilities →").classes(
+                            "text-xs text-blue-600 cursor-pointer hover:underline"
+                        ).on("click", lambda: ui.notify("Utilities page coming in Phase 4", type="info"))
+    
     if has_state and protection_mismatches:
         with ui.card().classes("w-full p-4 mt-4").style("border: 2px solid #F59E0B;"):
             # Container for pending status - placed at card level, not inside button row
@@ -1802,6 +1968,88 @@ def _create_matching_content(
                         icon="visibility",
                         on_click=show_protection_details,
                     ).props("outline").classes("text-amber-600")
+                    
+                    async def sync_protection_from_tf_state():
+                        """Reset protected_resources to match actual TF state.
+                        
+                        This resolves circular mismatch issues by syncing the UI intent
+                        with what's actually protected in Terraform state.
+                        """
+                        ui.notify("Syncing protection state from Terraform...", type="info")
+                        
+                        try:
+                            # Resolve terraform directory (same logic as other TF functions)
+                            tf_dir = state.deploy.terraform_dir or "deployments/migration"
+                            sync_tf_path = Path(tf_dir)
+                            
+                            if not sync_tf_path.is_absolute():
+                                project_root = Path(state.fetch.output_dir).parent.parent if state.fetch.output_dir else Path.cwd()
+                                sync_tf_path = project_root / tf_dir
+                            
+                            if not sync_tf_path.exists():
+                                ui.notify(f"Terraform directory not found: {sync_tf_path}", type="negative")
+                                return
+                            
+                            # Read current TF state
+                            new_state_result = await read_terraform_state(sync_tf_path)
+                            if not new_state_result.success:
+                                ui.notify(f"Failed to read TF state: {new_state_result.error}", type="negative")
+                                return
+                            
+                            if not new_state_result.resources:
+                                ui.notify("No resources found in TF state", type="warning")
+                                return
+                            
+                            # Build new protected_resources set from TF state
+                            new_protected: set[str] = set()
+                            protected_addresses: list[str] = []  # For debug
+                            for res in new_state_result.resources:
+                                if ".protected_" in res.address:
+                                    protected_addresses.append(res.address)
+                                    # Extract key from address
+                                    if '["' in res.address and '"]' in res.address:
+                                        key_start = res.address.rfind('["') + 2
+                                        key_end = res.address.rfind('"]')
+                                        if key_start > 1 and key_end > key_start:
+                                            resource_key = res.address[key_start:key_end]
+                                            new_protected.add(resource_key)
+                            
+                            # Debug: Show what was found
+                            ui.notify(f"Found {len(protected_addresses)} protected resources in TF state", type="info")
+                            
+                            old_count = len(state.map.protected_resources)
+                            old_keys = set(state.map.protected_resources) if state.map.protected_resources else set()
+                            state.map.protected_resources = new_protected
+                            
+                            # Clear any pending protection fixes
+                            state.map.protection_fix_pending = False
+                            state.map.protection_fix_file_path = ""
+                            state.map.protection_fix_action = ""
+                            state.map.protection_fix_previous_content = ""
+                            
+                            save_state()
+                            
+                            # Show detailed sync results
+                            added = new_protected - old_keys
+                            removed = old_keys - new_protected
+                            ui.notify(
+                                f"Synced! {len(new_protected)} protected. Added: {list(added)[:3]}, Removed: {list(removed)[:3]}",
+                                type="positive",
+                                timeout=10000,
+                            )
+                            
+                            # Reload to refresh the mismatch detection
+                            await asyncio.sleep(0.5)
+                            ui.navigate.reload()
+                            
+                        except Exception as e:
+                            ui.notify(f"Sync failed: {e}", type="negative")
+                    
+                    ui.button(
+                        "Sync from TF State",
+                        icon="sync",
+                        on_click=sync_protection_from_tf_state,
+                    ).props("outline color=blue").tooltip("Reset protection intent to match actual Terraform state")
                     
                     # Use persistent state for fix tracking (survives page re-renders)
                     # state.map.protection_fix_pending, protection_fix_file_path, protection_fix_previous_content
@@ -2021,7 +2269,7 @@ def _create_matching_content(
                                         ui.label(f"Wrote {block_count} moved blocks to: {moves_file.name}").classes(f"text-sm text-{text_color}-700 mt-1")
                                     if yaml_only_updates:
                                         ui.label(f"Plus {len(yaml_only_updates)} YAML-only updates (no state change needed)").classes(f"text-sm text-{text_color}-700")
-                                    ui.label("Run 'Generate Files' then 'terraform plan/apply' to complete").classes(f"text-xs text-{text_color}-600")
+                                    ui.label("⚠️ Skip Generate! Just run Init → Plan → Apply").classes(f"text-xs text-{text_color}-600 font-bold")
                             
                             ui.notify(f"SUCCESS: {action_label} queued for {len(protection_mismatches)} resource(s)", type="positive")
                         except Exception as e:
@@ -2130,10 +2378,10 @@ This will **UNPROTECT** all {len(protection_mismatches)} mismatched resource(s):
                         # Show which action was taken
                         if pending_action == "protect":
                             protect_btn = ui.button("Protection Queued", icon="shield").props("color=positive disabled")
-                            unprotect_btn = ui.button(f"Unprotect All", icon="shield_outlined").props("color=grey disabled")
+                            unprotect_btn = ui.button(f"Unprotect All", icon="lock_open").props("color=grey disabled")
                         else:
                             protect_btn = ui.button(f"Protect All", icon="shield").props("color=grey disabled")
-                            unprotect_btn = ui.button("Unprotection Queued", icon="shield_outlined").props("color=positive disabled")
+                            unprotect_btn = ui.button("Unprotection Queued", icon="lock_open").props("color=positive disabled")
                     else:
                         # Show both options
                         protect_btn = ui.button(
@@ -2144,7 +2392,7 @@ This will **UNPROTECT** all {len(protection_mismatches)} mismatched resource(s):
                         
                         unprotect_btn = ui.button(
                             f"Unprotect All ({len(protection_mismatches)})",
-                            icon="shield_outlined",
+                            icon="lock_open",
                             on_click=show_unprotect_confirmation,
                         ).props("color=warning")
                     
@@ -2163,7 +2411,7 @@ This will **UNPROTECT** all {len(protection_mismatches)} mismatched resource(s):
                             color = "#ECFDF5" if pending_action == "protect" else "#FEF3C7"
                             border_color = "#10B981" if pending_action == "protect" else "#F59E0B"
                             text_color = "green" if pending_action == "protect" else "amber"
-                            icon_name = "shield" if pending_action == "protect" else "shield_outlined"
+                            icon_name = "shield" if pending_action == "protect" else "lock_open"
                             
                             with ui.card().classes("w-full p-3 mt-3").style(f"background: {color}; border: 1px solid {border_color};"):
                                 with ui.row().classes("items-center gap-2"):
@@ -2335,6 +2583,14 @@ This will **UNPROTECT** all {len(protection_mismatches)} mismatched resource(s):
                                 keys_to_unprotect,
                             )
                         
+                        # CRITICAL: Also sync the UI state (state.map.protected_resources) to match
+                        # This prevents the mismatch detection from flip-flopping after reload
+                        for key in keys_to_protect:
+                            state.map.protected_resources.add(key)
+                        for key in keys_to_unprotect:
+                            state.map.protected_resources.discard(key)
+                        save_state()
+                        
                         with match_terminal_output:
                             match_terminal_output.clear()
                             ui.label(f"✅ YAML updated: {len(keys_to_protect)} protected, {len(keys_to_unprotect)} unprotected").classes("text-xs text-green-600 font-semibold")
@@ -2450,6 +2706,18 @@ moved {{
                                 block_count += 1
                                 generated_moves.add(("PRJ", rkey))
                             
+                            # If this is a PRJ mismatch, also generate a REP moved block
+                            # since the repository protection follows the project
+                            if rtype == "PRJ" and ("REP", rkey) not in generated_moves:
+                                rep_tf_type, rep_unprotected, rep_protected = EXTENDED_RESOURCE_TYPE_MAP["REP"]
+                                blocks.append(f'''# {direction} {rkey} (repository - cascaded from project)
+moved {{
+  from = {module_prefix}.{rep_tf_type}.{rep_unprotected if direction == "protect" else rep_protected}["{rkey}"]
+  to   = {module_prefix}.{rep_tf_type}.{rep_protected if direction == "protect" else rep_unprotected}["{rkey}"]
+}}''')
+                                block_count += 1
+                                generated_moves.add(("REP", rkey))
+                            
                             # If this is a PRJ or REP mismatch, also generate a PREP moved block
                             # since the project_repository link also needs to move
                             if rtype in ("PRJ", "REP") and ("PREP", rkey) not in generated_moves:
@@ -2486,7 +2754,7 @@ moved {{
                             ui.label(f"❌ Failed to generate: {e}").classes("text-xs text-red-600 font-semibold")
                         ui.notify(f"Error: {e}", type="negative")
                 
-                ui.button("Generate", icon="build", on_click=run_generate_moved_blocks).props("color=amber").style("min-width: 100px; color: black !important;")
+                ui.button("Generate", icon="build", on_click=run_generate_moved_blocks).props("color=amber").style("min-width: 100px; color: black !important;").tooltip("⚠️ Regenerates ALL TF files - skip for protection-only changes!")
                 
                 def check_credentials() -> bool:
                     """Check if credentials are loaded. Returns True if valid."""
@@ -2792,71 +3060,314 @@ moved {{
                 ui.button("Plan", icon="preview", on_click=run_match_plan).props("outline color=primary").style("min-width: 100px;")
                 
                 async def run_match_apply():
-                    """Run terraform apply for protection moves only."""
+                    """Run terraform apply with live streaming output and detailed confirmation."""
                     import asyncio
-                    import subprocess
                     import os
+                    import html as html_module
+                    from importer.web.utils.yaml_viewer import parse_plan_stats
                     
                     if not check_credentials():
                         return
                     
-                    # Confirmation dialog
-                    with ui.dialog() as confirm_dialog, ui.card().style("width: 450px;"):
-                        ui.label("Confirm Apply").classes("text-xl font-bold mb-3")
+                    # Parse plan output to get counts for confirmation
+                    plan_output = tf_outputs.get("plan", "")
+                    stats = parse_plan_stats(plan_output) if plan_output else {"move": 0, "add": 0, "change": 0, "destroy": 0}
+                    
+                    has_plan = bool(plan_output)
+                    has_destroys = stats.get("destroy", 0) > 0
+                    
+                    # Confirmation dialog with detailed stats
+                    with ui.dialog() as confirm_dialog, ui.card().style("width: 550px;"):
+                        with ui.row().classes("w-full items-center gap-3 mb-3"):
+                            ui.icon("rocket_launch", size="lg").classes("text-primary")
+                            ui.label("Confirm Apply").classes("text-xl font-bold")
+                        
                         ui.label(
-                            "This will apply the protection moves to Terraform state. "
-                            "Make sure you've reviewed the plan first."
+                            "This will apply the changes to Terraform state. "
+                            "Review the plan summary below before proceeding."
                         ).classes("text-sm text-slate-600 mb-4")
+                        
+                        # Plan summary stats bar
+                        if has_plan:
+                            with ui.row().classes("w-full gap-4 mb-4 p-3 bg-slate-100 dark:bg-slate-800 rounded items-center"):
+                                ui.label("Plan Summary:").classes("font-semibold")
+                                
+                                if stats.get('move', 0) > 0:
+                                    with ui.row().classes("items-center gap-1"):
+                                        ui.icon("swap_horiz", size="sm").classes("text-blue-600")
+                                        ui.label(f"{stats['move']} to move").classes("text-blue-600 font-medium")
+                                
+                                if stats.get('add', 0) > 0:
+                                    with ui.row().classes("items-center gap-1"):
+                                        ui.icon("add_circle", size="sm").classes("text-green-600")
+                                        ui.label(f"{stats['add']} to add").classes("text-green-600 font-medium")
+                                
+                                if stats.get('change', 0) > 0:
+                                    with ui.row().classes("items-center gap-1"):
+                                        ui.icon("change_circle", size="sm").classes("text-amber-600")
+                                        ui.label(f"{stats['change']} to change").classes("text-amber-600 font-medium")
+                                
+                                if stats.get('destroy', 0) > 0:
+                                    with ui.row().classes("items-center gap-1"):
+                                        ui.icon("remove_circle", size="sm").classes("text-red-600")
+                                        ui.label(f"{stats['destroy']} to destroy").classes("text-red-600 font-medium")
+                                
+                                # Show "no changes" if everything is 0
+                                total_changes = sum(stats.values())
+                                if total_changes == 0:
+                                    ui.label("No changes").classes("text-slate-500 italic")
+                        else:
+                            with ui.row().classes("w-full mb-4 p-3 bg-amber-100 dark:bg-amber-900 rounded items-center gap-2"):
+                                ui.icon("warning", size="sm").classes("text-amber-600")
+                                ui.label("No plan output found. Run Plan first to see what will change.").classes("text-amber-700 dark:text-amber-200 text-sm")
+                        
+                        # Warning for destroys
+                        if has_destroys:
+                            with ui.row().classes("w-full mb-4 p-3 bg-red-100 dark:bg-red-900 rounded items-center gap-2"):
+                                ui.icon("warning", size="sm").classes("text-red-600")
+                                ui.label(f"⚠️ This will DESTROY {stats['destroy']} resource(s)! This cannot be undone.").classes("text-red-700 dark:text-red-200 text-sm font-semibold")
                         
                         with ui.row().classes("w-full justify-end gap-2"):
                             ui.button("Cancel", on_click=confirm_dialog.close).props("flat")
                             
                             async def do_apply():
                                 confirm_dialog.close()
-                                
-                                with match_terminal_output:
-                                    match_terminal_output.clear()
-                                    ui.label("Running terraform apply...").classes("text-xs text-slate-500")
-                                
-                                # Use the same env setup as deploy/destroy pages
-                                env = _get_terraform_env(state)
-                                
-                                result = await asyncio.to_thread(
-                                    subprocess.run,
-                                    ["terraform", "apply", "-auto-approve", "-no-color", "-input=false"],
-                                    cwd=str(tf_path),
-                                    capture_output=True,
-                                    text=True,
-                                    env=env,
-                                )
-                                
-                                # Store output for later viewing
-                                tf_outputs["apply"] = result.stdout + result.stderr
-                                
-                                with match_terminal_output:
-                                    match_terminal_output.clear()
-                                    if result.returncode == 0:
-                                        ui.label("✅ Apply completed! Protection moves applied.").classes("text-xs text-green-600 font-semibold")
-                                    else:
-                                        ui.label("❌ Apply failed").classes("text-xs text-red-600 font-semibold")
-                                        ui.label(result.stderr[:200] if result.stderr else "Unknown error").classes("text-xs text-red-500")
-                                
-                                if result.returncode == 0:
-                                    ui.notify("Apply completed! Protection moves applied.", type="positive", timeout=5000)
-                                    # Clear the pending state
-                                    state.map.protection_fix_pending = False
-                                    state.map.protection_fix_file_path = ""
-                                    state.map.protection_fix_action = ""
-                                    save_state()
-                                    # Reload after short delay
-                                    await asyncio.sleep(1)
-                                    ui.navigate.reload()
-                                else:
-                                    ui.notify("Apply failed - see output", type="negative")
+                                # Use create_task to ensure dialog opens after confirmation closes
+                                await asyncio.sleep(0.1)  # Small delay to let confirmation dialog close
+                                await run_apply_streaming()
                             
-                            ui.button("Apply", icon="rocket_launch", on_click=do_apply).props("color=primary")
+                            apply_btn = ui.button("Apply", icon="rocket_launch", on_click=do_apply)
+                            if has_destroys:
+                                apply_btn.props("color=negative")
+                            else:
+                                apply_btn.props("color=positive")
                     
                     confirm_dialog.open()
+                
+                async def run_apply_streaming():
+                    """Run terraform apply with live streaming output."""
+                    import asyncio
+                    import os
+                    import html as html_module
+                    from datetime import datetime
+                    
+                    # Use the same env setup as deploy/destroy pages
+                    env = _get_terraform_env(state)
+                    
+                    # Create streaming log viewer dialog with timestamps, levels, search
+                    output_lines = []  # Raw lines for copy
+                    formatted_lines = []  # Lines with timestamps for display
+                    process_ref = {"process": None, "cancelled": False}
+                    search_state = {"term": "", "count": 0}
+                    
+                    def get_log_level(line: str) -> tuple[str, str]:
+                        """Determine log level and color from line content."""
+                        line_lower = line.lower()
+                        if "error" in line_lower or "failed" in line_lower:
+                            return "ERROR", "text-red-400"
+                        elif "warning" in line_lower or "warn" in line_lower:
+                            return "WARN", "text-amber-400"
+                        elif "apply complete" in line_lower or "resources:" in line_lower:
+                            return "DONE", "text-green-400"
+                        elif line.startswith("#") or "will be" in line_lower:
+                            return "INFO", "text-blue-400"
+                        elif "creating" in line_lower or "created" in line_lower:
+                            return "ADD", "text-green-400"
+                        elif "destroying" in line_lower or "destroyed" in line_lower:
+                            return "DEL", "text-red-400"
+                        elif "modifying" in line_lower or "modified" in line_lower:
+                            return "CHG", "text-amber-400"
+                        else:
+                            return "INFO", "text-slate-400"
+                    
+                    def format_log_line(line: str) -> str:
+                        """Format a line with timestamp and level."""
+                        timestamp = datetime.now().strftime("%H:%M:%S")
+                        level, color = get_log_level(line)
+                        escaped_line = html_module.escape(line)
+                        return f'<span class="text-slate-500">[{timestamp}]</span> <span class="{color}">[{level:5}]</span> {escaped_line}'
+                    
+                    with ui.dialog() as stream_dialog, ui.card().classes("w-full h-full").style("width: 90vw; max-width: 90vw; height: 80vh; display: flex; flex-direction: column;"):
+                        with ui.row().classes("w-full items-center justify-between mb-2"):
+                            with ui.row().classes("items-center gap-3"):
+                                stream_spinner = ui.spinner("dots", size="md").classes("text-primary")
+                                stream_title = ui.label("Running terraform apply...").classes("text-xl font-bold")
+                            ui.button(icon="close", on_click=stream_dialog.close).props("flat round")
+                        
+                        ui.label(f"Directory: {tf_path}").classes("text-xs text-slate-500 font-mono mb-2")
+                        
+                        # Search bar
+                        with ui.row().classes("w-full items-center gap-2 mb-2"):
+                            search_input = ui.input(placeholder="Search in output...").props("outlined dense clearable").classes("flex-1")
+                            search_count_label = ui.label("").classes("text-xs text-slate-400 min-w-[80px]")
+                        
+                        with ui.scroll_area().classes("w-full flex-grow apply-stream-scroll-area"):
+                            stream_log = ui.html('<pre class="text-xs font-mono whitespace-pre-wrap p-2 bg-slate-900 text-slate-100 rounded apply-stream-log-content" style="min-height: 200px;">[Starting terraform apply...]\n</pre>')
+                        
+                        # Search handler
+                        async def on_search(e):
+                            term = e.args if e.args else ""
+                            search_state["term"] = term
+                            if not term:
+                                search_count_label.set_text("")
+                                return
+                            
+                            # Count matches in raw output
+                            full_output = "\n".join(output_lines)
+                            count = full_output.lower().count(term.lower())
+                            search_state["count"] = count
+                            search_count_label.set_text(f"{count} matches" if count else "No matches")
+                            
+                            # Highlight in viewer
+                            if count > 0:
+                                escaped_term = term.replace("'", "\\'").replace('"', '\\"')
+                                await ui.run_javascript(f'''
+                                    const pre = document.querySelector('.apply-stream-log-content');
+                                    if (pre) {{
+                                        const html = pre.innerHTML;
+                                        const regex = new RegExp('({escaped_term})', 'gi');
+                                        pre.innerHTML = html.replace(regex, '<mark class="bg-yellow-500 text-black px-0.5">$1</mark>');
+                                        const mark = document.querySelector('.apply-stream-log-content mark');
+                                        if (mark) mark.scrollIntoView({{ behavior: 'smooth', block: 'center' }});
+                                    }}
+                                ''')
+                        
+                        search_input.on("update:model-value", on_search)
+                        
+                        with ui.row().classes("w-full justify-between mt-2"):
+                            def cancel_apply():
+                                if process_ref["process"] and process_ref["process"].returncode is None:
+                                    process_ref["cancelled"] = True
+                                    process_ref["process"].kill()
+                                    cancel_line = "⚠️ CANCELLED: Apply was cancelled by user"
+                                    output_lines.append(cancel_line)
+                                    formatted_lines.append(format_log_line(cancel_line))
+                                    ui.notify("Apply cancelled", type="warning")
+                            
+                            cancel_btn = ui.button("Cancel", icon="cancel", on_click=cancel_apply).props("outline color=negative")
+                            
+                            with ui.row().classes("gap-2"):
+                                def copy_stream_output():
+                                    content = "\n".join(output_lines)
+                                    ui.run_javascript(f'navigator.clipboard.writeText({repr(content)})')
+                                    ui.notify("Copied to clipboard", type="positive")
+                                ui.button("Copy", icon="content_copy", on_click=copy_stream_output).props("outline")
+                                ui.button("Close", on_click=stream_dialog.close)
+                    
+                    stream_dialog.props("maximized")
+                    stream_dialog.open()
+                    
+                    with match_terminal_output:
+                        match_terminal_output.clear()
+                        ui.label("Running terraform apply...").classes("text-xs text-slate-500")
+                    
+                    # Run terraform apply with streaming output
+                    try:
+                        process = await asyncio.create_subprocess_exec(
+                            "terraform", "apply", "-auto-approve", "-no-color", "-input=false",
+                            cwd=str(tf_path),
+                            env=env,
+                            stdout=asyncio.subprocess.PIPE,
+                            stderr=asyncio.subprocess.STDOUT,
+                        )
+                        process_ref["process"] = process
+                        
+                        # Stream output line by line
+                        while True:
+                            try:
+                                line = await asyncio.wait_for(process.stdout.readline(), timeout=600)  # 10 min timeout for apply
+                            except asyncio.TimeoutError:
+                                timeout_line = "⚠️ TIMEOUT: Apply exceeded 10 minute limit"
+                                output_lines.append(timeout_line)
+                                formatted_lines.append(format_log_line(timeout_line))
+                                process.kill()
+                                break
+                            
+                            if not line:
+                                break
+                            
+                            decoded_line = line.decode('utf-8', errors='replace').rstrip()
+                            output_lines.append(decoded_line)
+                            formatted_lines.append(format_log_line(decoded_line))
+                            
+                            # Save output incrementally so it's available if dialog is closed early
+                            tf_outputs["apply"] = "\n".join(output_lines)
+                            
+                            # Update the viewer with formatted output (timestamps + levels)
+                            formatted_output = "\n".join(formatted_lines)
+                            stream_log.content = f'<pre class="text-xs font-mono whitespace-pre-wrap p-2 bg-slate-900 text-slate-100 rounded apply-stream-log-content" style="min-height: 200px;">{formatted_output}</pre>'
+                            stream_log.update()
+                        
+                        await process.wait()
+                        returncode = process.returncode
+                        
+                    except Exception as e:
+                        error_line = f"❌ ERROR: {e}"
+                        output_lines.append(error_line)
+                        formatted_lines.append(format_log_line(error_line))
+                        returncode = 1
+                    
+                    # Hide cancel button when done
+                    cancel_btn.set_visibility(False)
+                    
+                    apply_output = "\n".join(output_lines)
+                    tf_outputs["apply"] = apply_output
+                    
+                    # Update dialog title and hide spinner
+                    stream_spinner.set_visibility(False)
+                    if process_ref["cancelled"]:
+                        stream_title.set_text("⚠️ Apply Cancelled")
+                        ui.notify("Apply was cancelled", type="warning")
+                    elif returncode == 0:
+                        stream_title.set_text("✅ Apply Complete!")
+                        ui.notify("Apply completed successfully! Syncing state...", type="positive", timeout=5000)
+                        # Clear the pending state
+                        state.map.protection_fix_pending = False
+                        state.map.protection_fix_file_path = ""
+                        state.map.protection_fix_action = ""
+                        
+                        # CRITICAL: Sync protected_resources set with the new TF state
+                        # This prevents the protection mismatch from flip-flopping
+                        try:
+                            new_state_result = await read_terraform_state(tf_path)
+                            if new_state_result.success and new_state_result.resources:
+                                # Build new protected_resources set based on current TF state
+                                new_protected: set[str] = set()
+                                for res in new_state_result.resources:
+                                    if ".protected_" in res.address:
+                                        # Extract key from address and add to protected set
+                                        # Address format: module.dbt_cloud.module.projects_v2[0].dbtcloud_project.protected_projects["key"]
+                                        if '["' in res.address and '"]' in res.address:
+                                            key_start = res.address.rfind('["') + 2
+                                            key_end = res.address.rfind('"]')
+                                            if key_start > 1 and key_end > key_start:
+                                                resource_key = res.address[key_start:key_end]
+                                                new_protected.add(resource_key)
+                                # Replace the protected_resources set with the synced version
+                                state.map.protected_resources = new_protected
+                                ui.notify(f"Synced {len(new_protected)} protected resources from TF state", type="info")
+                        except Exception as sync_err:
+                            # Don't fail the apply just because sync failed
+                            ui.notify(f"Warning: Could not sync protected state: {sync_err}", type="warning")
+                        
+                        save_state()
+                        # Show reload suggestion instead of auto-reload (which clears tf_outputs)
+                        ui.notify("Click 'Reload Page' to see updated protection state", type="info", timeout=10000)
+                    else:
+                        stream_title.set_text("❌ Apply Failed")
+                        ui.notify("Apply failed - see output for details", type="negative")
+                    
+                    # Update status in the match terminal area
+                    with match_terminal_output:
+                        match_terminal_output.clear()
+                        if process_ref["cancelled"]:
+                            ui.label("⚠️ Apply cancelled").classes("text-xs text-amber-600 font-semibold")
+                        elif returncode == 0:
+                            with ui.row().classes("items-center gap-2"):
+                                ui.label("✅ Apply completed! Protection moves applied.").classes("text-xs text-green-600 font-semibold")
+                                ui.button("Reload Page", icon="refresh", on_click=lambda: ui.navigate.reload()).props("flat dense color=primary").classes("text-xs")
+                        else:
+                            ui.label("❌ Apply failed").classes("text-xs text-red-600 font-semibold")
                 
                 ui.button("Apply", icon="rocket_launch", on_click=run_match_apply).props("color=positive").style("min-width: 100px;")
                 
@@ -3081,7 +3592,8 @@ moved {{
             
             # Output area
             with match_terminal_output:
-                ui.label("Click Generate → Init → Plan → Apply to process protection moves").classes("text-xs text-slate-400")
+                ui.label("For protection changes: Skip Generate, just run Init → Plan → Apply").classes("text-xs text-slate-400")
+                ui.label("Generate regenerates ALL files which can cause conflicts").classes("text-xs text-amber-500")
     
     # Save mapping file section (show if there are any confirmed or pending matches)
     has_matches = any(r.get("action") == "match" and r.get("target_id") for r in grid_row_data)

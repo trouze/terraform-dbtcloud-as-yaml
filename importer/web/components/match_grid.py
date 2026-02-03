@@ -11,6 +11,7 @@ from importer.web.state import CloneConfig
 
 if TYPE_CHECKING:
     from importer.web.utils.terraform_state_reader import StateReadResult
+    from importer.web.utils.protection_intent import ProtectionIntentManager
 
 
 def _debug_log(payload: dict) -> None:
@@ -213,6 +214,7 @@ def build_grid_data(
     clone_configs: Optional[list[CloneConfig]] = None,
     state_result: Optional["StateReadResult"] = None,
     protected_resources: Optional[set[str]] = None,
+    protection_intent_manager: Optional["ProtectionIntentManager"] = None,
 ) -> list[dict]:
     """Build grid row data from source/target items and existing mappings.
     
@@ -223,7 +225,8 @@ def build_grid_data(
         rejected_keys: Set of source keys that were rejected
         clone_configs: Optional list of clone configurations
         state_result: Optional Terraform state for drift detection
-        protected_resources: Optional set of source_keys that are protected
+        protected_resources: Optional set of source_keys that are protected (YAML config)
+        protection_intent_manager: Optional intent manager for effective protection lookup
         
     Returns:
         List of row dictionaries for AG Grid
@@ -952,10 +955,10 @@ def build_grid_data(
                         rows.append(link_row)
     
     # Post-process: Add protection status to all rows
-    # We track TWO separate protection fields:
-    # 1. yaml_protected: User's desired state (from protected_resources set, i.e., YAML config)
+    # We track THREE separate protection fields:
+    # 1. yaml_protected: What's in the YAML config (from protected_resources set)
     # 2. state_protected: Actual TF state (from state_address containing ".protected_")
-    # 3. protected: Combined value for UI display (protected if EITHER is true)
+    # 3. protected: Effective protection (intent takes precedence over YAML if available)
     for row in rows:
         source_key = row.get("source_key", "")
         state_address = row.get("state_address", "")
@@ -966,12 +969,22 @@ def build_grid_data(
         # Check if user wants it protected (from YAML config)
         is_yaml_protected = source_key in protected_resources
         
-        # Store both values separately for mismatch detection
-        row["yaml_protected"] = is_yaml_protected
-        row["state_protected"] = is_state_protected
+        # Use protection intent manager if available to get effective protection
+        # Intent takes precedence over YAML to prevent "flip-flopping"
+        if protection_intent_manager is not None:
+            is_effective_protected = protection_intent_manager.get_effective_protection(
+                source_key, yaml_protected=is_yaml_protected
+            )
+        else:
+            # Fallback: use YAML protection directly
+            is_effective_protected = is_yaml_protected
+        
+        # Store all values for mismatch detection and UI
+        row["yaml_protected"] = is_effective_protected  # User's intended state (intent or YAML)
+        row["state_protected"] = is_state_protected     # Actual TF state
         
         # Combined value for UI display (protected if either source says so)
-        row["protected"] = is_yaml_protected or is_state_protected
+        row["protected"] = is_effective_protected or is_state_protected
     
     # Post-process: CRD drift status inheritance from parent ENV
     # CRDs don't exist in Terraform state directly - they're embedded in environment resources.
@@ -1026,6 +1039,7 @@ def create_match_grid(
     state_result: Optional["StateReadResult"] = None,
     on_adopt: Optional[Callable[[str], None]] = None,
     protected_resources: Optional[set[str]] = None,
+    protection_intent_manager: Optional["ProtectionIntentManager"] = None,
 ) -> tuple:
     """Create the editable matching grid.
     
@@ -1043,6 +1057,7 @@ def create_match_grid(
         state_result: Optional Terraform state for drift detection
         on_adopt: Callback when adopt button clicked (source_key) for drift resolution
         protected_resources: Optional set of source_keys that are protected
+        protection_intent_manager: Optional intent manager for effective protection lookup
         
     Returns:
         Tuple of (grid component, row data list)
@@ -1052,6 +1067,7 @@ def create_match_grid(
         source_items, target_items, confirmed_mappings, rejected_keys, clone_configs,
         state_result=state_result,
         protected_resources=protected_resources,
+        protection_intent_manager=protection_intent_manager,
     )
     
     # Build target options for autocomplete
