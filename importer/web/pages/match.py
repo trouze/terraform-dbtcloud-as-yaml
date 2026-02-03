@@ -1781,14 +1781,13 @@ def _create_matching_content(
         if intent.applied_to_yaml and intent.applied_to_tf_state
     )
     
-    # Show intent status section if there are any intents recorded
-    if protection_intent_manager.intent_count > 0:
-        with ui.card().classes("w-full p-4 mt-4").style("border: 1px solid #CBD5E1;"):
-            with ui.row().classes("w-full items-center justify-between"):
-                with ui.column().classes("gap-2 flex-grow"):
-                    with ui.row().classes("items-center gap-2"):
-                        ui.icon("checklist", size="sm").classes("text-slate-600")
-                        ui.label("Protection Intent Status").classes("font-semibold text-slate-700")
+    # Protection Intent Status section - always show so users know the feature exists
+    with ui.card().classes("w-full p-4 mt-4").style("border: 1px solid #CBD5E1;"):
+        with ui.row().classes("w-full items-center justify-between"):
+            with ui.column().classes("gap-2 flex-grow"):
+                with ui.row().classes("items-center gap-2"):
+                    ui.icon("checklist", size="sm").classes("text-slate-600")
+                    ui.label("Protection Intent Status").classes("font-semibold text-slate-700")
                     
                     # Status badges
                     with ui.row().classes("items-center gap-3 mt-2"):

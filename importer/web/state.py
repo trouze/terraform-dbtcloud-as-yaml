@@ -138,8 +138,8 @@ WORKFLOW_STEPS = {
 
 # Utility steps shown in sidebar but not numbered (available after deploy)
 WORKFLOW_UTILITIES = {
-    WorkflowType.MIGRATION: [WorkflowStep.DESTROY],
-    WorkflowType.IMPORT_ADOPT: [WorkflowStep.DESTROY],
+    WorkflowType.MIGRATION: [WorkflowStep.UTILITIES, WorkflowStep.DESTROY],
+    WorkflowType.IMPORT_ADOPT: [WorkflowStep.UTILITIES, WorkflowStep.DESTROY],
 }
 
 # No workflow-specific name overrides needed - all steps have descriptive names now
