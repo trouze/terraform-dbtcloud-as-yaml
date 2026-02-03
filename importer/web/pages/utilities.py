@@ -26,11 +26,287 @@ def create_utilities_page(
     with ui.column().classes("w-full max-w-6xl mx-auto p-8 gap-6"):
         # Page header
         with ui.row().classes("w-full items-center gap-3 mb-4"):
-            ui.icon("build", size="lg").classes("text-slate-600")
+            ui.icon("security", size="lg").classes("text-slate-600")
             ui.label("Protection Management").classes("text-2xl font-bold")
+        
+        # Current Protection Status Section
+        _create_protection_status_section(state, save_state)
         
         # Protection Management Section
         _create_protection_management_section(state, save_state)
+
+
+def _create_protection_status_section(
+    state: AppState,
+    save_state: Optional[Callable[[], None]] = None,
+) -> None:
+    """Create the current protection status section showing YAML vs TF State."""
+    
+    # Get data from state
+    yaml_protected = state.map.protected_resources or set()
+    has_state = state.deploy.has_state_file()
+    
+    # Get TF state protected resources
+    state_protected_resources = set()
+    state_unprotected_resources = set()
+    
+    if has_state and state.deploy._state_data:
+        for resource in state.deploy._state_data.get("resources", []):
+            tf_name = resource.get("tf_name", "")
+            resource_index = resource.get("resource_index", "")
+            element_code = resource.get("element_code", "")
+            
+            if element_code in ("PRJ", "REP", "PREP") and resource_index:
+                if "protected_" in tf_name:
+                    state_protected_resources.add(resource_index)
+                else:
+                    state_unprotected_resources.add(resource_index)
+    
+    # Calculate mismatches
+    # Resources in YAML as protected but in state as unprotected (or vice versa)
+    mismatches = []
+    all_keys = yaml_protected | state_protected_resources | state_unprotected_resources
+    
+    for key in all_keys:
+        yaml_is_protected = key in yaml_protected
+        state_is_protected = key in state_protected_resources
+        state_is_unprotected = key in state_unprotected_resources
+        
+        # Only count as mismatch if we have state data for this resource
+        if state_is_protected or state_is_unprotected:
+            if yaml_is_protected != state_is_protected:
+                direction = "protect" if yaml_is_protected else "unprotect"
+                mismatches.append({
+                    "key": key,
+                    "yaml_protected": yaml_is_protected,
+                    "state_protected": state_is_protected,
+                    "direction": direction,
+                })
+    
+    with ui.card().classes("w-full p-6 mb-6"):
+        with ui.row().classes("w-full items-center justify-between mb-4"):
+            with ui.row().classes("items-center gap-2"):
+                ui.icon("assessment", size="md").classes("text-slate-600")
+                ui.label("Current Protection Status").classes("text-xl font-semibold")
+            
+            # State file indicator
+            if has_state:
+                ui.badge("TF State Loaded").props("color=positive")
+            else:
+                ui.badge("No TF State").props("color=grey")
+        
+        # Summary cards row
+        with ui.row().classes("w-full gap-4 mb-6"):
+            # YAML Protected
+            with ui.card().classes("flex-1 p-4 border border-blue-300"):
+                with ui.row().classes("items-center gap-2"):
+                    ui.icon("description", size="sm").classes("text-blue-600")
+                    ui.label("YAML Protected").classes("font-semibold text-blue-600")
+                ui.label(str(len(yaml_protected))).classes("text-3xl font-bold text-blue-700 mt-2")
+                ui.label("From config file").classes("text-xs opacity-70")
+            
+            # TF State Protected
+            with ui.card().classes("flex-1 p-4 border border-green-300"):
+                with ui.row().classes("items-center gap-2"):
+                    ui.icon("cloud", size="sm").classes("text-green-600")
+                    ui.label("TF State Protected").classes("font-semibold text-green-600")
+                count = len(state_protected_resources) if has_state else "—"
+                ui.label(str(count)).classes("text-3xl font-bold text-green-700 mt-2")
+                ui.label("From terraform state" if has_state else "Load state to see").classes("text-xs opacity-70")
+            
+            # Mismatches
+            mismatch_color = "red" if len(mismatches) > 0 else "grey"
+            with ui.card().classes(f"flex-1 p-4 border border-{mismatch_color}-300"):
+                with ui.row().classes("items-center gap-2"):
+                    ui.icon("warning" if len(mismatches) > 0 else "check", size="sm").classes(f"text-{mismatch_color}-600")
+                    ui.label("Mismatches").classes(f"font-semibold text-{mismatch_color}-600")
+                ui.label(str(len(mismatches))).classes(f"text-3xl font-bold text-{mismatch_color}-700 mt-2")
+                ui.label("Need resolution" if len(mismatches) > 0 else "All in sync").classes("text-xs opacity-70")
+        
+        # Mismatches expansion (if any)
+        if len(mismatches) > 0:
+            protection_intent = state.get_protection_intent_manager()
+            
+            with ui.expansion(
+                f"⚠️ {len(mismatches)} Protection Mismatches - Click to Resolve",
+                icon="warning"
+            ).classes("w-full border border-red-400 rounded"):
+                ui.label(
+                    "These resources have different protection status in YAML vs TF State. "
+                    "Set your intent to resolve each mismatch."
+                ).classes("text-xs opacity-70 mb-3")
+                
+                for m in mismatches[:20]:
+                    key = m["key"]
+                    yaml_prot = m["yaml_protected"]
+                    state_prot = m["state_protected"]
+                    
+                    # Check if intent already recorded
+                    has_intent = protection_intent.has_intent(key)
+                    
+                    with ui.card().classes("w-full p-2 mb-2 bg-red-500 bg-opacity-10"):
+                        with ui.row().classes("items-center justify-between"):
+                            with ui.column().classes("gap-1"):
+                                ui.label(key).classes("font-medium text-sm")
+                                with ui.row().classes("items-center gap-2"):
+                                    ui.badge(f"YAML: {'Protected' if yaml_prot else 'Unprotected'}").props(
+                                        f"color={'blue' if yaml_prot else 'grey'} dense"
+                                    )
+                                    ui.icon("sync_problem", size="xs").classes("text-red-500")
+                                    ui.badge(f"State: {'Protected' if state_prot else 'Unprotected'}").props(
+                                        f"color={'blue' if state_prot else 'grey'} dense"
+                                    )
+                                    if has_intent:
+                                        intent = protection_intent.get_intent(key)
+                                        intent_label = "→ Protect" if intent.protected else "→ Unprotect"
+                                        ui.badge(f"Intent: {intent_label}").props("color=amber dense")
+                            
+                            if not has_intent:
+                                with ui.row().classes("items-center gap-1"):
+                                    def make_protect_handler(rkey=key):
+                                        def handler():
+                                            protection_intent.set_intent(
+                                                key=rkey,
+                                                protected=True,
+                                                source="protection_status",
+                                                reason="Resolve mismatch: protect",
+                                            )
+                                            protection_intent.save()
+                                            ui.notify(f"Intent: PROTECT {rkey}", type="positive")
+                                            ui.navigate.reload()
+                                        return handler
+                                    
+                                    def make_unprotect_handler(rkey=key):
+                                        def handler():
+                                            protection_intent.set_intent(
+                                                key=rkey,
+                                                protected=False,
+                                                source="protection_status",
+                                                reason="Resolve mismatch: unprotect",
+                                            )
+                                            protection_intent.save()
+                                            ui.notify(f"Intent: UNPROTECT {rkey}", type="info")
+                                            ui.navigate.reload()
+                                        return handler
+                                    
+                                    ui.button("Protect", icon="shield", on_click=make_protect_handler()).props("dense size=sm color=positive")
+                                    ui.button("Unprotect", icon="lock_open", on_click=make_unprotect_handler()).props("dense size=sm color=warning")
+                            else:
+                                def make_undo_handler(rkey=key):
+                                    def handler():
+                                        if protection_intent.has_intent(rkey):
+                                            del protection_intent._intent[rkey]
+                                            protection_intent.save()
+                                            ui.notify(f"Cleared intent for {rkey}", type="info")
+                                            ui.navigate.reload()
+                                    return handler
+                                
+                                ui.button("Undo", icon="undo", on_click=make_undo_handler()).props("dense size=sm flat")
+                
+                if len(mismatches) > 20:
+                    ui.label(f"... and {len(mismatches) - 20} more").classes("text-xs opacity-60")
+                
+                # Bulk resolution buttons
+                ui.separator().classes("my-2")
+                
+                unresolved = [m for m in mismatches if not protection_intent.has_intent(m["key"])]
+                
+                with ui.row().classes("items-center gap-2"):
+                    def protect_all_unresolved():
+                        for m in unresolved:
+                            protection_intent.set_intent(
+                                key=m["key"],
+                                protected=True,
+                                source="protection_status_bulk",
+                                reason="Bulk resolve: protect all",
+                            )
+                        protection_intent.save()
+                        ui.notify(f"Set intent to PROTECT for {len(unresolved)} resources", type="positive")
+                        ui.navigate.reload()
+                    
+                    def unprotect_all_unresolved():
+                        for m in unresolved:
+                            protection_intent.set_intent(
+                                key=m["key"],
+                                protected=False,
+                                source="protection_status_bulk",
+                                reason="Bulk resolve: unprotect all",
+                            )
+                        protection_intent.save()
+                        ui.notify(f"Set intent to UNPROTECT for {len(unresolved)} resources", type="info")
+                        ui.navigate.reload()
+                    
+                    def follow_yaml():
+                        """Set intents to match what YAML says."""
+                        for m in unresolved:
+                            protection_intent.set_intent(
+                                key=m["key"],
+                                protected=m["yaml_protected"],
+                                source="protection_status_bulk",
+                                reason="Follow YAML configuration",
+                            )
+                        protection_intent.save()
+                        ui.notify(f"Set intents to follow YAML for {len(unresolved)} resources", type="positive")
+                        ui.navigate.reload()
+                    
+                    def follow_state():
+                        """Set intents to match what TF state says."""
+                        for m in unresolved:
+                            protection_intent.set_intent(
+                                key=m["key"],
+                                protected=m["state_protected"],
+                                source="protection_status_bulk",
+                                reason="Follow TF state",
+                            )
+                        protection_intent.save()
+                        ui.notify(f"Set intents to follow TF State for {len(unresolved)} resources", type="positive")
+                        ui.navigate.reload()
+                    
+                    if len(unresolved) > 0:
+                        ui.button(f"Follow YAML ({len(unresolved)})", icon="description", on_click=follow_yaml).props("dense size=sm outline")
+                        ui.button(f"Follow TF State ({len(unresolved)})", icon="cloud", on_click=follow_state).props("dense size=sm outline")
+                        ui.button(f"Protect All ({len(unresolved)})", icon="shield", on_click=protect_all_unresolved).props("dense size=sm color=positive outline")
+                        ui.button(f"Unprotect All ({len(unresolved)})", icon="lock_open", on_click=unprotect_all_unresolved).props("dense size=sm color=warning outline")
+                    else:
+                        ui.label("All mismatches have intents recorded").classes("text-sm text-green-600")
+        
+        # Load State button if not loaded
+        if not has_state:
+            ui.separator().classes("my-4")
+            with ui.row().classes("w-full items-center gap-4"):
+                ui.icon("info", size="sm").classes("text-blue-500")
+                ui.label("Load Terraform state to see current protection status and detect mismatches").classes("text-sm opacity-70")
+                
+                async def load_state_action():
+                    tf_dir = state.deploy.terraform_dir or "deployments/migration"
+                    from pathlib import Path
+                    tf_path = Path(tf_dir)
+                    if not tf_path.is_absolute():
+                        project_root = Path(__file__).parent.parent.parent.resolve()
+                        tf_path = project_root / tf_dir
+                    
+                    state_file = tf_path / "state.json"
+                    if not state_file.exists():
+                        ui.notify(f"State file not found: {state_file}. Run 'terraform show -json > state.json' in your TF directory.", type="negative")
+                        return
+                    
+                    try:
+                        state_json = json.loads(state_file.read_text())
+                        from importer.web.utils.terraform_state_reader import parse_state_json
+                        result = parse_state_json(state_json)
+                        
+                        if result.success:
+                            state.deploy._state_data = {"resources": [r.__dict__ for r in result.resources]}
+                            if save_state:
+                                save_state()
+                            ui.notify(f"Loaded {len(result.resources)} resources from state", type="positive")
+                            ui.navigate.reload()
+                        else:
+                            ui.notify(f"Failed to parse state: {result.error_message}", type="negative")
+                    except Exception as e:
+                        ui.notify(f"Error loading state: {e}", type="negative")
+                
+                ui.button("Load State", icon="cloud_download", on_click=lambda: asyncio.create_task(load_state_action())).props("color=primary")
 
 
 def _create_protection_management_section(
@@ -173,15 +449,65 @@ def _create_protection_management_section(
                 on_click=reset_all_to_yaml,
             ).props("outline color=red").tooltip("Clear all intents, fall back to YAML flags")
             
-            def sync_from_tf_state():
-                """Sync intents from current TF state."""
-                ui.notify("Sync from TF State: Feature coming soon", type="info")
+            async def sync_from_tf_state():
+                """Sync intents from current TF state - set intents to match what's in TF state."""
+                if not state.deploy.has_state_file() or not state.deploy._state_data:
+                    ui.notify("No TF state loaded. Load state first.", type="warning")
+                    return
+                
+                # Confirmation dialog
+                dialog = ui.dialog()
+                confirmed = {"value": False}
+                
+                with dialog:
+                    with ui.card().classes("p-4"):
+                        ui.label("Sync from TF State").classes("text-lg font-semibold mb-2")
+                        ui.label(
+                            "This will create protection intents for all resources to match their current TF state. "
+                            "Resources currently in protected_* blocks will get intent=protect, others will get intent=unprotect."
+                        ).classes("text-sm opacity-70 mb-4")
+                        
+                        with ui.row().classes("gap-2 justify-end"):
+                            ui.button("Cancel", on_click=dialog.close).props("flat")
+                            
+                            def confirm_sync():
+                                confirmed["value"] = True
+                                dialog.close()
+                            
+                            ui.button("Sync", on_click=confirm_sync).props("color=primary")
+                
+                dialog.open()
+                await dialog
+                
+                if not confirmed["value"]:
+                    return
+                
+                # Get resources from state
+                count = 0
+                for resource in state.deploy._state_data.get("resources", []):
+                    tf_name = resource.get("tf_name", "")
+                    resource_index = resource.get("resource_index", "")
+                    element_code = resource.get("element_code", "")
+                    
+                    if element_code in ("PRJ", "REP", "PREP") and resource_index:
+                        is_protected = "protected_" in tf_name
+                        protection_intent.set_intent(
+                            key=resource_index,
+                            protected=is_protected,
+                            source="sync_from_tf_state",
+                            reason=f"Synced from TF state - was in {tf_name}",
+                        )
+                        count += 1
+                
+                protection_intent.save()
+                ui.notify(f"Synced {count} resources from TF state", type="positive")
+                ui.navigate.reload()
             
             ui.button(
                 "Sync from TF State",
                 icon="cloud_download",
-                on_click=sync_from_tf_state,
-            ).props("outline").tooltip("Read TF state and set intents to match current reality")
+                on_click=lambda: asyncio.create_task(sync_from_tf_state()),
+            ).props("outline").tooltip("Create intents to match current TF state")
             
             async def generate_all_pending():
                 """Process all pending-generate intents at once."""
