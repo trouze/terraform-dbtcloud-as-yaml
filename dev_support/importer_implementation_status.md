@@ -1,8 +1,8 @@
 # Importer Implementation Status & Tracking
 
-**Last Updated:** 2026-02-02  
-**Current Importer Version:** 0.16.0  
-**Status:** Phase 3 Complete + Interactive Mode + Web UI + E2E Testing Infrastructure + Destroy Workflow + Target Match Feature + Jobs as Code Generator + dbt-jobs-as-code Validation + SAO Support + Native Integration Detection + Target Credentials Redesign + Resource Protection with Cascade + Destroy Page Enhancements + State-Aware Matching Fix + Match Diagnostics Improvements + AG Grid Standardization + Dialog Width Fix + Protection Mismatch Fix + Adoption Override Data Flow Fix + Debug Logging Standards + View Output Plan Dialog Fix + Independent Protection Architecture
+**Last Updated:** 2026-02-05  
+**Current Importer Version:** 0.16.1  
+**Status:** Phase 3 Complete + Interactive Mode + Web UI + E2E Testing Infrastructure + Destroy Workflow + Target Match Feature + Jobs as Code Generator + dbt-jobs-as-code Validation + SAO Support + Native Integration Detection + Target Credentials Redesign + Resource Protection with Cascade + Destroy Page Enhancements + State-Aware Matching Fix + Match Diagnostics Improvements + AG Grid Standardization + Dialog Width Fix + Protection Mismatch Fix + Adoption Override Data Flow Fix + Debug Logging Standards + View Output Plan Dialog Fix + Independent Protection Architecture + Comprehensive Protection Unit Tests
 
 > **⚠️ IMPORTANT: Keep This Document Updated**
 > 
@@ -1228,6 +1228,17 @@ The following items require API endpoint research before implementation can begi
   - API returns error string instead of expected array, which `jsondecode()` parses as a string
   - Caused "Inconsistent conditional result types" error in `modules/projects_v2/data_sources.tf`
   - Solution: Wrapped decode in `try(tolist(jsondecode(...)), [])` to ensure consistent list type
+
+### 2026-02-05 (v0.16.1)
+- **Version:** Incremented to 0.16.1 (patch release - testing)
+- **Comprehensive Protection System Unit Tests**: Added 162 protection-related unit tests
+  - `test_adoption_yaml_updater.py` (22 tests): Tests for YAML modification functions
+  - `test_protection_edge_cases.py` (26 tests): Key prefix, toggle, error recovery scenarios
+  - `test_protection_state_consistency.py` (14 tests): Cross-system state validation
+  - `test_protection_sync.py` (16 tests): Protection intent to state.map sync
+  - `test_protection_manager.py` (52 tests): Moved blocks, cascade functions, mismatch detection
+  - Enhanced `test_protection_intent.py` (+12 edge case tests)
+- **PRD Organization**: Reorganized PRD documents using Johnny Decimal methodology
 
 ### 2026-02-02 (v0.16.0)
 - **Version:** Incremented to 0.16.0 (minor release - new feature)
