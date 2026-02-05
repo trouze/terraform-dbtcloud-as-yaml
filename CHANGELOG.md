@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.1] - 2026-02-05
+
+### Added
+- **Comprehensive Protection System Unit Tests**: Added 162 protection-related unit tests covering all aspects of the protection system
+  - `test_adoption_yaml_updater.py` (22 tests): Tests for `apply_unprotection_from_set`, `apply_protection_from_set`, and `apply_adoption_overrides` functions
+  - `test_protection_edge_cases.py` (26 tests): Key prefix handling, protection toggle scenarios, error recovery scenarios
+  - `test_protection_state_consistency.py` (14 tests): Cross-system state validation between intent file, state.map, and YAML
+  - `test_protection_sync.py` (16 tests): Tests for syncing protection intents to state.map.protected_resources
+  - `test_protection_manager.py` (52 tests): Tests for moved block generation, cascade functions, mismatch detection
+  - Enhanced `test_protection_intent.py` (+12 edge case tests): Unicode keys, batch operations, concurrent access
+
+### Changed
+- **PRD Organization**: Reorganized PRD documents using Johnny Decimal methodology for better navigation
+
 ## [0.16.0] - 2026-02-02
 
 ### Added
