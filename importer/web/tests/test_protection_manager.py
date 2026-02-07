@@ -53,7 +53,11 @@ def sample_yaml_config():
                 "repository": "my_repo",
                 "environments": [
                     {"key": "dev", "name": "Development", "protected": False},
-                    {"key": "prod", "name": "Production", "protected": True},
+                    {"key": "prod", "name": "Production", "protected": True, "extended_attributes_key": "databricks_config"},
+                ],
+                "extended_attributes": [
+                    {"key": "databricks_config", "protected": True},
+                    {"key": "snowflake_config", "protected": False},
                 ],
                 "jobs": [
                     {"key": "daily_job", "name": "Daily Job", "protected": True},
@@ -119,6 +123,24 @@ def sample_terraform_state():
                     {"index_key": "my_project", "attributes": {"id": "012"}},
                 ],
             },
+            # Extended attributes in unprotected block
+            {
+                "module": "module.dbt_cloud.module.projects_v2[0]",
+                "type": "dbtcloud_extended_attributes",
+                "name": "extended_attrs",
+                "instances": [
+                    {"index_key": "my_project_snowflake_config", "attributes": {"id": "901"}},
+                ],
+            },
+            # Extended attributes in protected block
+            {
+                "module": "module.dbt_cloud.module.projects_v2[0]",
+                "type": "dbtcloud_extended_attributes",
+                "name": "protected_extended_attrs",
+                "instances": [
+                    {"index_key": "my_project_databricks_config", "attributes": {"id": "902"}},
+                ],
+            },
         ],
     }
 
@@ -138,8 +160,8 @@ def mock_hierarchy_index():
     }
     
     index.get_entity = lambda id: entities.get(id)
-    index.get_required_ancestors = lambda id: ["PRJ_001"] if id in ["ENV_001", "ENV_002", "JOB_001"] else []
-    index.get_all_descendants = lambda id: ["ENV_001", "ENV_002", "JOB_001", "REP_001"] if id == "PRJ_001" else []
+    index.get_required_ancestors = lambda id: ["PRJ_001"] if id in ["ENV_001", "ENV_002", "JOB_001", "EXTATTR_001"] else []
+    index.get_all_descendants = lambda id: ["ENV_001", "ENV_002", "JOB_001", "REP_001", "EXTATTR_001"] if id == "PRJ_001" else []
     
     return index
 
@@ -153,6 +175,18 @@ def source_items():
         {"key": "prod", "name": "Production", "element_type_code": "ENV", "element_mapping_id": "ENV_002"},
         {"key": "daily_job", "name": "Daily Job", "element_type_code": "JOB", "element_mapping_id": "JOB_001"},
         {"key": "my_repo", "name": "My Repo", "element_type_code": "REP", "element_mapping_id": "REP_001"},
+    ]
+
+
+@pytest.fixture
+def source_items_with_ext_attr():
+    """Source items including ENV with extended_attributes_key and EXTATTR for linked-resource tests."""
+    return [
+        {"key": "my_project", "name": "My Project", "element_type_code": "PRJ", "element_mapping_id": "PRJ_001"},
+        {"key": "my_project_prod", "name": "Production", "element_type_code": "ENV", "element_mapping_id": "ENV_002",
+         "extended_attributes_key": "databricks_config", "project_key": "my_project"},
+        {"key": "my_project_databricks_config", "name": "databricks_config", "element_type_code": "EXTATTR",
+         "element_mapping_id": "EXTATTR_001", "project_key": "my_project"},
     ]
 
 
@@ -191,6 +225,18 @@ class TestGetResourceAddress:
         """Test address generation for protected repository."""
         address = get_resource_address("REP", "my_repo", protected=True)
         expected = 'module.dbt_cloud.module.projects_v2[0].dbtcloud_repository.protected_repositories["my_repo"]'
+        assert address == expected
+    
+    def test_extended_attributes_protected(self):
+        """Test address generation for protected extended attributes."""
+        address = get_resource_address("EXTATTR", "my_project_databricks_config", protected=True)
+        expected = 'module.dbt_cloud.module.projects_v2[0].dbtcloud_extended_attributes.protected_extended_attrs["my_project_databricks_config"]'
+        assert address == expected
+    
+    def test_extended_attributes_unprotected(self):
+        """Test address generation for unprotected extended attributes."""
+        address = get_resource_address("EXTATTR", "my_project_snowflake_config", protected=False)
+        expected = 'module.dbt_cloud.module.projects_v2[0].dbtcloud_extended_attributes.extended_attrs["my_project_snowflake_config"]'
         assert address == expected
     
     def test_custom_module_name(self):
@@ -243,6 +289,15 @@ class TestExtractProtectedResources:
         assert len(job_resources) == 1
         assert job_resources[0].resource_key == "my_project_daily_job"
         assert job_resources[0].name == "Daily Job"
+    
+    def test_extracts_extended_attributes(self, sample_yaml_config):
+        """Test extraction of protected extended attributes (extract returns only protected)."""
+        resources = extract_protected_resources(sample_yaml_config)
+        ext_resources = [r for r in resources if r.resource_type == "EXTATTR"]
+        assert len(ext_resources) == 1
+        assert ext_resources[0].resource_key == "my_project_databricks_config"
+        assert ext_resources[0].name == "databricks_config"
+        assert ext_resources[0].protected is True
     
     def test_extracts_protected_repositories(self, sample_yaml_config):
         """Test extraction of protected global repositories."""
@@ -625,7 +680,35 @@ class TestCascadeProtection:
         
         parent_keys = [p.key for p in parents]
         assert "my_project" not in parent_keys
-    
+
+    def test_get_resources_to_protect_includes_linked_eat_when_protecting_env(
+        self, mock_hierarchy_index, source_items_with_ext_attr
+    ):
+        """Test that protecting an ENV with extended_attributes_key also includes the linked EXTATTR."""
+        target, parents = get_resources_to_protect(
+            source_key="my_project_prod",
+            hierarchy_index=mock_hierarchy_index,
+            source_items=source_items_with_ext_attr,
+            already_protected=set(),
+        )
+        assert target.resource_type == "ENV"
+        parent_types = {p.resource_type: p.key for p in parents}
+        assert parent_types.get("EXTATTR") == "my_project_databricks_config"
+
+    def test_get_resources_to_protect_includes_linked_env_when_protecting_eat(
+        self, mock_hierarchy_index, source_items_with_ext_attr
+    ):
+        """Test that protecting an EXTATTR also includes ENVs that reference it."""
+        target, parents = get_resources_to_protect(
+            source_key="my_project_databricks_config",
+            hierarchy_index=mock_hierarchy_index,
+            source_items=source_items_with_ext_attr,
+            already_protected=set(),
+        )
+        assert target.resource_type == "EXTATTR"
+        parent_types = {p.resource_type: p.key for p in parents}
+        assert parent_types.get("ENV") == "my_project_prod"
+
     def test_get_resources_to_unprotect_finds_descendants(self, mock_hierarchy_index, source_items):
         """Test that unprotecting a parent finds protected descendants."""
         protected_resources = {"dev", "prod", "daily_job"}

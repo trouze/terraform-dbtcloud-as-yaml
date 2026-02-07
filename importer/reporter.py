@@ -41,6 +41,7 @@ def generate_summary_report(snapshot: AccountSnapshot) -> str:
     # Calculate aggregated counts across all projects
     total_envs = sum(len(p.environments) for p in snapshot.projects)
     total_jobs = sum(len(p.jobs) for p in snapshot.projects)
+    total_ext_attr = sum(len(p.extended_attributes) for p in snapshot.projects)
     total_env_vars = 0
     total_secret_vars = 0
     
@@ -58,6 +59,7 @@ def generate_summary_report(snapshot: AccountSnapshot) -> str:
             "",
             f"- **Total Environments:** {total_envs}",
             f"- **Total Jobs:** {total_jobs}",
+            f"- **Total Extended Attributes (EXTATTR):** {total_ext_attr}",
             f"- **Total Environment Variables:** {total_env_vars}",
             f"- **Total Environment Variable Secrets:** {total_secret_vars}",
             "",
@@ -72,6 +74,7 @@ def generate_summary_report(snapshot: AccountSnapshot) -> str:
     for project in sorted(snapshot.projects, key=lambda p: p.name):
         project_envs = len(project.environments)
         project_jobs = len(project.jobs)
+        project_ext_attr = len(project.extended_attributes)
         
         # Count regular and secret variables
         project_vars = 0
@@ -89,6 +92,7 @@ def generate_summary_report(snapshot: AccountSnapshot) -> str:
                 "",
                 f"- **Environments:** {project_envs}",
                 f"- **Jobs:** {project_jobs}",
+                f"- **Extended Attributes (EXTATTR):** {project_ext_attr}",
                 f"- **Environment Variables:** {project_vars}",
                 f"- **Environment Variable Secrets:** {project_secrets}",
                 "",
@@ -303,6 +307,22 @@ def generate_detailed_report(snapshot: AccountSnapshot) -> str:
             lines.append(f"  - **Repository:** `{project.repository_key}`")
         lines.append("")
 
+        # Extended Attributes (EXTATTR)
+        if project.extended_attributes:
+            lines.append("#### Extended Attributes (EXTATTR)")
+            lines.append("")
+            lines.append("| Key | ID | State | Payload (keys) |")
+            lines.append("|-----|----|-------|-----------------|")
+            for eat in project.extended_attributes:
+                eat_key = getattr(eat, "key", "N/A")
+                eat_id = getattr(eat, "id", "N/A")
+                eat_state = "Active" if getattr(eat, "state", 1) == 1 else "Inactive"
+                ext_attrs = getattr(eat, "extended_attributes", {}) or {}
+                payload_keys = ", ".join(sorted(ext_attrs.keys())) if isinstance(ext_attrs, dict) else "—"
+                lines.append(f"| `{eat_key}` | {eat_id} | {eat_state} | {payload_keys} |")
+            lines.append("")
+            lines.append("")
+
         # Environment variables (split into regular and secrets)
         if project.environment_variables:
             regular_vars = []
@@ -386,7 +406,9 @@ def generate_detailed_report(snapshot: AccountSnapshot) -> str:
                 env_id = getattr(env, "id", "N/A")
                 env_type = getattr(env, "type", "N/A")
                 env_version = getattr(env, "dbt_version", None) or "N/A"
-                lines.append(f"##### (ENV ID: {env_id}) **{env_name}** — Type: `{env_type}` — Version: `{env_version}`")
+                ext_attr_key = getattr(env, "extended_attributes_key", None)
+                ext_attr_part = f" — Extended Attributes: `{ext_attr_key}`" if ext_attr_key else ""
+                lines.append(f"##### (ENV ID: {env_id}) **{env_name}** — Type: `{env_type}` — Version: `{env_version}`{ext_attr_part}")
 
                 # Jobs under this environment
                 env_jobs = [job for job in project.jobs if job.environment_key == env.key]

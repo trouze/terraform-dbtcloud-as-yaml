@@ -34,6 +34,7 @@ TF_TYPE_TO_CODE = {
     "dbtcloud_privatelink_endpoints": "PLE",  # Plural form
     "dbtcloud_project_repository": "PREP",
     "dbtcloud_job_completion_trigger": "JCTG",
+    "dbtcloud_extended_attributes": "EXTATTR",
     # Credential types - all map to CRD
     "dbtcloud_athena_credential": "CRD",
     "dbtcloud_bigquery_credential": "CRD",

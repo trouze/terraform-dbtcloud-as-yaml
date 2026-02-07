@@ -408,6 +408,9 @@ resource "dbtcloud_environment" "environments" {
   deployment_type = try(each.value.env_data.deployment_type, null)
   # Note: target_name is not a valid argument for dbtcloud_environment resource
   use_custom_branch = try(each.value.env_data.custom_branch, null) != null
+
+  # Extended attributes (project-scoped JSON overrides)
+  extended_attributes_id = try(each.value.env_data.extended_attributes_key, null) != null && each.value.env_data.extended_attributes_key != "" ? lookup(local.resolve_extended_attributes_id, "${each.value.project_key}_${each.value.env_data.extended_attributes_key}", null) : null
 }
 
 #############################################
@@ -439,12 +442,17 @@ resource "dbtcloud_environment" "protected_environments" {
     try(dbtcloud_starburst_credential.credentials[each.key].credential_id, null),
     try(dbtcloud_spark_credential.credentials[each.key].credential_id, null),
     try(dbtcloud_teradata_credential.credentials[each.key].credential_id, null),
-  ), null)  # Optional fields
+  ), null)
+
+  # Optional fields
   dbt_version                = try(each.value.env_data.dbt_version, null)
   enable_model_query_history = try(each.value.env_data.enable_model_query_history, null)
   custom_branch              = try(each.value.env_data.custom_branch, null)
   deployment_type            = try(each.value.env_data.deployment_type, null)
   use_custom_branch          = try(each.value.env_data.custom_branch, null) != null
+
+  # Extended attributes (project-scoped JSON overrides)
+  extended_attributes_id = try(each.value.env_data.extended_attributes_key, null) != null && each.value.env_data.extended_attributes_key != "" ? lookup(local.resolve_extended_attributes_id, "${each.value.project_key}_${each.value.env_data.extended_attributes_key}", null) : null
 
   lifecycle {
     prevent_destroy = true

@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 import threading
 import time
+from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import wraps
 from typing import Any, Callable, Dict, Iterable, List, Optional, Protocol, Tuple, TypeVar, runtime_checkable
@@ -20,6 +22,7 @@ from .models import (
     Credential,
     Environment,
     EnvironmentVariable,
+    ExtendedAttributes,
     Globals,
     Group,
     Job,
@@ -141,9 +144,29 @@ def fetch_account_snapshot(
         FetchCancelledException: If the cancel_event is set during fetch.
     """
 
+    _repo_root = Path(__file__).resolve().parent.parent
+    _DEBUG_LOG = _repo_root / ".cursor" / "debug.log"
+    _DEBUG_FALLBACK = _repo_root / "dev_support" / "debug.log"
+    _DEBUG_TMP = Path("/tmp/terraform_dbtcloud_fetch_debug.log")
+
     def _check_cancelled():
         """Check if cancellation was requested and raise if so."""
         if cancel_event and cancel_event.is_set():
+            _payload = json.dumps({
+                "location": "fetcher:_check_cancelled",
+                "message": "raising FetchCancelledException because cancel_event.is_set()",
+                "event_is_set": cancel_event.is_set(),
+                "event_id": id(cancel_event),
+                "timestamp": time.time(),
+            }) + "\n"
+            for _path in (_DEBUG_LOG, _DEBUG_FALLBACK, _DEBUG_TMP):
+                try:
+                    if _path.parent != Path("/tmp"):
+                        _path.parent.mkdir(parents=True, exist_ok=True)
+                    _path.open("a").write(_payload)
+                    break
+                except Exception:
+                    continue
             log.info("Fetch cancelled by user")
             raise FetchCancelledException("Fetch operation was cancelled by the user")
 
@@ -297,6 +320,37 @@ def fetch_account_snapshot(
                 c.close()
         return _fetch_with_retry(f"job_overrides(project={project_id}, job={job_id})", _do_fetch)
 
+    def _fetch_extended_attributes_raw(
+        project_id: int,
+        extended_attributes_id: int,
+    ) -> dict[str, Any] | None:
+        """Fetch a single extended attributes resource by project and id (v3 API)."""
+        def _do_fetch() -> dict[str, Any] | None:
+            if not extended_attributes_id or extended_attributes_id == 0:
+                return None
+            c = DbtCloudClient.from_settings(settings)
+            try:
+                path = f"/projects/{project_id}/extended-attributes/{extended_attributes_id}/"
+                resp = c.get(path, version="v3")
+                data = resp.get("data")
+                if isinstance(data, dict):
+                    return data
+                return None
+            except Exception as exc:
+                log.warning(
+                    "Failed to fetch extended attributes project=%s id=%s: %s",
+                    project_id,
+                    extended_attributes_id,
+                    exc,
+                )
+                return None
+            finally:
+                c.close()
+        return _fetch_with_retry(
+            f"extended_attributes(project={project_id}, id={extended_attributes_id})",
+            _do_fetch,
+        )
+
     def _fetch_credential_details_raw(
         project_id: int,
         credential_id: int,
@@ -351,6 +405,7 @@ def fetch_account_snapshot(
         for item in project_items:
             progress.on_resource_item("projects", slug(item.get("name", "project")))
         progress.on_resource_start("environments")
+        progress.on_resource_start("extended_attributes")
         progress.on_resource_start("credentials")
         progress.on_resource_start("jobs")
         progress.on_resource_start("environment_variables")
@@ -378,6 +433,7 @@ def fetch_account_snapshot(
 
         completed_projects = 0
         env_total = 0
+        extended_attributes_total = 0
         creds_total = 0
         jobs_total = 0
         envvars_total = 0
@@ -516,8 +572,48 @@ def fetch_account_snapshot(
                     )
                     project_id = int(project.id or 0)
 
-                    # Environments
+                    # Extended attributes: collect unique IDs from environments and fetch each
                     env_items = env_raw_by_project.get(project_id, [])
+                    ext_attr_ids = set()
+                    for env_item in env_items:
+                        eid = env_item.get("extended_attributes_id")
+                        if isinstance(eid, int) and eid != 0:
+                            ext_attr_ids.add(eid)
+                    extended_attributes_list: list[ExtendedAttributes] = []
+                    ext_attr_id_to_key: dict[int, str] = {}
+                    for eid in sorted(ext_attr_ids):
+                        raw = _fetch_extended_attributes_raw(project_id, eid)
+                        if not raw:
+                            continue
+                        if progress:
+                            extended_attributes_total += 1
+                            progress.on_resource_item("extended_attributes", f"{project_id}_{eid}")
+                        ext_key = f"ext_attrs_{eid}"
+                        ext_attr_id_to_key[eid] = ext_key
+                        # API may return extended_attributes as JSON string or dict
+                        ext_attrs_val = raw.get("extended_attributes")
+                        if isinstance(ext_attrs_val, str):
+                            try:
+                                ext_attrs_dict = json.loads(ext_attrs_val)
+                            except Exception:
+                                ext_attrs_dict = {}
+                        elif isinstance(ext_attrs_val, dict):
+                            ext_attrs_dict = ext_attrs_val
+                        else:
+                            ext_attrs_dict = {}
+                        extended_attributes_list.append(
+                            ExtendedAttributes(
+                                key=ext_key,
+                                id=raw.get("id") or eid,
+                                project_id=raw.get("project_id") or project_id,
+                                state=raw.get("state", 1),
+                                extended_attributes=ext_attrs_dict,
+                                metadata=raw,
+                            )
+                        )
+                    project.extended_attributes = extended_attributes_list
+
+                    # Environments
                     environments: list[Environment] = []
                     for env_item in env_items:
                         env_key = slug(env_item["name"])
@@ -536,6 +632,9 @@ def fetch_account_snapshot(
                         credential = _build_credential_from_api_data(
                             env_item, credential_details, connection_type
                         )
+
+                        ext_attr_id = env_item.get("extended_attributes_id")
+                        ext_attr_key = ext_attr_id_to_key.get(ext_attr_id) if isinstance(ext_attr_id, int) else None
                         
                         environments.append(
                             Environment(
@@ -546,6 +645,8 @@ def fetch_account_snapshot(
                                 connection_key=connection_key,
                                 connection_id=connection_id,  # Store original API connection ID
                                 credential=credential,
+                                extended_attributes_key=ext_attr_key,
+                                extended_attributes_id=ext_attr_id if isinstance(ext_attr_id, int) and ext_attr_id else None,
                                 dbt_version=env_item.get("dbt_version"),
                                 custom_branch=env_item.get("custom_branch"),
                                 enable_model_query_history=env_item.get("enable_model_query_history"),
@@ -642,6 +743,7 @@ def fetch_account_snapshot(
         # Mark these resources done after all projects completed
         if progress:
             progress.on_resource_done("environments", env_total)
+            progress.on_resource_done("extended_attributes", extended_attributes_total)
             progress.on_resource_done("credentials", creds_total)
             progress.on_resource_done("jobs", jobs_total)
             progress.on_resource_done("environment_variables", envvars_total)

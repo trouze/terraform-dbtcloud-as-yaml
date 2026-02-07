@@ -1,0 +1,18 @@
+---
+description: When debugging or testing, always attempt to use tools including cursor-ide-browser
+alwaysApply: true
+---
+
+# Use Tools When Debugging or Testing
+
+When **debugging** or **testing** (e.g., verifying a fix, reproducing a bug, checking UI behavior, or validating a workflow):
+
+1. **Prefer using tools** instead of only reading code or asking the user to test manually.
+2. **Include cursor-ide-browser when it’s relevant** (web UI, localhost, or any in-browser behavior):
+   - Use `browser_navigate` to open the app (e.g. `http://127.0.0.1:8080/...`).
+   - Use `browser_snapshot` to inspect the page and get element refs.
+   - Use `browser_click`, `browser_type`, `browser_fill`, etc. to interact and verify.
+   - Use short waits and repeated snapshots instead of one long wait.
+3. **Use other tools as needed**: run commands (e.g. tests, dev server), read logs, search the codebase, and clear or read debug log files when in debug mode.
+
+Default to **running checks and using the browser** to confirm behavior instead of only describing steps for the user to perform, unless the task explicitly excludes it (e.g. “don’t run anything”) or the environment doesn’t allow it.

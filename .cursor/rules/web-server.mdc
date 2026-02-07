@@ -1,0 +1,12 @@
+---
+description: Use restart_web.sh to start or restart the importer web server
+alwaysApply: true
+---
+
+# Web server
+
+To start or restart the importer web UI server, use the project script from the repo root:
+
+- **Command:** `./restart_web.sh`
+- **Behavior:** Kills any process on port 8080, then runs `python3 -m importer.web --no-open`.
+- Do not start the server with raw `python -m importer.web` or a different port when testing or developing the web app; use this script so the port and lifecycle are consistent.

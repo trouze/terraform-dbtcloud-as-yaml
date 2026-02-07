@@ -85,6 +85,17 @@ class PrivateLinkEndpoint(ImporterBaseModel):
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
+class ExtendedAttributes(ImporterBaseModel):
+    """Extended attributes for environment-level connection overrides (JSON config)."""
+    key: str
+    id: Optional[int] = None
+    project_id: Optional[int] = None
+    state: Optional[int] = None  # 1=active, 2=inactive
+    extended_attributes: Dict[str, Any] = Field(default_factory=dict)
+    protected: Optional[bool] = False
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
 class Credential(ImporterBaseModel):
     """Credential configuration for an environment.
     
@@ -148,6 +159,8 @@ class Environment(ImporterBaseModel):
     connection_key: str
     connection_id: Optional[int] = None  # Original API connection ID for reliable lookups
     credential: Optional[Credential] = None  # Optional - development envs may not have credentials
+    extended_attributes_key: Optional[str] = None  # Key of linked extended attributes (project-scoped)
+    extended_attributes_id: Optional[int] = None  # Original API extended_attributes ID
     dbt_version: Optional[str] = None
     custom_branch: Optional[str] = None
     enable_model_query_history: Optional[bool] = None
@@ -178,6 +191,7 @@ class Project(ImporterBaseModel):
     name: str
     repository_key: Optional[str] = None
     environments: List[Environment] = Field(default_factory=list)
+    extended_attributes: List[ExtendedAttributes] = Field(default_factory=list)
     environment_variables: List[EnvironmentVariable] = Field(default_factory=list)
     jobs: List[Job] = Field(default_factory=list)
     metadata: Dict[str, Any] = Field(default_factory=dict)

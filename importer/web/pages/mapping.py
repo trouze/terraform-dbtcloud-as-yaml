@@ -39,6 +39,7 @@ RESOURCE_TYPES = {
     "ENV": {"name": "Environment", "code": "ENV", "icon": "layers", "color": "#06B6D4"},
     "VAR": {"name": "Env Variable", "code": "ENVVAR", "icon": "code", "color": "#A855F7"},
     "JOB": {"name": "Job", "code": "JOB", "icon": "schedule", "color": "#EF4444"},
+    "EXTATTR": {"name": "Extended Attributes", "code": "EXTATTR", "icon": "tune", "color": "#7C3AED"},
 }
 
 
@@ -308,6 +309,9 @@ def _create_selection_panel(
                     
                     descendants = hierarchy_ref["index"].get_all_descendants(mapping_id)
                     new_selections.update(descendants)
+                    # ENV↔EXTATTR: also select linked extended attributes / environments
+                    linked = hierarchy_ref["index"].get_linked_entities(mapping_id)
+                    new_selections.update(linked)
                 
                 if new_selections:
                     selection_manager.select_all(new_selections)
@@ -336,6 +340,9 @@ def _create_selection_panel(
                         ancestor = hierarchy.get_entity(ancestor_id)
                         if ancestor and ancestor.get("element_type_code") != "ACC":
                             new_selections.add(ancestor_id)
+                    # ENV↔EXTATTR: also select linked extended attributes / environments
+                    linked = hierarchy.get_linked_entities(mapping_id)
+                    new_selections.update(linked)
                 
                 # Only add parents that aren't already selected
                 new_selections -= selected_ids
@@ -520,6 +527,7 @@ TYPE_CODE_MAP = {
     "ACC": "ACCNT", "CON": "CONN", "REP": "REPO", "TOK": "SRVTKN",
     "GRP": "GRP", "NOT": "NOTIFY", "WEB": "WBHK", "PLE": "PRVLNK",
     "PRJ": "PRJCT", "ENV": "ENV", "VAR": "ENVVAR", "JOB": "JOB",
+    "EXTATTR": "EXTATTR",
 }
 
 
@@ -894,6 +902,7 @@ def _create_action_panel(
                 "ENV": ("environments", "Environments"),
                 "JOB": ("jobs", "Jobs"),
                 "VAR": ("environment_variables", "Env Variables"),
+                "EXTATTR": ("extended_attributes", "Extended Attributes"),
             }
             
             def create_filter_toggle(type_code: str, filter_key: str, label: str, count: int):
@@ -1246,6 +1255,7 @@ def _get_effective_selection(
         "GRP": "groups", "NOT": "notifications", "WEB": "webhooks",
         "PLE": "privatelink_endpoints", "PRJ": "projects", "ENV": "environments",
         "VAR": "environment_variables", "JOB": "jobs",
+        "EXTATTR": "extended_attributes",
     }
     
     effective_ids = set()
@@ -1551,6 +1561,7 @@ def _do_normalize(
         "ENV": "environments",
         "JOB": "jobs",
         "VAR": "environment_variables",
+        "EXTATTR": "extended_attributes",
     }
     
     # Create mapping config with exclusions

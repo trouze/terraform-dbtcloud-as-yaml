@@ -1,8 +1,8 @@
 # Importer Implementation Status & Tracking
 
-**Last Updated:** 2026-02-05  
-**Current Importer Version:** 0.16.2  
-**Status:** Phase 3 Complete + Interactive Mode + Web UI + E2E Testing Infrastructure + Destroy Workflow + Target Match Feature + Jobs as Code Generator + dbt-jobs-as-code Validation + SAO Support + Native Integration Detection + Target Credentials Redesign + Resource Protection with Cascade + Destroy Page Enhancements + State-Aware Matching Fix + Match Diagnostics Improvements + AG Grid Standardization + Dialog Width Fix + Protection Mismatch Fix + Adoption Override Data Flow Fix + Debug Logging Standards + View Output Plan Dialog Fix + Independent Protection Architecture + Comprehensive Protection Unit Tests + Repository Key Prefix Matching Fix
+**Last Updated:** 2026-01-27  
+**Current Importer Version:** 0.17.0  
+**Status:** Phase 3 Complete + Interactive Mode + Web UI + E2E Testing Infrastructure + Destroy Workflow + Target Match Feature + Jobs as Code Generator + dbt-jobs-as-code Validation + SAO Support + Native Integration Detection + Target Credentials Redesign + Resource Protection with Cascade + Destroy Page Enhancements + State-Aware Matching Fix + Match Diagnostics Improvements + AG Grid Standardization + Dialog Width Fix + Protection Mismatch Fix + Adoption Override Data Flow Fix + Debug Logging Standards + View Output Plan Dialog Fix + Independent Protection Architecture + Comprehensive Protection Unit Tests + Repository Key Prefix Matching Fix + Extended Attributes (EXTATTR) Support
 
 > **⚠️ IMPORTANT: Keep This Document Updated**
 > 
@@ -420,9 +420,9 @@ Before starting end-to-end testing with a real account, verify:
 ## Version Tracking
 
 ### Importer Version
-- **Current:** 0.15.1
+- **Current:** 0.17.0
 - **File:** `importer/VERSION`
-- **Last Updated:** 2026-01-29
+- **Last Updated:** 2026-01-27
 
 ### Terraform Module Version
 - **Current:** Supports v1 and v2 schemas
@@ -666,6 +666,28 @@ The following items require API endpoint research before implementation can begi
 ---
 
 ## Change Log
+
+### 2026-01-27 (v0.17.0)
+- **Version:** Incremented to 0.17.0 (minor release - Extended Attributes Support)
+- **Extended Attributes (EXTATTR) Full Support**: End-to-end support for `dbtcloud_extended_attributes` resource
+  - Data model: `ExtendedAttributes` Pydantic model with `extended_attributes` payload dict
+  - Fetcher: Project-level extended attributes fetched and included in account snapshots
+  - Element IDs: EXTATTR entities registered with project context and unique keys
+  - Reporter: EXTATTR counts in summary and detailed reports
+  - Normalizer: EXTATTR normalization to Terraform YAML format
+  - Schema: v2.json updated with `extended_attributes` definitions
+  - Terraform module: `extended_attributes.tf` resource generation
+- **UI Coverage Across All Screens**:
+  - Fetch Source/Target: EXTATTR progress tracking and completion summary counts
+  - Explore Source/Target: EXTATTR entities in entity grid with type filter, detail popup showing attribute payload values
+  - Select Source (scope.py): EXTATTR in TYPE_CODE_MAP
+  - Match Existing (mapping.py): EXTATTR in RESOURCE_TYPES, TYPE_CODE_MAP, resource_filter_map, type_to_filter
+  - Deploy: EXTATTR in type_labels for protected resources, confirmed mappings, and destroy warnings
+  - Protection Manager: EXTATTR in TYPE_LABELS, format_protection_warnings, detect_protection_mismatches, generate_repair_moved_blocks, format_mismatches_for_display
+  - Entity Detail Popup: New "Attribute Payload" section showing actual connection override key-value pairs
+  - Dialog title fallback: Uses `key` when `name` is absent (benefits EXTATTR and similar keyless entities)
+- **PRD Updates**: Created PRD 41.02 (Adding New Terraform Object Support) with comprehensive checklist, debugging standards, abbreviation standards, and file touchpoint reference
+- **Abbreviation Standardization**: Renamed all `EAT` references to `EXTATTR` across codebase
 
 ### 2026-01-30 (v0.15.9)
 - **Version:** Incremented to 0.15.9 (patch release - Debug Logging Standards)

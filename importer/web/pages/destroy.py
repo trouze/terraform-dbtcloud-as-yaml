@@ -918,6 +918,7 @@ def _create_destroy_protection_panel(
         "JOB": "Job",
         "REP": "Repository",
         "CON": "Connection",
+        "EXTATTR": "Extended Attributes",
     }
     
     # Terraform address mapping for protected resources
@@ -927,6 +928,7 @@ def _create_destroy_protection_panel(
         "JOB": "dbtcloud_job",
         "REP": "dbtcloud_repository",
         "CON": "dbtcloud_connection",
+        "EXTATTR": "dbtcloud_extended_attributes",
     }
     
     # Build rows for the grid with _selected column for checkbox state
@@ -1202,6 +1204,7 @@ def _create_destroy_protection_panel(
                         "PREP": ("dbtcloud_project_repository", "project_repositories", "protected_project_repositories"),
                         "ENV": ("dbtcloud_environment", "environments", "protected_environments"),
                         "JOB": ("dbtcloud_job", "jobs", "protected_jobs"),
+                        "EXTATTR": ("dbtcloud_extended_attributes", "extended_attrs", "protected_extended_attrs"),
                         "GC": ("dbtcloud_global_connection", "global_connections", "protected_global_connections"),
                     }
                     

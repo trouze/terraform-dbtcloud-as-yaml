@@ -9,6 +9,7 @@ from ..models import (
     AccountSnapshot,
     Connection,
     Credential,
+    ExtendedAttributes,
     Group,
     Notification,
     PrivateLinkEndpoint,
@@ -864,6 +865,10 @@ def _normalize_projects(
         if config.is_resource_included("environments"):
             project_data["environments"] = _normalize_environments(project, config, context)
         
+        # Normalize extended attributes
+        if config.is_resource_included("extended_attributes"):
+            project_data["extended_attributes"] = _normalize_extended_attributes(project, config, context)
+        
         # Normalize jobs
         if config.is_resource_included("jobs"):
             project_data["jobs"] = _normalize_jobs(project, config, context)
@@ -937,9 +942,36 @@ def _normalize_environments(
         env_data["custom_branch"] = env.custom_branch or None
         env_data["enable_model_query_history"] = env.enable_model_query_history
         env_data["deployment_type"] = env.deployment_type or None
+        env_data["extended_attributes_key"] = getattr(env, "extended_attributes_key", None) or None
         
         result.append(env_data)
     
+    return result
+
+
+def _normalize_extended_attributes(
+    project: Project,
+    config: MappingConfig,
+    context: NormalizationContext,
+) -> List[Dict[str, Any]]:
+    """Normalize extended attributes for a project."""
+    result = []
+    exclude_keys = config.get_exclude_keys("extended_attributes")
+    for ext in getattr(project, "extended_attributes", []) or []:
+        if ext.key in exclude_keys:
+            context.add_exclusion("extended_attributes", ext.key, "Excluded by key filter", str(ext.id) if ext.id else None)
+            continue
+        item: Dict[str, Any] = {
+            "key": ext.key,
+            "extended_attributes": ext.extended_attributes,
+        }
+        if ext.id is not None:
+            item["id"] = ext.id
+        if ext.state is not None and ext.state != 1:
+            item["state"] = ext.state
+        if getattr(ext, "protected", False):
+            item["protected"] = True
+        result.append(item)
     return result
 
 

@@ -94,6 +94,34 @@ def apply_element_ids(payload: Dict[str, Any], start_number: int = 1001) -> List
         if project.get("key"):
             project_key_to_mapping[project.get("key")] = project_mapping_id
 
+        # Extended attributes (EXTATTR) - project-scoped
+        # #region agent log
+        _eat_list = project.get("extended_attributes", [])
+        if _eat_list or project.get("id") == 346697:
+            try:
+                import json, time
+                _log_path = "/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug.log"
+                with open(_log_path, "a", encoding="utf-8") as _f:
+                    _f.write(json.dumps({"timestamp": int(time.time() * 1000), "location": "element_ids.apply_element_ids", "message": "project extended_attributes", "data": {"project_id": project.get("id"), "project_key": project.get("key"), "extended_attributes_count": len(_eat_list), "extended_attributes_keys": [x.get("key") or x.get("id") for x in _eat_list]}, "hypothesisId": "B"}) + "\n")
+            except Exception:
+                pass
+        # #endregion
+        for eat in _eat_list:
+            eat_key = eat.get("key") or f"ext_attrs_{eat.get('id', '')}"
+            _register(
+                records,
+                eat,
+                "EXTATTR",
+                name=eat_key,
+                identifier=eat.get("id"),
+                extra={
+                    "project_key": project.get("key"),
+                    "project_name": project_name,
+                    "parent_project_id": project_mapping_id,
+                    "extended_attributes_key": eat_key,
+                },
+            )
+
         # Environment variables
         for var in project.get("environment_variables", []):
             variant = "secret" if str(var.get("name", "")).startswith("DBT_ENV_SECRET") else "regular"

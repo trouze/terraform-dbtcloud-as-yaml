@@ -10,6 +10,7 @@ ENTITY_PARENT_TYPES = {
     "CRD": ["ENV"],         # Credential belongs to Environment
     "ENV": ["PRJ"],         # Environment belongs to Project
     "VAR": ["PRJ"],         # Environment Variable belongs to Project
+    "EXTATTR": ["PRJ"],     # Extended Attributes belong to Project
     "PRJ": ["ACC"],         # Project belongs to Account
     # Connections can be children of environments (via connection_id) AND account
     "CON": ["ENV", "ACC"],  # Connection used by Environment, also account-level
@@ -39,6 +40,7 @@ TYPE_DEPTH = {
     "PRJ": 1,  # Projects at depth 1
     "ENV": 2,  # Environments at depth 2
     "VAR": 2,  # Env Variables at depth 2
+    "EXTATTR": 2,  # Extended Attributes at depth 2 (project-scoped)
     "CRD": 3,  # Credentials at depth 3 (under environments)
     "JOB": 3,  # Jobs at depth 3
 }
@@ -56,6 +58,7 @@ TYPE_SORT_ORDER = {
     "PRJ": 20,
     "ENV": 30,
     "VAR": 31,
+    "EXTATTR": 25,  # Extended Attributes sort between project and environment
     "CRD": 35,  # Credentials sort after environments but before jobs
     "JOB": 40,
 }
@@ -293,6 +296,51 @@ class HierarchyIndex:
                 result.add(parent_id)
                 to_visit.extend(self._parents.get(parent_id, set()))
         
+        return result
+    
+    def get_linked_entities(self, mapping_id: str) -> Set[str]:
+        """Get linked entity mapping IDs for ENV↔EXTATTR (same project).
+        
+        When an ENV references extended attributes via extended_attributes_key,
+        protecting/selecting one should include the other.
+        
+        Args:
+            mapping_id: Entity mapping ID (ENV or EXTATTR)
+            
+        Returns:
+            Set of linked mapping IDs (EXTATTR for ENV; ENVs that reference this EXTATTR for EXTATTR)
+        """
+        result: Set[str] = set()
+        entity = self._entities.get(mapping_id)
+        if not entity:
+            return result
+        entity_type = entity.get("element_type_code", "")
+        entity_key = entity.get("key") or mapping_id
+
+        if entity_type == "ENV":
+            ext_key = entity.get("extended_attributes_key") or ""
+            project_key = entity.get("project_key") or (entity_key.rsplit("_", 1)[0] if "_" in entity_key else "")
+            if not ext_key or not project_key:
+                return result
+            eat_composite = f"{project_key}_{ext_key}"
+            for eid, e in self._entities.items():
+                if e.get("element_type_code") != "EXTATTR":
+                    continue
+                if (e.get("key") or eid) == eat_composite:
+                    result.add(eid)
+                    break
+        elif entity_type == "EXTATTR":
+            project_key = entity.get("project_key") or (entity_key.rsplit("_", 1)[0] if "_" in entity_key else "")
+            ext_key = entity.get("name") or (entity_key.rsplit("_", 1)[1] if "_" in entity_key else "")
+            if not project_key or not ext_key:
+                return result
+            for eid, e in self._entities.items():
+                if e.get("element_type_code") != "ENV":
+                    continue
+                e_project = e.get("project_key") or (e.get("key") or "").rsplit("_", 1)[0] if "_" in (e.get("key") or "") else ""
+                if e_project != project_key or (e.get("extended_attributes_key") or "") != ext_key:
+                    continue
+                result.add(eid)
         return result
     
     def get_entities_by_type(self, entity_type: str) -> Set[str]:
