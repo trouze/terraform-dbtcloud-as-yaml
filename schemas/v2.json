@@ -222,6 +222,36 @@
       "required": ["token_name", "schema"],
       "additionalProperties": false
     },
+    "extendedAttributes": {
+      "type": "object",
+      "description": "Extended attributes for environment-level connection overrides (flexible JSON config).",
+      "properties": {
+        "key": { "$ref": "#/$defs/slug" },
+        "id": {
+          "type": ["integer", "null"],
+          "description": "Optional extended attributes ID for reference.",
+          "minimum": 1
+        },
+        "state": {
+          "type": ["integer", "null"],
+          "description": "State: 1 = active, 2 = inactive.",
+          "enum": [1, 2, null],
+          "default": 1
+        },
+        "protected": {
+          "type": ["boolean", "null"],
+          "description": "If true, Terraform will prevent this resource from being destroyed (lifecycle.prevent_destroy = true)",
+          "default": false
+        },
+        "extended_attributes": {
+          "type": "object",
+          "description": "Arbitrary JSON key-value pairs for connection overrides (e.g., catalog, schema).",
+          "additionalProperties": true
+        }
+      },
+      "required": ["key", "extended_attributes"],
+      "additionalProperties": false
+    },
     "environment": {
       "type": "object",
       "description": "Environment configuration referenced by jobs.",
@@ -270,6 +300,14 @@
         "target_name": {
           "type": ["string", "null"],
           "description": "Override default target name",
+          "default": null
+        },
+        "extended_attributes_key": {
+          "oneOf": [
+            { "$ref": "#/$defs/slug" },
+            { "type": "null" }
+          ],
+          "description": "Key of extended attributes (defined in project.extended_attributes) to use for this environment.",
           "default": null
         },
         "id": {
@@ -521,6 +559,12 @@
           "type": "array",
           "minItems": 1,
           "items": { "$ref": "#/$defs/environment" }
+        },
+        "extended_attributes": {
+          "type": "array",
+          "description": "Extended attributes for environment-level connection overrides (referenced by environment.extended_attributes_key).",
+          "items": { "$ref": "#/$defs/extendedAttributes" },
+          "default": []
         },
         "environment_variables": {
           "type": "array",

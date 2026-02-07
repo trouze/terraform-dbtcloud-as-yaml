@@ -6,6 +6,7 @@ from typing import Callable, Optional
 
 from nicegui import ui
 
+from importer.element_ids import apply_element_ids
 from importer.web.state import AppState, WorkflowStep
 
 # Target accent color
@@ -124,8 +125,18 @@ def _load_file(filepath: Optional[str]) -> str:
 
 
 def _load_report_items(state: AppState) -> list:
-    """Load report items from the JSON file."""
-    # First, try to use the path from state
+    """Load report items, preferring derivation from account JSON so extended_attributes (EXTATTR) are included."""
+    # Prefer: derive from account JSON so EXTATTR and other project-level items stay in sync
+    if state.target_fetch.last_fetch_file:
+        json_path = Path(state.target_fetch.last_fetch_file)
+        if json_path.exists():
+            try:
+                payload = json.loads(json_path.read_text(encoding="utf-8"))
+                if payload and payload.get("projects"):
+                    return apply_element_ids(payload)
+            except (json.JSONDecodeError, TypeError):
+                pass
+    # Fallback: load pre-written report_items file
     if state.target_fetch.last_report_items_file:
         report_items_path = Path(state.target_fetch.last_report_items_file)
         if report_items_path.exists():
@@ -133,15 +144,13 @@ def _load_report_items(state: AppState) -> list:
                 return json.loads(report_items_path.read_text(encoding="utf-8"))
             except json.JSONDecodeError:
                 pass
-    
     # Fallback: try to find report_items file based on the summary file path
     if state.target_fetch.last_summary_file:
         summary_path = Path(state.target_fetch.last_summary_file)
-        # Convert summary filename to report_items filename
         parts = summary_path.stem.split("__")
         if len(parts) >= 3:
-            prefix = parts[0]  # account_XXX_run_YYY
-            timestamp = parts[-1]  # 20260112_...
+            prefix = parts[0]
+            timestamp = parts[-1]
             report_items_name = f"{prefix}__report_items__{timestamp}.json"
             report_items_path = summary_path.parent / report_items_name
             if report_items_path.exists():
@@ -149,20 +158,32 @@ def _load_report_items(state: AppState) -> list:
                     return json.loads(report_items_path.read_text(encoding="utf-8"))
                 except json.JSONDecodeError:
                     pass
-    
+    # Fallback: derive from JSON in same dir as summary
+    if state.target_fetch.last_summary_file:
+        summary_path = Path(state.target_fetch.last_summary_file)
+        parts = summary_path.stem.split("__")
+        if len(parts) >= 3:
+            prefix = parts[0]
+            timestamp = parts[-1]
+            json_name = f"{prefix}__json__{timestamp}.json"
+            json_path = summary_path.parent / json_name
+            if json_path.exists():
+                try:
+                    payload = json.loads(json_path.read_text(encoding="utf-8"))
+                    if payload and payload.get("projects"):
+                        return apply_element_ids(payload)
+                except (json.JSONDecodeError, TypeError):
+                    pass
     # Fallback: search in output directory
     if state.target_fetch.output_dir:
         output_dir = Path(state.target_fetch.output_dir)
         if output_dir.exists():
-            # Find most recent report_items file
-            pattern = "*__report_items__*.json"
-            files = sorted(output_dir.glob(pattern), reverse=True)
-            if files:
+            report_items_files = sorted(output_dir.glob("*__report_items__*.json"), reverse=True)
+            if report_items_files:
                 try:
-                    return json.loads(files[0].read_text(encoding="utf-8"))
+                    return json.loads(report_items_files[0].read_text(encoding="utf-8"))
                 except json.JSONDecodeError:
                     pass
-    
     return []
 
 

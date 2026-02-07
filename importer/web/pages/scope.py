@@ -7,6 +7,7 @@ from typing import Callable, Optional
 
 from nicegui import ui
 
+from importer.element_ids import apply_element_ids
 from importer.web.state import AppState, WorkflowStep, STEP_NAMES
 from importer.web.components.stepper import DBT_ORANGE
 from importer.web.components.selection_manager import SelectionManager
@@ -25,6 +26,7 @@ RESOURCE_TYPES = {
     "PLE": {"name": "PrivateLink", "code": "PRVLNK", "icon": "lock", "color": "#14B8A6"},
     "PRJ": {"name": "Project", "code": "PRJCT", "icon": "folder", "color": "#F59E0B"},
     "ENV": {"name": "Environment", "code": "ENV", "icon": "layers", "color": "#06B6D4"},
+    "EXTATTR": {"name": "Extended Attributes", "code": "EXTATTR", "icon": "tune", "color": "#0EA5E9"},
     "CRD": {"name": "Credential", "code": "CRED", "icon": "vpn_key", "color": "#78716C"},
     "VAR": {"name": "Env Variable", "code": "ENVVAR", "icon": "code", "color": "#A855F7"},
     "JOB": {"name": "Job", "code": "JOB", "icon": "schedule", "color": "#EF4444"},
@@ -143,17 +145,94 @@ def _create_no_data_message(on_step_change: Callable[[WorkflowStep], None]) -> N
 
 
 def _load_report_items(state: AppState) -> list:
-    """Load report items from the last fetch."""
-    if not state.fetch.last_report_items_file:
-        return []
-    
+    """Load report items, preferring derivation from account JSON so extended_attributes (EXTATTR) are included."""
+    # #region agent log
+    import time as _time
+    _debug_log = "/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug.log"
     try:
-        path = Path(state.fetch.last_report_items_file)
-        if path.exists():
-            return json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, IOError):
+        with open(_debug_log, "a", encoding="utf-8") as _f:
+            _f.write(json.dumps({"timestamp": int(_time.time() * 1000), "location": "scope._load_report_items.entry", "message": "state", "data": {"last_fetch_file": state.fetch.last_fetch_file, "last_report_items_file": state.fetch.last_report_items_file, "last_summary_file": state.fetch.last_summary_file}, "hypothesisId": "A"}) + "\n")
+    except Exception:
         pass
-    
+    # #endregion
+    # Prefer: derive from account JSON so EXTATTR and other project-level items stay in sync
+    if state.fetch.last_fetch_file:
+        json_path = Path(state.fetch.last_fetch_file)
+        if json_path.exists():
+            try:
+                payload = json.loads(json_path.read_text(encoding="utf-8"))
+                if payload and payload.get("projects"):
+                    items = apply_element_ids(payload)
+                    # #region agent log
+                    try:
+                        extattr_count = sum(1 for r in items if r.get("element_type_code") == "EXTATTR")
+                        with open(_debug_log, "a", encoding="utf-8") as _f:
+                            _f.write(json.dumps({"timestamp": int(_time.time() * 1000), "location": "scope._load_report_items.return", "message": "derived from last_fetch_file", "data": {"total": len(items), "EXTATTR": extattr_count}, "hypothesisId": "A"}) + "\n")
+                    except Exception:
+                        pass
+                    # #endregion
+                    return items
+            except (json.JSONDecodeError, TypeError, IOError):
+                pass
+    # Fallback: load pre-written report_items file
+    if state.fetch.last_report_items_file:
+        try:
+            path = Path(state.fetch.last_report_items_file)
+            if path.exists():
+                items = json.loads(path.read_text(encoding="utf-8"))
+                # #region agent log
+                try:
+                    extattr_count = sum(1 for r in items if r.get("element_type_code") == "EXTATTR")
+                    with open(_debug_log, "a", encoding="utf-8") as _f:
+                        _f.write(json.dumps({"timestamp": int(_time.time() * 1000), "location": "scope._load_report_items.return", "message": "from report_items file", "data": {"total": len(items), "EXTATTR": extattr_count}, "hypothesisId": "A"}) + "\n")
+                except Exception:
+                    pass
+                # #endregion
+                return items
+        except (json.JSONDecodeError, IOError):
+            pass
+    # Fallback: derive from JSON in same dir as summary (e.g. when last_fetch_file not in state)
+    if state.fetch.last_summary_file:
+        summary_path = Path(state.fetch.last_summary_file)
+        parts = summary_path.stem.split("__")
+        if len(parts) >= 3:
+            prefix, timestamp = parts[0], parts[-1]
+            for name in (f"{prefix}__json__{timestamp}.json", f"{prefix}__report_items__{timestamp}.json"):
+                candidate = summary_path.parent / name
+                if not candidate.exists():
+                    continue
+                try:
+                    data = json.loads(candidate.read_text(encoding="utf-8"))
+                    if "__json__" in name and isinstance(data, dict) and data.get("projects"):
+                        items = apply_element_ids(data)
+                        # #region agent log
+                        try:
+                            extattr_count = sum(1 for r in items if r.get("element_type_code") == "EXTATTR")
+                            with open(_debug_log, "a", encoding="utf-8") as _f:
+                                _f.write(json.dumps({"timestamp": int(_time.time() * 1000), "location": "scope._load_report_items.return", "message": "derived from summary dir JSON", "data": {"total": len(items), "EXTATTR": extattr_count}, "hypothesisId": "A"}) + "\n")
+                        except Exception:
+                            pass
+                        # #endregion
+                        return items
+                    if "__report_items__" in name and isinstance(data, list):
+                        # #region agent log
+                        try:
+                            extattr_count = sum(1 for r in data if r.get("element_type_code") == "EXTATTR")
+                            with open(_debug_log, "a", encoding="utf-8") as _f:
+                                _f.write(json.dumps({"timestamp": int(_time.time() * 1000), "location": "scope._load_report_items.return", "message": "from summary dir report_items file", "data": {"total": len(data), "EXTATTR": extattr_count}, "hypothesisId": "A"}) + "\n")
+                        except Exception:
+                            pass
+                        # #endregion
+                        return data
+                except (json.JSONDecodeError, TypeError, IOError):
+                    pass
+    # #region agent log
+    try:
+        with open(_debug_log, "a", encoding="utf-8") as _f:
+            _f.write(json.dumps({"timestamp": int(_time.time() * 1000), "location": "scope._load_report_items.return", "message": "empty", "data": {}, "hypothesisId": "A"}) + "\n")
+    except Exception:
+        pass
+    # #endregion
     return []
 
 
@@ -295,6 +374,9 @@ def _create_selection_panel(
                     
                     descendants = hierarchy_ref["index"].get_all_descendants(mapping_id)
                     new_selections.update(descendants)
+                    # ENV↔EXTATTR: also select linked extended attributes / environments
+                    linked = hierarchy_ref["index"].get_linked_entities(mapping_id)
+                    new_selections.update(linked)
                 
                 if new_selections:
                     selection_manager.select_all(new_selections)
@@ -323,6 +405,9 @@ def _create_selection_panel(
                         ancestor = hierarchy.get_entity(ancestor_id)
                         if ancestor and ancestor.get("element_type_code") != "ACC":
                             new_selections.add(ancestor_id)
+                    # ENV↔EXTATTR: also select linked extended attributes / environments
+                    linked = hierarchy.get_linked_entities(mapping_id)
+                    new_selections.update(linked)
                 
                 # Only add parents that aren't already selected
                 new_selections -= selected_ids
@@ -507,6 +592,7 @@ TYPE_CODE_MAP = {
     "ACC": "ACCNT", "CON": "CONN", "REP": "REPO", "TOK": "SRVTKN",
     "GRP": "GRP", "NOT": "NOTIFY", "WEB": "WBHK", "PLE": "PRVLNK",
     "PRJ": "PRJCT", "ENV": "ENV", "CRD": "CRED", "VAR": "ENVVAR", "JOB": "JOB",
+    "EXTATTR": "EXTATTR",
 }
 
 
@@ -662,9 +748,11 @@ def _create_selection_grid(
                         entity = hierarchy_ref["index"].get_entity(mapping_id)
                         if not entity or entity.get("element_type_code") != "ACC":
                             descendants = hierarchy_ref["index"].get_all_descendants(mapping_id)
-                            if descendants:
-                                selection_manager.select_all(descendants, auto_save=False)
-                                cascade_count = len(descendants)
+                            linked = hierarchy_ref["index"].get_linked_entities(mapping_id)
+                            to_select = descendants | linked
+                            if to_select:
+                                selection_manager.select_all(to_select, auto_save=False)
+                                cascade_count = len(to_select)
                                 selection_manager.save()  # Save once after all updates
                     
                     # Update count display
@@ -879,6 +967,7 @@ def _create_action_panel(
                 "PLE": ("privatelink_endpoints", "PrivateLink Endpoints"),
                 "PRJ": ("projects", "Projects"),
                 "ENV": ("environments", "Environments"),
+                "EXTATTR": ("extended_attributes", "Extended Attributes"),
                 "JOB": ("jobs", "Jobs"),
                 "VAR": ("environment_variables", "Env Variables"),
             }
@@ -1232,7 +1321,7 @@ def _get_effective_selection(
         "CON": "connections", "REP": "repositories", "TOK": "service_tokens",
         "GRP": "groups", "NOT": "notifications", "WEB": "webhooks",
         "PLE": "privatelink_endpoints", "PRJ": "projects", "ENV": "environments",
-        "VAR": "environment_variables", "JOB": "jobs",
+        "EXTATTR": "extended_attributes", "VAR": "environment_variables", "JOB": "jobs",
     }
     
     effective_ids = set()
@@ -1536,6 +1625,7 @@ def _do_normalize(
         "PLE": "privatelink_endpoints",
         "PRJ": "projects",
         "ENV": "environments",
+        "EXTATTR": "extended_attributes",
         "JOB": "jobs",
         "VAR": "environment_variables",
     }

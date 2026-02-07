@@ -31,6 +31,7 @@ RESOURCE_TYPE_MAP = {
     "JOB": ("dbtcloud_job", "jobs", "protected_jobs"),
     "REP": ("dbtcloud_repository", "repositories", "protected_repositories"),
     "PREP": ("dbtcloud_project_repository", "project_repositories", "protected_project_repositories"),
+    "EXTATTR": ("dbtcloud_extended_attributes", "extended_attrs", "protected_extended_attrs"),
 }
 
 
@@ -158,7 +159,19 @@ def extract_protected_resources(yaml_config: dict) -> list[ProtectedResource]:
                     name=job.get("name", job_key),
                     protected=True,
                 ))
-    
+
+        # Check extended attributes
+        for ext in project.get("extended_attributes", []):
+            ext_key = ext.get("key", "")
+            composite_key = f"{project_key}_{ext_key}"
+            if ext.get("protected", False):
+                protected.append(ProtectedResource(
+                    resource_key=composite_key,
+                    resource_type="EXTATTR",
+                    name=ext_key,
+                    protected=True,
+                ))
+
     # Check global repositories
     globals_config = yaml_config.get("globals", {})
     for repo in globals_config.get("repositories", []):
@@ -212,7 +225,12 @@ def detect_protection_changes(
                 job_key = job.get("key", "")
                 composite_key = f"{project_key}_{job_key}"
                 result[("JOB", composite_key)] = (job.get("name", job_key), job.get("protected", False))
-        
+
+            for ext in project.get("extended_attributes", []):
+                ext_key = ext.get("key", "")
+                composite_key = f"{project_key}_{ext_key}"
+                result[("EXTATTR", composite_key)] = (ext_key, ext.get("protected", False))
+
         globals_config = yaml_config.get("globals", {})
         for repo in globals_config.get("repositories", []):
             repo_key = repo.get("key", "")
@@ -281,9 +299,10 @@ def generate_moved_blocks(
         action_desc = "is now protected" if change.direction == "protect" else "is no longer protected"
         resource_type_name = {
             "PRJ": "Project",
-            "ENV": "Environment", 
+            "ENV": "Environment",
             "JOB": "Job",
             "REP": "Repository",
+            "EXTATTR": "Extended Attributes",
         }.get(change.resource_type, change.resource_type)
         
         lines.extend([
@@ -584,6 +603,7 @@ def format_protection_warnings(warnings: list[ProtectedDestroyWarning]) -> str:
         "ENV": "Environment",
         "JOB": "Job",
         "REP": "Repository",
+        "EXTATTR": "Extended Attributes",
     }
     
     for warning in warnings:
@@ -647,6 +667,7 @@ TYPE_LABELS = {
     "TOK": "Service Token",
     "GRP": "Group",
     "NOT": "Notification",
+    "EXTATTR": "Extended Attributes",
 }
 
 
@@ -741,8 +762,46 @@ def get_resources_to_protect(
             resource_type=ancestor_type,
         ))
     
+    # ENV↔EXTATTR linked-resource cascade: add linked EXTATTR when protecting ENV, linked ENV(s) when protecting EXTATTR
+    entity_type = entity.get("element_type_code", "")
+    if entity_type == "ENV":
+        ext_key = entity.get("extended_attributes_key") or ""
+        project_key = entity.get("project_key") or (source_key.rsplit("_", 1)[0] if "_" in source_key else "")
+        if ext_key and project_key:
+            eat_composite = f"{project_key}_{ext_key}"
+            for item in source_items:
+                if item.get("element_type_code") == "EXTATTR" and (item.get("key") or item.get("element_mapping_id")) == eat_composite:
+                    eat_key = item.get("key") or item.get("element_mapping_id")
+                    if eat_key and eat_key not in already_protected:
+                        parents_to_protect.append(CascadeResource(
+                            key=eat_key,
+                            name=item.get("name", ext_key),
+                            resource_type="EXTATTR",
+                        ))
+                    break
+    elif entity_type == "EXTATTR":
+        project_key = entity.get("project_key") or (source_key.rsplit("_", 1)[0] if "_" in source_key else "")
+        # ext_key is the extended-attributes key (name), not the composite resource key
+        ext_key = entity.get("name") or (source_key.rsplit("_", 1)[1] if "_" in source_key else "")
+        if project_key and ext_key:
+            for item in source_items:
+                if item.get("element_type_code") != "ENV":
+                    continue
+                item_project = item.get("project_key") or (item.get("key") or "").rsplit("_", 1)[0] if "_" in (item.get("key") or "") else ""
+                if item_project != project_key:
+                    continue
+                if (item.get("extended_attributes_key") or "") != ext_key:
+                    continue
+                env_key = item.get("key") or item.get("element_mapping_id")
+                if env_key and env_key not in already_protected:
+                    parents_to_protect.append(CascadeResource(
+                        key=env_key,
+                        name=item.get("name", env_key),
+                        resource_type="ENV",
+                    ))
+
     # Sort parents by depth (project first, then environment, etc.)
-    type_order = {"PRJ": 1, "ENV": 2, "VAR": 3, "JOB": 4, "CRD": 5, "REP": 6}
+    type_order = {"PRJ": 1, "ENV": 2, "EXTATTR": 2, "VAR": 3, "JOB": 4, "CRD": 5, "REP": 6}
     parents_to_protect.sort(key=lambda r: type_order.get(r.resource_type, 99))
     
     return target, parents_to_protect
@@ -819,6 +878,40 @@ def get_resources_to_unprotect(
             name=desc.get("name", desc_id),
             resource_type=desc_type,
         ))
+
+    # ENV↔EXTATTR linked-resource cascade: add linked EXTATTR when unprotecting ENV, linked ENV(s) when unprotecting EXTATTR
+    entity_type = entity.get("element_type_code", "")
+    if entity_type == "ENV":
+        ext_key = entity.get("extended_attributes_key") or ""
+        project_key = entity.get("project_key") or (source_key.rsplit("_", 1)[0] if "_" in source_key else "")
+        if ext_key and project_key:
+            eat_composite = f"{project_key}_{ext_key}"
+            if eat_composite in protected_resources:
+                for item in source_items:
+                    if item.get("element_type_code") == "EXTATTR" and (item.get("key") or item.get("element_mapping_id")) == eat_composite:
+                        protected_children.append(CascadeResource(
+                            key=eat_composite,
+                            name=item.get("name", ext_key),
+                            resource_type="EXTATTR",
+                        ))
+                        break
+    elif entity_type == "EXTATTR":
+        project_key = entity.get("project_key") or (source_key.rsplit("_", 1)[0] if "_" in source_key else "")
+        ext_key = entity.get("name") or (source_key.rsplit("_", 1)[1] if "_" in source_key else "")
+        if project_key and ext_key:
+            for item in source_items:
+                if item.get("element_type_code") != "ENV":
+                    continue
+                item_project = item.get("project_key") or (item.get("key") or "").rsplit("_", 1)[0] if "_" in (item.get("key") or "") else ""
+                if item_project != project_key or (item.get("extended_attributes_key") or "") != ext_key:
+                    continue
+                env_key = item.get("key") or item.get("element_mapping_id")
+                if env_key and env_key in protected_resources:
+                    protected_children.append(CascadeResource(
+                        key=env_key,
+                        name=item.get("name", env_key),
+                        resource_type="ENV",
+                    ))
     
     # Sort children by type
     type_order = {"PRJ": 1, "ENV": 2, "VAR": 3, "JOB": 4, "CRD": 5, "REP": 6}
@@ -889,13 +982,14 @@ class ProtectionRepairResult:
     error_message: Optional[str] = None
 
 
-# Extended resource type map including project_repository
+# Extended resource type map including project_repository and extended_attributes
 EXTENDED_RESOURCE_TYPE_MAP = {
     "PRJ": ("dbtcloud_project", "projects", "protected_projects"),
     "REP": ("dbtcloud_repository", "repositories", "protected_repositories"),
     "PREP": ("dbtcloud_project_repository", "project_repositories", "protected_project_repositories"),
     "ENV": ("dbtcloud_environment", "environments", "protected_environments"),
     "JOB": ("dbtcloud_job", "jobs", "protected_jobs"),
+    "EXTATTR": ("dbtcloud_extended_attributes", "extended_attrs", "protected_extended_attrs"),
 }
 
 
@@ -1064,6 +1158,8 @@ def detect_protection_mismatches(
                 type_code = "REP"
             elif rtype == "dbtcloud_project_repository":
                 type_code = "PREP"
+            elif rtype == "dbtcloud_extended_attributes":
+                type_code = "EXTATTR"
             
             if type_code:
                 state_resources[(type_code, index_key)] = {
@@ -1175,6 +1271,7 @@ def generate_repair_moved_blocks(
         "PRJ": "project",
         "REP": "repository",
         "PREP": "project_repository link",
+        "EXTATTR": "extended_attributes",
     }
     
     for project_key, project_mismatches in sorted(by_project.items()):
@@ -1358,6 +1455,7 @@ def format_mismatches_for_display(mismatches: list[ProtectionMismatch]) -> str:
         "PRJ": "Project",
         "REP": "Repository",
         "PREP": "Project-Repository Link",
+        "EXTATTR": "Extended Attributes",
     }
     
     by_project = {}

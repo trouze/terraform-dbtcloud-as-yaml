@@ -378,6 +378,7 @@ def _create_protected_resources_panel(
         "JOB": "Jobs",
         "REP": "Repositories",
         "CON": "Connections",
+        "EXTATTR": "Extended Attributes",
     }
     
     with ui.expansion(
@@ -477,6 +478,7 @@ def _create_import_section(
                     "TOK": "Service Tokens",
                     "GRP": "Groups",
                     "NOT": "Notifications",
+                    "EXTATTR": "Extended Attributes",
                 }
                 label = type_labels.get(rtype, rtype)
                 ui.badge(f"{len(items)} {label}").props("dense")
@@ -2483,6 +2485,7 @@ def _check_protected_destroys(
                     "ENV": "Environment",
                     "JOB": "Job",
                     "REP": "Repository",
+                    "EXTATTR": "Extended Attributes",
                 }.get(res.resource_type, res.resource_type)
                 lines.append(f"  - {type_name}: {res.name}")
             

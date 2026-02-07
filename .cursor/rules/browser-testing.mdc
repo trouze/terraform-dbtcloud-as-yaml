@@ -1,12 +1,23 @@
 ---
-description: Browser testing workflow using cursor-browser-extension MCP for UI verification
+description: Browser testing workflow using cursor-ide-browser MCP for UI verification
 globs: ["importer/web/**/*.py"]
-alwaysApply: false
+alwaysApply: true
 ---
 
-# Browser Testing with cursor-browser-extension
+# Browser Testing with cursor-ide-browser MCP (browsermcp)
 
-When testing NiceGUI web UI changes, use the `cursor-browser-extension` MCP tools.
+**Always attempt to test** web UI changes and debug flows using the **cursor-ide-browser** MCP (browsermcp) before concluding. Use the MCP tools to navigate, snapshot, and interact with the running app instead of only providing manual reproduction steps.
+
+When testing NiceGUI web UI changes, use the **cursor-ide-browser** MCP tools (`browser_navigate`, `browser_snapshot`, `browser_click`, etc.). The project enables them via `.cursor/mcp.json` (cursor-ide-browser → `@browsermcp/mcp`). Ensure the MCP server is on in Cursor (Settings → Features → MCP), refresh the server list if needed, and that Node.js is installed (required for npx). If tools still don’t appear, add the same `mcpServers` entry to `~/.cursor/mcp.json`.
+
+## Lock/unlock workflow
+
+1. **Navigate first**: `browser_navigate` to open a tab (you cannot lock before a tab exists).
+2. **Lock**: `browser_lock` before any interactions.
+3. **Interact**: use snapshot, click, type, fill, etc.
+4. **Unlock**: `browser_unlock` when done with all browser operations for the turn.
+
+Use short waits (1–3s) and `browser_snapshot` to check readiness instead of one long wait.
 
 ## Standard Testing Workflow
 
@@ -23,12 +34,13 @@ When testing NiceGUI web UI changes, use the `cursor-browser-extension` MCP tool
 
 3. **Navigate to test page**:
    - Use `browser_navigate` with the target URL
-   - Take a `browser_snapshot` to verify page state
+   - Use `browser_lock`, then `browser_snapshot` to verify page state
 
 4. **Interact and verify**:
    - Use `browser_click` with element refs from snapshots
    - Use `browser_snapshot` after interactions to verify changes
    - For large snapshots, use `Grep` on the snapshot file to find specific elements
+   - When done: `browser_unlock`
 
 ## Key MCP Tools
 

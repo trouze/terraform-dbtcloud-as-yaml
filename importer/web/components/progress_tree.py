@@ -18,6 +18,7 @@ GLOBAL_RESOURCES = [
 
 PROJECT_RESOURCES = [
     ("environments", "Environments"),
+    ("extended_attributes", "Extended Attributes (EXTATTR)"),
     ("credentials", "Credential Metadata (No Secret Values)"),
     ("jobs", "Jobs"),
     ("environment_variables", "Env Variables (No Secret Values)"),

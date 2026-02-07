@@ -266,6 +266,15 @@ def _load_full_data_for_type(state: AppState, type_code: str, is_target: bool = 
                 var["project_key"] = project_key
                 results.append(var)
     
+    elif type_code == "EXTATTR":
+        for project in snapshot.get("projects", []):
+            project_name = project.get("name")
+            project_key = project.get("key")
+            for eat in project.get("extended_attributes", []):
+                eat["project_name"] = project_name
+                eat["project_key"] = project_key
+                results.append(eat)
+    
     return results
 
 
@@ -307,6 +316,7 @@ RESOURCE_TYPES = {
     "ENV": {"name": "Environment", "code": "ENV", "icon": "layers", "color": "#06B6D4", "sort_order": "40"},
     "VAR": {"name": "Env Variable", "code": "ENVVAR", "icon": "code", "color": "#A855F7", "sort_order": "41"},
     "JOB": {"name": "Job", "code": "JOB", "icon": "schedule", "color": "#EF4444", "sort_order": "50"},
+    "EXTATTR": {"name": "Extended Attributes", "code": "EXTATTR", "icon": "tune", "color": "#7C3AED", "sort_order": "42"},
 }
 
 # Optimized default columns per entity type (most useful fields for each type)
@@ -324,6 +334,7 @@ DEFAULT_COLUMNS_BY_TYPE = {
     "ENV": ["line_item_number", "name", "id", "type", "dbt_version", "project_name", "deployment_type"],
     "VAR": ["line_item_number", "name", "project_name", "type", "display_value"],
     "JOB": ["line_item_number", "name", "id", "state", "project_name", "environment_id", "schedule_type", "triggers"],
+    "EXTATTR": ["line_item_number", "name", "id", "state", "project_name", "key", "protected"],
 }
 
 
@@ -972,6 +983,7 @@ SUMMARY_FIELDS = {
     "NOT": ["id", "type", "state", "on_success", "on_failure", "on_cancel"],
     "WEB": ["id", "name", "active", "http_status_code", "event_types"],
     "PLE": ["id", "name", "type", "state", "cidr_range"],
+    "EXTATTR": ["id", "key", "project_id", "state", "protected"],
 }
 
 
@@ -995,7 +1007,9 @@ def show_entity_detail_dialog(row_data: dict, state: Optional["AppState"] = None
         with ui.row().classes("w-full items-center justify-between p-4 border-b"):
             with ui.row().classes("items-center gap-2"):
                 ui.icon(type_info["icon"]).style(f"color: {type_info['color']};")
-                ui.label(row_data.get("name", "Unknown")).classes("text-xl font-bold")
+                ui.label(
+                    row_data.get("name") or row_data.get("key") or display_data.get("name") or display_data.get("key") or "Unknown"
+                ).classes("text-xl font-bold")
                 ui.badge(f"{type_info['name']} ({type_info['code']})").style(f"background-color: {type_info['color']};")
             ui.button(icon="close", on_click=dialog.close).props("flat round dense")
         
@@ -1109,6 +1123,38 @@ def _render_summary_tab(row_data: dict, full_data: dict, type_code: str, type_in
                 ui.table(columns=columns, rows=rows, row_key="field").classes("w-full").props("dense flat")
             else:
                 ui.label("No summary data available").classes("text-slate-500 italic")
+        
+        # EXTATTR: show the extended_attributes payload (the actual connection override values)
+        if type_code == "EXTATTR":
+            payload = full_data.get("extended_attributes") or row_data.get("extended_attributes")
+            if payload and isinstance(payload, dict):
+                ui.separator()
+                ui.label("Attribute Payload").classes("text-lg font-semibold")
+                ui.label(
+                    "Connection override values applied to environments that reference this extended attribute."
+                ).classes("text-xs text-slate-500 mb-2")
+                # Render each top-level key as a row so values are visible at a glance
+                with ui.element("div").classes("w-full border rounded"):
+                    for attr_key, attr_val in sorted(payload.items()):
+                        with ui.row().classes(
+                            "w-full items-start border-b last:border-b-0 py-1 px-2 "
+                            "hover:bg-slate-50 dark:hover:bg-slate-800"
+                        ):
+                            ui.label(attr_key).classes(
+                                "text-sm font-medium w-1/3 text-slate-700 dark:text-slate-300"
+                            )
+                            if isinstance(attr_val, (dict, list)):
+                                ui.code(
+                                    json.dumps(attr_val, indent=2), language="json"
+                                ).classes("text-xs flex-1")
+                            else:
+                                ui.label(str(attr_val)).classes("text-sm font-mono break-all flex-1")
+            elif payload is None:
+                ui.separator()
+                ui.label("Attribute Payload").classes("text-lg font-semibold")
+                ui.label("No payload data available — the extended_attributes field is empty.").classes(
+                    "text-slate-500 italic text-sm"
+                )
 
 
 def _render_details_table(data: dict) -> None:
