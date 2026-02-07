@@ -294,13 +294,17 @@ def show_new_project_wizard(
             ).classes("w-full").props("maxlength=500 counter").bind_value(wizard_data, "description")
 
             ui.label("Workflow Type *").classes("text-sm font-medium mt-2")
-            with ui.column().classes("gap-1"):
-                for value, label_text, help_text in WORKFLOW_OPTIONS:
-                    with ui.row().classes("items-center gap-2"):
-                        ui.radio(
-                            options={value: label_text},
-                        ).bind_value(wizard_data, "workflow_type").props("dense")
-                    ui.label(help_text).classes("text-xs text-gray-500 ml-8 -mt-2")
+            # Single radio group with all options (avoids binding recursion
+            # that occurs with multiple ui.radio() bound to the same key)
+            wf_options = {value: label_text for value, label_text, _ in WORKFLOW_OPTIONS}
+            ui.radio(
+                options=wf_options,
+                value="migration",
+            ).bind_value(wizard_data, "workflow_type").props("dense")
+            # Help text below the radio group
+            with ui.column().classes("gap-0 ml-8 -mt-1"):
+                for _, _, help_text in WORKFLOW_OPTIONS:
+                    ui.label(help_text).classes("text-xs text-gray-500")
 
             error_label = ui.label("").classes("text-red-400 text-sm")
             error_label.set_visibility(False)
@@ -318,18 +322,31 @@ def show_new_project_wizard(
                 value="fresh",
             ).classes("w-full").bind_value(wizard_data, "cred_mode")
 
-            # Env file import controls
-            with ui.column().classes("w-full gap-2 ml-4").bind_visibility_from(wizard_data, "cred_mode", value="env_file"):
+            # Shared import checkboxes (only one set, visible based on mode)
+            # Using on_change callbacks instead of bind_value to avoid dual-
+            # binding the same dict key from two checkbox instances.
+            env_file_container = ui.column().classes("w-full gap-2 ml-4")
+            env_file_container.bind_visibility_from(wizard_data, "cred_mode", value="env_file")
+            with env_file_container:
                 ui.input(
                     label=".env file path",
                     placeholder="/path/to/.env",
                 ).classes("w-full").bind_value(wizard_data, "env_file_path")
                 with ui.row().classes("gap-4"):
-                    ui.checkbox("Import source credentials").bind_value(wizard_data, "import_source")
-                    ui.checkbox("Import target credentials").bind_value(wizard_data, "import_target")
+                    ui.checkbox(
+                        "Import source credentials",
+                        value=wizard_data["import_source"],
+                        on_change=lambda e: wizard_data.update({"import_source": bool(e.value)}),
+                    )
+                    ui.checkbox(
+                        "Import target credentials",
+                        value=wizard_data["import_target"],
+                        on_change=lambda e: wizard_data.update({"import_target": bool(e.value)}),
+                    )
 
-            # Project copy controls
-            with ui.column().classes("w-full gap-2 ml-4").bind_visibility_from(wizard_data, "cred_mode", value="project"):
+            project_copy_container = ui.column().classes("w-full gap-2 ml-4")
+            project_copy_container.bind_visibility_from(wizard_data, "cred_mode", value="project")
+            with project_copy_container:
                 existing_projects = project_manager.list_projects()
                 project_options = {p.slug: f"{p.name} ({p.workflow_type.value})" for p in existing_projects}
                 if project_options:
@@ -340,8 +357,16 @@ def show_new_project_wizard(
                 else:
                     ui.label("No existing projects to copy from").classes("text-sm text-gray-500 italic")
                 with ui.row().classes("gap-4"):
-                    ui.checkbox("Copy source credentials").bind_value(wizard_data, "import_source")
-                    ui.checkbox("Copy target credentials").bind_value(wizard_data, "import_target")
+                    ui.checkbox(
+                        "Copy source credentials",
+                        value=wizard_data["import_source"],
+                        on_change=lambda e: wizard_data.update({"import_source": bool(e.value)}),
+                    )
+                    ui.checkbox(
+                        "Copy target credentials",
+                        value=wizard_data["import_target"],
+                        on_change=lambda e: wizard_data.update({"import_target": bool(e.value)}),
+                    )
 
         step_containers.append(step1)
 

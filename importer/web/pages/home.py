@@ -226,21 +226,23 @@ def _project_card(
             return f"{days}d ago"
         return dt.strftime("%Y-%m-%d")
 
-    with ui.card().classes("w-full p-3 cursor-pointer hover:shadow-lg transition-shadow"):
-        # Click to load
-        if on_project_load:
-            ui.card().on("click", lambda slug=project.slug: on_project_load(slug))
+    card = ui.card().classes("w-full p-3 cursor-pointer hover:shadow-lg transition-shadow")
 
+    # Make the whole card clickable to load the project
+    if on_project_load:
+        card.on("click", lambda slug=project.slug: on_project_load(slug))
+
+    with card:
         with ui.column().classes("gap-1 w-full"):
             # Title row with workflow badge
             with ui.row().classes("w-full items-center justify-between"):
                 with ui.row().classes("items-center gap-2"):
                     ui.label(project.name).classes("font-semibold text-sm")
                     ui.badge(project.workflow_type.value.replace("_", " ").title(), color=wf_color).props("dense")
-                # Delete button
+                # Delete button — stops propagation so it doesn't trigger the card click
                 ui.button(
                     icon="delete_outline",
-                    on_click=lambda e, s=project.slug, n=project.name: (e.sender.parent_slot.parent.stop_propagation if hasattr(e, 'stop_propagation') else None, on_delete(s, n)),
+                    on_click=lambda e, s=project.slug, n=project.name: on_delete(s, n),
                 ).props("flat round dense size=xs").classes("text-gray-400 hover:text-red-400")
 
             # Description
@@ -264,10 +266,6 @@ def _project_card(
 
             # Footer: last modified
             ui.label(_relative_time(project.updated_at)).classes("text-xs text-gray-600 mt-1")
-
-        # Make the whole card clickable
-        if on_project_load:
-            ui.card().on("click", lambda slug=project.slug: on_project_load(slug))
 
 
 def _create_welcome_section(
