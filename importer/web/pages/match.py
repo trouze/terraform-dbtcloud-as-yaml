@@ -394,6 +394,20 @@ def _create_matching_content(
         
         _create_stat_card("Skip", skipped, "text-slate-500", "block")
         _create_stat_card("Unadopt", unadopted, "text-purple-500", "link_off")
+
+        # State resources count (from persisted target intent)
+        _state_to_target_count = 0
+        try:
+            _intent_for_stats = state.get_target_intent_manager().load()
+            if _intent_for_stats and _intent_for_stats.match_mappings.state_to_target:
+                _state_to_target_count = len(_intent_for_stats.match_mappings.state_to_target)
+        except Exception:
+            pass
+        with ui.card().classes("p-3 min-w-[100px]"):
+            with ui.row().classes("items-center gap-2"):
+                ui.icon("account_tree", size="sm").classes("text-slate-500")
+                ui.label(str(_state_to_target_count)).classes("text-2xl font-bold text-slate-600")
+            ui.label("State Resources").classes("text-xs text-slate-500")
         
         # Selected source items with total count - shows primary resources + overrides
         with ui.card().classes("p-3 min-w-[120px]"):
@@ -1387,6 +1401,37 @@ def _create_matching_content(
             protection_intent_manager=protection_intent,
         )
         grid_ref["grid"] = grid
+
+    # TF state-to-target alignment section (from persisted intent)
+    try:
+        _intent_for_table = state.get_target_intent_manager().load()
+        _state_to_target_rows = (
+            _intent_for_table.match_mappings.state_to_target
+            if _intent_for_table and _intent_for_table.match_mappings.state_to_target
+            else []
+        )
+    except Exception:
+        _state_to_target_rows = []
+    if _state_to_target_rows:
+        with ui.expansion("TF state alignment", icon="account_tree").classes("w-full mb-4").props("default-expanded"):
+            with ui.card().classes("w-full p-4"):
+                columns = [
+                    {"name": "state_key", "label": "State Key", "field": "state_key"},
+                    {"name": "state_address", "label": "State Address", "field": "state_address"},
+                    {"name": "target_match", "label": "Target Match", "field": "target_match"},
+                    {"name": "status", "label": "Status", "field": "status"},
+                ]
+                rows = []
+                for m in _state_to_target_rows:
+                    target_match = f"{m.target_name} (ID: {m.target_id})" if m.target_id else "—"
+                    status = "matched" if m.target_id and m.match_type == "auto" else ("unmatched" if not m.target_id else m.match_type)
+                    rows.append({
+                        "state_key": m.state_key,
+                        "state_address": m.state_address,
+                        "target_match": target_match,
+                        "status": status,
+                    })
+                ui.table(columns=columns, rows=rows, row_key="state_key").classes("w-full")
     
     # Adopt imports section - show when TF state is loaded so user can adopt resources
     # This section lets users generate import blocks for resources marked with action="adopt"
@@ -4708,6 +4753,48 @@ moved {{
                 ui.label("For protection changes: Skip Generate, just run Init → Plan → Apply").classes("text-xs text-slate-400")
                 ui.label("Generate regenerates ALL files which can cause conflicts").classes("text-xs text-amber-500")
     
+    # TF State-to-Target Alignment section (collapsible)
+    _intent_for_alignment = None
+    try:
+        _intent_for_alignment = state.get_target_intent_manager().load()
+    except Exception:
+        pass
+    _stt_mappings = (_intent_for_alignment.match_mappings.state_to_target if _intent_for_alignment else [])
+    if _stt_mappings:
+        matched_stt = [m for m in _stt_mappings if m.match_type != "unmatched"]
+        unmatched_stt = [m for m in _stt_mappings if m.match_type == "unmatched"]
+        with ui.expansion(
+            f"TF State Alignment ({len(matched_stt)} matched, {len(unmatched_stt)} unmatched)",
+            icon="account_tree",
+        ).classes("w-full mt-4").props("dense"):
+            with ui.card().classes("w-full p-3"):
+                # Summary badges
+                with ui.row().classes("gap-2 mb-2"):
+                    ui.badge(f"{len(matched_stt)} matched", color="green").props("outline")
+                    if unmatched_stt:
+                        ui.badge(f"{len(unmatched_stt)} unmatched", color="orange").props("outline")
+                # Table
+                columns = [
+                    {"name": "state_key", "label": "State Key", "field": "state_key", "align": "left", "sortable": True},
+                    {"name": "state_address", "label": "State Address", "field": "state_address", "align": "left"},
+                    {"name": "resource_type", "label": "Type", "field": "resource_type", "align": "left"},
+                    {"name": "target_name", "label": "Target Match", "field": "target_name", "align": "left"},
+                    {"name": "status", "label": "Status", "field": "status", "align": "center"},
+                ]
+                rows = []
+                for m in _stt_mappings:
+                    status = "matched" if m.match_type != "unmatched" else "unmatched"
+                    rows.append({
+                        "state_key": m.state_key,
+                        "state_address": m.state_address,
+                        "resource_type": m.resource_type,
+                        "target_name": m.target_name or "—",
+                        "status": status,
+                    })
+                ui.table(columns=columns, rows=rows, row_key="state_key").classes(
+                    "w-full"
+                ).props("dense flat bordered")
+
     # Save target intent section (show if there are any confirmed or pending matches)
     has_matches = any(r.get("action") == "match" and r.get("target_id") for r in grid_row_data)
     confirmed_count = sum(1 for r in grid_row_data if r.get("status") == "confirmed")
