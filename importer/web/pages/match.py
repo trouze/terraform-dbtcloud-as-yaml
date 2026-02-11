@@ -774,6 +774,32 @@ def _create_matching_content(
         ui.notify(f"Adopted {adopted_count} target-only resources", type="positive")
         ui.navigate.reload()
     
+    def select_project(project_name: str):
+        """Handle 'Select Whole Project' from toolbar dropdown.
+        
+        Finds the project row and opens the selection dialog.
+        """
+        all_rows = grid_data_ref.get("all", grid_data_ref.get("data", []))
+        project_row = None
+        for row in all_rows:
+            if row.get("source_type") == "PRJ" and (
+                row.get("project_name") == project_name
+                or row.get("source_name") == project_name
+            ):
+                project_row = row
+                break
+        
+        if project_row is None:
+            ui.notify(f"Project '{project_name}' not found", type="negative")
+            return
+        
+        _show_select_project_dialog(
+            project_row=project_row,
+            grid_data_ref=grid_data_ref,
+            state=state,
+            save_state=save_state,
+        )
+    
     def toggle_target_only(visible: bool):
         """Toggle visibility of target-only rows.
         
@@ -808,6 +834,184 @@ def _create_matching_content(
             URL.revokeObjectURL(url);
         ''')
         ui.notify("CSV exported", type="positive")
+    
+    def _show_adopt_cascade_dialog(
+        child_row: dict,
+        unadopted_parents: list[dict],
+        grid_data_ref: dict,
+        state,
+        save_state,
+    ):
+        """Show a cascade dialog when adopting a child without its parents.
+        
+        Presents: "To adopt [child], these parents should also be adopted: [list]"
+        Buttons: "Adopt All" (adopts child + parents), "Skip" (adopts child only)
+        """
+        child_name = child_row.get("source_name") or child_row.get("target_name") or "resource"
+        child_type = child_row.get("source_type", "")
+        
+        from importer.web.components.match_grid import MATCH_GRID_TYPE_LABELS
+        type_label = MATCH_GRID_TYPE_LABELS.get(child_type, child_type)
+        
+        parent_items = []
+        for p in unadopted_parents:
+            pname = p.get("source_name") or p.get("target_name") or "unknown"
+            ptype = MATCH_GRID_TYPE_LABELS.get(p.get("source_type", ""), p.get("source_type", ""))
+            parent_items.append(f"{ptype}: {pname}")
+        
+        def _adopt_all():
+            """Adopt the child and all required parents."""
+            all_rows_to_adopt = [child_row] + unadopted_parents
+            for row in all_rows_to_adopt:
+                row["action"] = "adopt"
+                # Update in grid_data_ref
+                skey = row.get("source_key")
+                for i, r in enumerate(grid_data_ref.get("all", grid_data_ref.get("data", []))):
+                    if r.get("source_key") == skey:
+                        grid_data_ref.get("all", grid_data_ref.get("data", []))[i] = row
+                        break
+                for i, r in enumerate(grid_data_ref.get("data", [])):
+                    if r.get("source_key") == skey:
+                        grid_data_ref["data"][i] = row
+                        break
+            save_state()
+            cascade_dlg.close()
+            ui.notify(f"Adopted {child_name} + {len(unadopted_parents)} parent(s)", type="positive")
+            ui.navigate.reload()
+        
+        def _skip():
+            """Adopt only the child, skip parents."""
+            save_state()
+            cascade_dlg.close()
+            ui.notify(f"Adopted {child_name} (parents skipped)", type="warning")
+        
+        with ui.dialog() as cascade_dlg, ui.card().classes("p-6").style("min-width: 450px;"):
+            with ui.row().classes("items-center gap-3 mb-4"):
+                ui.icon("account_tree", size="md").classes("text-amber-500")
+                ui.label("Dependencies Required").classes("text-lg font-bold")
+            
+            ui.label(
+                f"To adopt {type_label} \"{child_name}\", these parent resources "
+                "should also be adopted:"
+            ).classes("mb-3 text-sm")
+            
+            with ui.column().classes("gap-1 ml-4 mb-4"):
+                for item in parent_items:
+                    with ui.row().classes("items-center gap-2"):
+                        ui.icon("arrow_upward", size="xs").classes("text-amber-400")
+                        ui.label(item).classes("text-sm font-mono")
+            
+            ui.label(
+                "Skipping parent adoption may cause Terraform errors if the parent "
+                "resource is not already managed."
+            ).classes("mb-4 text-xs text-grey-6 italic")
+            
+            with ui.row().classes("gap-2 justify-end"):
+                ui.button("Skip", on_click=_skip).props("flat")
+                ui.button("Adopt All", on_click=_adopt_all).props("color=amber")
+        
+        cascade_dlg.open()
+    
+    def _show_select_project_dialog(
+        project_row: dict,
+        grid_data_ref: dict,
+        state,
+        save_state,
+    ):
+        """Show 'Select Whole Project' dialog with child counts and checkboxes.
+        
+        Lets user adopt a project and all/selected children in one action.
+        """
+        from importer.web.utils.adoption_dependencies import get_project_children
+        from importer.web.components.match_grid import MATCH_GRID_TYPE_LABELS
+        
+        all_rows = grid_data_ref.get("all", grid_data_ref.get("data", []))
+        children_by_type = get_project_children(project_row, all_rows)
+        project_name = project_row.get("source_name") or project_row.get("target_name") or "project"
+        
+        if not children_by_type:
+            ui.notify(f"No child resources found for {project_name}", type="info")
+            return
+        
+        # Track checkbox state for each type
+        type_selected = {}
+        for rtype in children_by_type:
+            type_selected[rtype] = True  # All selected by default
+        
+        def _apply():
+            """Apply the selection - adopt project + selected children."""
+            rows_to_adopt = [project_row]
+            for rtype, rows in children_by_type.items():
+                if type_selected.get(rtype, True):
+                    rows_to_adopt.extend(rows)
+            
+            for row in rows_to_adopt:
+                row["action"] = "adopt"
+                skey = row.get("source_key")
+                for storage in [grid_data_ref.get("all", []), grid_data_ref.get("data", [])]:
+                    for i, r in enumerate(storage):
+                        if r.get("source_key") == skey:
+                            storage[i] = row
+                            break
+            
+            save_state()
+            project_dlg.close()
+            ui.notify(
+                f"Adopted {project_name} + {len(rows_to_adopt) - 1} child resource(s)",
+                type="positive",
+            )
+            ui.navigate.reload()
+        
+        with ui.dialog() as project_dlg, ui.card().classes("p-6").style("min-width: 500px;"):
+            with ui.row().classes("items-center gap-3 mb-4"):
+                ui.icon("select_all", size="md").classes("text-blue-500")
+                ui.label(f"Select Whole Project: {project_name}").classes("text-lg font-bold")
+            
+            ui.label(
+                "Select which child resource types to include in the adoption:"
+            ).classes("mb-3 text-sm")
+            
+            # Sort types by TYPE_SORT_ORDER
+            from importer.web.components.hierarchy_index import TYPE_SORT_ORDER
+            sorted_types = sorted(
+                children_by_type.keys(),
+                key=lambda t: TYPE_SORT_ORDER.get(t, 99),
+            )
+            
+            with ui.column().classes("gap-2 ml-2 mb-4"):
+                for rtype in sorted_types:
+                    rows = children_by_type[rtype]
+                    label = MATCH_GRID_TYPE_LABELS.get(rtype, rtype)
+                    count = len(rows)
+                    adoptable = sum(1 for r in rows if r.get("action") != "adopt")
+                    
+                    def _make_toggle(t=rtype):
+                        def _on_change(e):
+                            type_selected[t] = e.value
+                        return _on_change
+                    
+                    with ui.row().classes("items-center gap-2"):
+                        ui.checkbox(
+                            f"{label} ({count})",
+                            value=True,
+                            on_change=_make_toggle(rtype),
+                        ).classes("text-sm")
+                        if adoptable < count:
+                            ui.badge(
+                                f"{count - adoptable} already adopted",
+                                color="teal",
+                            ).props("dense outline")
+            
+            total_children = sum(len(rows) for rows in children_by_type.values())
+            ui.label(
+                f"Total: {total_children} child resource(s) across {len(children_by_type)} type(s)"
+            ).classes("mb-4 text-xs text-grey-6")
+            
+            with ui.row().classes("gap-2 justify-end"):
+                ui.button("Cancel", on_click=project_dlg.close).props("flat")
+                ui.button("Adopt Selected", on_click=_apply).props("color=blue")
+        
+        project_dlg.open()
     
     def show_protection_cascade_dialog(
         resource_name: str,
@@ -1241,6 +1445,23 @@ def _create_matching_content(
         
         # Note: grid_data_ref update now happens at the start of this function
         # to ensure dialogs always see the current state
+        
+        # --- Adoption cascade check ---
+        # When user changes action to "adopt", check if parents are also adopted.
+        # If not, show a cascade dialog to adopt the child + required parents.
+        if action == "adopt":
+            from importer.web.utils.adoption_dependencies import find_unadopted_parents
+            all_rows = grid_data_ref.get("all", grid_data_ref.get("data", []))
+            unadopted = find_unadopted_parents(row_data, all_rows)
+            if unadopted:
+                _show_adopt_cascade_dialog(
+                    child_row=row_data,
+                    unadopted_parents=unadopted,
+                    grid_data_ref=grid_data_ref,
+                    state=state,
+                    save_state=save_state,
+                )
+                return  # Wait for dialog
         
         # If action is match and has valid target, it can be confirmed
         # If action is skip, create_new, or unadopt, remove from confirmed if present
@@ -1898,6 +2119,7 @@ def _create_matching_content(
         on_toggle_scope_only=toggle_scope_only,
         show_scope_only=show_scope_only,
         hidden_by_scope=hidden_by_scope,
+        on_select_project=select_project,
     )
     
     # Main grid in a card - flex container that grows to fill available space

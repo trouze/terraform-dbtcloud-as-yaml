@@ -55,9 +55,9 @@ dependency handling, protection, and deploy integration. All components must be 
 
 ### Phase 1d: Dependency Handling
 
-24. [ ] Dependency resolution returns correct parent chain for all child types (UT-AD-08, UT-AD-24)
-25. [ ] Cascade dialog shows when adopting child without parent; "Adopt All" and "Skip" work (E2E, browser_validation: true)
-26. [ ] "Select Whole Project" dialog shows child counts and supports checkbox customization (E2E, browser_validation: true)
+24. [x] Dependency resolution returns correct parent chain for all child types (UT-AD-08, UT-AD-24)
+25. [x] Cascade dialog shows when adopting child without parent; "Adopt All" and "Skip" work (E2E, browser_validation: true)
+26. [x] "Select Whole Project" dialog shows child counts and supports checkbox customization (E2E, browser_validation: true)
 
 ### Phase 1e: Protection Integration
 
