@@ -41,3 +41,9 @@ Completed all 8 plan items for the Persistent Target Intent feature:
 8. **Tests**: 14 new tests (31 total) covering dataclass round-trips, backward compat, confirmed_mappings sync, and match_mappings preservation.
 
 Commits: 5 ralph commits (rename, data model, AppState fix, state alignment, tests)
+
+### 2026-02-10
+**PRD 43.01 — Adoption Workflow — Started**
+
+New RALPH_TASK.md created with 37 criteria across phases 1a–1f + full E2E.
+Starting with Phase 1a (criteria 1–4): unit tests for import block generation.

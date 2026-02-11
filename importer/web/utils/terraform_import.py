@@ -47,6 +47,7 @@ RESOURCE_TYPE_TO_TF = {
     "NOT": "dbtcloud_notification",
     "WEB": "dbtcloud_webhook",
     "VAR": "dbtcloud_environment_variable",
+    "EXTATTR": "dbtcloud_extended_attributes",
 }
 
 
@@ -601,10 +602,13 @@ def generate_adopt_imports_from_grid(
     """Generate Terraform import blocks from grid rows with action='adopt'.
     
     This converts Match grid rows to import blocks for resources that
-    the user has marked for adoption.
+    the user has marked for adoption. Respects the ``protected`` flag
+    on each row — when True the import block uses the ``protected_<type>``
+    Terraform address variant.
     
     Args:
-        grid_rows: List of grid row dicts with action, source_type, source_name, target_id
+        grid_rows: List of grid row dicts with action, source_type, source_name,
+            target_id, and optionally ``protected`` (bool).
         module_name: The Terraform module name
         
     Returns:
@@ -683,12 +687,25 @@ def generate_adopt_imports_from_grid(
         if not project_id and project_name:
             project_id = project_id_by_name.get(project_name)
         
+        # Compute protected address when the row is marked protected
+        is_protected = row.get("protected", False)
+        pre_computed_address = None
+        if is_protected:
+            try:
+                from importer.web.utils.protection_manager import get_resource_address
+                resource_key = row.get("source_key", "") or row.get("source_name", "")
+                pre_computed_address = get_resource_address(
+                    element_code, resource_key, protected=True, module_name=module_name,
+                )
+            except (ValueError, ImportError):
+                pass  # Fall back to default address computation
+        
         # Convert to drift result format
         drift_result = {
             "drift_type": DriftType.ID_MISMATCH.value,  # Treat adopt as ID mismatch
             "element_code": element_code,
             "resource_name": row.get("source_name", "").lstrip(" ↳"),  # Remove indent chars
-            "state_address": None,  # Will be computed from source_key
+            "state_address": pre_computed_address,  # Use protected address if set, else computed
             "target_id": int(target_id) if target_id else None,
             "adopt": True,
             "context": {
@@ -718,11 +735,21 @@ def generate_adopt_imports_from_grid(
             })
             if project_id and project_name:
                 link_target_id = f"{project_id}:{target_id}"
+                # Also use protected address for PREP if the repo is protected
+                prep_address = None
+                if is_protected:
+                    try:
+                        from importer.web.utils.protection_manager import get_resource_address
+                        prep_address = get_resource_address(
+                            "PREP", project_name, protected=True, module_name=module_name,
+                        )
+                    except (ValueError, ImportError):
+                        pass
                 drift_results.append({
                     "drift_type": DriftType.MISSING_IN_STATE.value,
                     "element_code": "PREP",
                     "resource_name": project_name,
-                    "state_address": None,
+                    "state_address": prep_address,
                     "target_id": link_target_id,
                     "adopt": True,
                     "context": {
