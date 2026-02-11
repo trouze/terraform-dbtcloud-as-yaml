@@ -1875,6 +1875,7 @@ def create_grid_toolbar(
     on_toggle_scope_only: Optional[Callable[[bool], None]] = None,
     show_scope_only: bool = False,
     hidden_by_scope: int = 0,
+    on_select_project: Optional[Callable[[str], None]] = None,
 ) -> None:
     """Create the toolbar above the grid with bulk actions and type filter.
     
@@ -2036,6 +2037,24 @@ def create_grid_toolbar(
                     icon="input",
                     on_click=on_adopt_all_target_only,
                 ).props("size=sm flat text-color=teal-6").set_enabled(target_only_adoptable > 0)
+            
+            # "Select Project" dropdown - lists available projects for bulk adoption
+            if on_select_project is not None:
+                project_names = sorted(set(
+                    r.get("project_name", "") or r.get("source_name", "")
+                    for r in row_data
+                    if r.get("source_type") == "PRJ" and (r.get("project_name") or r.get("source_name"))
+                ))
+                if project_names:
+                    with ui.dropdown_button(
+                        "Select Project",
+                        icon="folder_open",
+                    ).props("size=sm flat text-color=blue-6 dropdown-icon=arrow_drop_down"):
+                        for pname in project_names:
+                            ui.item(
+                                pname,
+                                on_click=lambda p=pname: on_select_project(p),
+                            )
 
 
 def export_mappings_to_csv(row_data: list[dict]) -> str:
