@@ -449,6 +449,32 @@ def _create_provider_config_section(state: AppState, save_state: Callable[[], No
                     ui.label(
                         "Job triggers will be disabled. Remember to re-enable them after migration."
                     ).classes("text-xs text-amber-700 dark:text-amber-300")
+        
+        # Show Target-Only Resources toggle
+        from importer.web.utils.adoption_preferences import AdoptionPreferenceManager
+        project_dir = getattr(state, "project_path", None) or "."
+        adoption_prefs = AdoptionPreferenceManager(project_dir)
+        
+        def on_toggle_target_only(e):
+            adoption_prefs.show_target_only = e.value
+            adoption_prefs.save()
+            state.map.show_target_only = e.value
+            save_state()
+        
+        with ui.row().classes("w-full items-center justify-between p-3 bg-slate-50 dark:bg-slate-800/50 rounded mt-3"):
+            with ui.column().classes("gap-1"):
+                with ui.row().classes("items-center gap-2"):
+                    ui.icon("input", size="sm").classes("text-teal-500")
+                    ui.label("Show Target-Only Resources").classes("font-medium")
+                ui.label(
+                    "Display resources that exist in the target account but have no "
+                    "corresponding source resource. These can be adopted into Terraform."
+                ).classes("text-xs text-slate-500 max-w-lg")
+            
+            ui.switch(
+                value=adoption_prefs.show_target_only,
+                on_change=on_toggle_target_only,
+            ).props("color=teal")
 
 
 def _update_token_type(state: AppState, value: str, save_state: Callable[[], None]) -> None:

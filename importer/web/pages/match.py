@@ -441,12 +441,68 @@ def _create_matching_content(
         protection_intent_manager=protection_intent_manager,
     )
     
-    # Apply target-only visibility filter
-    show_target_only = getattr(state.map, "show_target_only", True)
+    # Load adoption preferences (project-level) and apply target-only visibility
+    from importer.web.utils.adoption_preferences import AdoptionPreferenceManager
+    project_dir = getattr(state, "project_path", None) or "."
+    adoption_prefs = AdoptionPreferenceManager(project_dir)
+    
+    # Initialize show_target_only from preference on first load
+    show_target_only = getattr(state.map, "show_target_only", adoption_prefs.show_target_only)
+    
+    # Count target-only rows for first-run dialog
+    target_only_in_all = sum(1 for r in grid_row_data_all if r.get("is_target_only"))
+    
     if not show_target_only:
         grid_row_data = [r for r in grid_row_data_all if not r.get("is_target_only")]
     else:
         grid_row_data = grid_row_data_all
+    
+    # First-run dialog: show once when target-only rows are detected
+    if adoption_prefs.should_show_first_run_dialog(target_only_in_all > 0):
+        def _on_first_run_yes(remember: bool = False):
+            adoption_prefs.mark_first_run_shown(True, remember=remember)
+            state.map.show_target_only = True
+            save_state()
+            ui.navigate.reload()
+        
+        def _on_first_run_no(remember: bool = False):
+            adoption_prefs.mark_first_run_shown(False, remember=remember)
+            state.map.show_target_only = False
+            save_state()
+            ui.navigate.reload()
+        
+        with ui.dialog() as first_run_dlg, ui.card().classes("p-6").style("min-width: 450px;"):
+            with ui.row().classes("items-center gap-3 mb-4"):
+                ui.icon("input", size="md").classes("text-teal-500")
+                ui.label("Target-Only Resources Detected").classes("text-lg font-bold")
+            
+            ui.label(
+                f"We found {target_only_in_all} resource(s) in the target account "
+                "that don't have a corresponding source resource. These are candidates "
+                "for adoption into Terraform management."
+            ).classes("mb-3 text-sm")
+            
+            ui.label(
+                "Would you like to see these target-only resources in the grid?"
+            ).classes("mb-4 text-sm font-medium")
+            
+            remember_ref = {"value": False}
+            ui.checkbox(
+                "Remember this choice for this project",
+                on_change=lambda e: remember_ref.update({"value": e.value}),
+            ).classes("mb-4")
+            
+            with ui.row().classes("gap-2 justify-end"):
+                ui.button(
+                    "No thanks",
+                    on_click=lambda: _on_first_run_no(remember_ref["value"]),
+                ).props("flat")
+                ui.button(
+                    "Yes, show them",
+                    on_click=lambda: _on_first_run_yes(remember_ref["value"]),
+                ).props("color=teal")
+        
+        first_run_dlg.open()
     
     # Stats from grid data - separate primary resources from derived resources
     # Derived resource types: JEVO (env var overrides), JCTG (job triggers), PREP (project repo links)
