@@ -1,75 +1,88 @@
 ---
-task: Persistent Target Intent File
-test_command: "cd importer && python -m pytest web/tests/test_target_intent.py -v"
+task: "PRD 43.01 — Adoption Workflow (Part 1: Migration Adoption)"
+test_command: "cd /Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml && python -m pytest importer/web/tests/test_adoption_imports.py importer/web/tests/test_adoption_yaml_updater.py importer/web/tests/test_match_grid.py -v"
 browser_validation: true
 base_url: "http://127.0.0.1:8080"
 ---
 
-# Task: Persistent Target Intent File
+# Task: PRD 43.01 — Adoption Workflow (Part 1: Migration Adoption)
 
-Promote target-intent.json from a deploy-time artifact to a persistent project-level file (following the protection-intent.json pattern), extend it to track match mappings, rename 'Match Existing' to 'Set Target Intent'.
+Implement the Migration Adoption workflow per PRD `prd/43.01-Import-Adopt-Workflow.md`.
+Build adoption capabilities in the Match grid, YAML generation, import blocks, TF state awareness,
+dependency handling, protection, and deploy integration. All components must be reusable for Part 2.
 
-**Plan Reference:** `.cursor/plans/persistent_target_intent_40fb41b2.plan.md`
+**PRD Reference:** `prd/43.01-Import-Adopt-Workflow.md`
 
 ## Success Criteria
 
-### 0. Rename "Match Existing" to "Set Target Intent"
+### Phase 1a: Core Adopt Flow (Source-Matched)
 
-1. [x] Rename step label in state.py STEP_NAMES: "Match Existing" → "Set Target Intent"
-2. [x] Change step icon in state.py STEP_ICONS: "link" → "assignment"
-3. [x] Rename match.py page header: "Match Source to Target Resources" → "Set Target Intent"
-4. [x] Rename match.py subtitle to "Define what Terraform should manage: match, adopt, protect, and remove resources"
-5. [x] Rename mapping.py expansion labels: "Match Existing Target Resources" → "Set Target Intent" (already clean)
-6. [x] Rename deploy.py comments and user messages: "Match Existing tab" → "Set Target Intent tab"
-7. [x] Rename match.py "Save Mapping File" section to "Save Target Intent"
-8. [x] Rename match.py dialog title "Target Resource Mapping" → "Target Intent"
-9. [x] Rename match.py "View Mapping" button → "View Target Intent"
+1. [ ] `generate_adopt_imports_from_grid()` produces import blocks for adopt rows and skips ignore rows (UT-AD-01, UT-AD-25)
+2. [ ] `generate_adopt_imports_from_grid()` uses `protected_<type>` addresses for protected rows (UT-AD-02)
+3. [ ] `apply_adoption_overrides()` overwrites YAML with target values and preserves protection flag (UT-AD-03, UT-AD-04)
+4. [ ] Import block addresses resolve correctly for all 7 resource types: PRJ, ENV, JOB, REP, PREP, EXTATTR, VAR (UT-AD-05)
+5. [ ] Match grid shows "Adopt Existing" action for source-matched resources; adopt badge visible (E2E, browser_validation: true)
+6. [ ] "Adopt All Matched" and "Ignore All Unmatched" bulk actions work in grid (E2E, browser_validation: true)
+7. [ ] Adoption summary card shows correct counts: adopt matched, create, ignore (E2E, browser_validation: true)
 
-### 1. Extend TargetIntentResult data model
+### Phase 1b: Target-Only Adoption
 
-10. [x] Add SourceToTargetMapping dataclass with from_confirmed_mapping/to_confirmed_mapping interop
-11. [x] Add StateToTargetMapping dataclass with state_to_target fields
-12. [x] Add MatchMappings container with source_to_target and state_to_target lists
-13. [x] Bump version to 2
-14. [x] Backward compat: from_dict handles version 1 (no match_mappings)
-15. [x] save() includes match_mappings; compute_target_intent preserves from previous
+8. [ ] `build_grid_data()` produces `is_target_only: True` with default action="ignore" and empty source columns (UT-AD-20, UT-AD-21, UT-AD-22)
+9. [ ] `normalize_target_fetch()` generates valid YAML for target-only resources (UT-AD-11)
+10. [ ] `generate_adopt_imports_from_grid()` handles mixed source-matched and target-only rows (UT-AD-12)
+11. [ ] Target-only rows visible in grid with "Target Only" badge and empty Source column (E2E, browser_validation: true)
+12. [ ] "Show Target-Only Resources" toggle hides/shows target-only rows; "Adopt All Target-Only" bulk action works (E2E, browser_validation: true)
 
-### 2. Promote TargetIntentManager to AppState
+### Phase 1b-ext: Target-Only Preference
 
-16. [x] _target_intent_manager field on AppState (like _protection_intent_manager)
-17. [x] get_target_intent_manager() method with lazy init
-18. [x] save_target_intent() method
-19. [x] Not serialized in to_dict() (Tier 3 SKIP)
+13. [ ] Project-level preference loads from config and drives grid toggle default (UT-AD-14)
+14. [ ] First-run dialog triggers only when unmatched target-only resources exist (UT-AD-15)
+15. [ ] First-run dialog: "Yes, show them" / "No thanks" / "Remember this choice" all work (E2E, browser_validation: true)
+16. [ ] Configure page toggle changes project-level preference (E2E, browser_validation: true)
 
-### 3. Match page reads/writes target intent
+### Phase 1b-ext: Scope Visibility Filter
 
-20. [x] Match page loads intent file via state.get_target_intent_manager() on render
-21. [x] Populate confirmed_mappings from intent.match_mappings.source_to_target on load
-22. [x] Write confirmed_mappings back to intent file on all confirm/reject actions
-23. [x] Compute state_to_target when TF state is loaded
+17. [ ] Scope filter hides state-only and target-only rows when ON; preserves source-scoped rows (UT-AD-16, UT-AD-17, UT-AD-18)
+18. [ ] Scope filter does not alter row actions or dispositions (UT-AD-19)
+19. [ ] "Show Scoped Only" toggle in grid toolbar works and composes with type filter (E2E, browser_validation: true)
+20. [ ] Summary card updates to show filtered counts with "(filtered — N rows hidden)" note (E2E, browser_validation: true)
 
-### 4. TF state-to-target visibility on Match page
+### Phase 1c: TF State Awareness
 
-24. [x] State Resources stat card alongside existing cards
-25. [x] Collapsible TF State Alignment section with matched/unmatched table
+21. [ ] State cross-reference identifies already-managed resources including protection mismatch (UT-AD-06, UT-AD-07)
+22. [ ] "Already Managed" badge and TF state address shown in grid for state-present resources (E2E, browser_validation: true)
+23. [ ] Already-managed resources excluded from import block output (E2E, browser_validation: true)
 
-### 5. Target Intent tab in resource detail dialog
+### Phase 1d: Dependency Handling
 
-26. [x] "Target Intent" tab between TF State and JSON tabs
-27. [x] Shows disposition with color badge, source, confirmed status, state-to-target match, protection summary
+24. [ ] Dependency resolution returns correct parent chain for all child types (UT-AD-08, UT-AD-24)
+25. [ ] Cascade dialog shows when adopting child without parent; "Adopt All" and "Skip" work (E2E, browser_validation: true)
+26. [ ] "Select Whole Project" dialog shows child counts and supports checkbox customization (E2E, browser_validation: true)
 
-### 6. Deploy reads persistent intent
+### Phase 1e: Protection Integration
 
-28. [x] Deploy generate loads persistent intent via TargetIntentManager
-29. [x] compute_target_intent preserves match_mappings from previous_intent
+27. [ ] Protection checkbox available for adopted resources; cascade dialog suggests parent protection (E2E, browser_validation: true)
+28. [ ] Protection decisions persist across page navigation Match → Configure → Match (E2E, browser_validation: true)
+29. [ ] Protected addresses in import blocks and moved blocks for protection status changes (UT-AD-02, UT-AD-04)
 
-### 7. Tests
+### Phase 1f: Deploy Integration
 
-30. [x] Test SourceToTargetMapping/StateToTargetMapping/MatchMappings round-trip
-31. [x] Test backward compat with version 1 files (no match_mappings)
-32. [x] Test sync between confirmed_mappings and intent file (to/from round-trip)
+30. [ ] Deploy summary shows import count: N to import, M to create, K protected (E2E, browser_validation: true)
+31. [ ] `terraform plan` shows "will be imported" for adopted resources (E2E, browser_validation: true)
+32. [ ] `terraform apply` imports adopted resources into state with correct target IDs (E2E, browser_validation: true)
+33. [ ] Import block cleanup after successful apply (UT or file verification)
+
+### Full Workflow E2E
+
+34. [ ] Source-matched adopt end-to-end: Match adopt → Configure → Deploy → verify YAML + imports + summary (E2E, browser_validation: true)
+35. [ ] Target-only adopt end-to-end: show target-only → adopt → Deploy → verify YAML + imports (E2E, browser_validation: true)
+36. [ ] Mixed flow end-to-end: adopt + create + ignore → verify each category in output (E2E, browser_validation: true)
+37. [ ] Protected adopt end-to-end: adopt with protection → Deploy → verify protected addresses (E2E, browser_validation: true)
 
 ## Notes
 
-- All 31 tests passing
-- Many features were partially implemented from prior sessions; this task completed and connected them
+- All components must be reusable for Part 2 (future standalone Import & Adopt workflow)
+- Target-only adoption code path directly exercises Part 2 logic
+- Use `hierarchy_index.py` for all parent-child resolution
+- Existing tests: `test_adoption_yaml_updater.py` (703 lines), `test_match_grid.py` (121 lines)
+- New test file: `test_adoption_imports.py` for import block generation tests
