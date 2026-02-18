@@ -1,0 +1,57 @@
+---
+description: Canonical shared contracts for reconcile source, generate entrypoint, and terraform helpers — all intent workflows must follow these
+globs:
+  - importer/web/**/*.py
+alwaysApply: false
+---
+
+# Canonical Workflow Contracts
+
+All intent-driven workflows (adopt, protect, deploy, destroy) share three
+mandatory contracts. No page may implement its own variant.
+
+Full specification: `docs/architecture/canonical-contracts.md`
+
+## Contract 1: Reconcile Source
+
+- **Source of truth:** `state.deploy.reconcile_state_resources`
+- All UI status cards, grids, mismatch detection, and artifact generation
+  must derive from this single source.
+- Do not parse `terraform.tfstate` directly when reconcile data is loaded.
+- After any successful `terraform apply` or zero-change plan, refresh
+  reconcile state from `terraform show -json`, persist, and reload UI.
+- Protection-capable element codes: `PRJ`, `REP`, `PREP`, `GRP`.
+- Key format: `TYPE:resource_index` (e.g. `GRP:member`).
+
+## Contract 2: Generate Entrypoint
+
+- **Entrypoint:** `generate_pipeline.run_generate_pipeline()`
+- Every page uses this single pipeline for YAML apply, HCL regen, moved
+  blocks, and import blocks. No page-specific generation code.
+- Pipeline is headless (no NiceGUI imports, no UI side effects).
+- Pipeline is idempotent: re-running with same inputs yields same output.
+- Pipeline clears stale artifacts when deltas are empty.
+
+### Page call patterns
+
+| Page | Call |
+|------|------|
+| Match | Does NOT call pipeline (intent recording only) |
+| Adopt | `run_generate_pipeline(state, include_adopt=True, adopt_rows=...)` |
+| Utilities | `run_generate_pipeline(state, include_adopt=False)` |
+
+## Contract 3: Terraform Helpers
+
+- **Module:** `importer/web/utils/terraform_helpers.py`
+- All pages import helpers from here. No per-page duplicates allowed.
+- Exported: `resolve_deployment_paths`, `get_terraform_env`,
+  `build_target_flags`, `run_terraform_command`, `read_tf_state_addresses`.
+- `build_target_flags()` must be called after the pipeline has written
+  artifact files to disk.
+
+## Enforcement
+
+- **Test:** `test_cross_page_pipeline_consistency.py` verifies that Utilities
+  and Adopt produce the same `protection_moves.tf` for the same intents.
+- **Code review:** any new page-specific generation logic requires explicit
+  justification.

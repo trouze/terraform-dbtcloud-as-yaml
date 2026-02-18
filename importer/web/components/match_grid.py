@@ -14,16 +14,6 @@ if TYPE_CHECKING:
     from importer.web.utils.protection_intent import ProtectionIntentManager
 
 
-def _debug_log(payload: dict) -> None:
-    """Append a debug log line for runtime evidence."""
-    # region agent log
-    try:
-        with open("/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug.log", "a") as log_file:
-            log_file.write(json.dumps(payload) + "\n")
-    except Exception:
-        pass
-    # endregion
-
 
 # Colors
 DBT_ORANGE = "#FF694A"
@@ -343,27 +333,6 @@ def build_grid_data(
                         "resource_index": repo_key,  # Use the extracted key
                     }
     
-    # Debug: log state lookup info
-    _debug_log({
-        "sessionId": "debug-session",
-        "runId": "run1",
-        "hypothesisId": "H17",
-        "location": "match_grid.py:250",
-        "message": "state lookups built",
-        "data": {
-            "has_state_result": state_result is not None,
-            "resource_count": len(state_result.resources) if state_result else 0,
-            "state_by_name_keys": list(state_by_name.keys())[:20] if state_by_name else [],
-            "state_repo_by_project_keys": list(state_repo_by_project.keys()) if state_repo_by_project else [],
-            "rep_resources": [
-                {"tf_name": r.tf_name, "dbt_id": r.dbt_id, "address": r.address, "resource_index": r.resource_index}
-                for r in (state_result.resources if state_result else [])
-                if r.element_code == "REP"
-            ][:5],
-        },
-        "timestamp": int(time.time() * 1000),
-    })
-    
     # Build target lookup by (type, name) for auto-matching
     # Note: Source IDs are from a different account and should NEVER be used for lookups
     target_by_type_name: dict[tuple[str, str], dict] = {}
@@ -450,10 +419,6 @@ def build_grid_data(
     added_repo_keys: set[str] = set()
     
     rows = []
-    # #region agent log
-    _debug_log({"location": "match_grid.py:source_items_summary", "message": "VAR source items", "data": {"var_sources": [{"key": s.get("key") or s.get("element_mapping_id", ""), "name": s.get("name", ""), "project_name": s.get("project_name", ""), "project_key": s.get("project_key", "")} for s in source_items if s.get("element_type_code") == "VAR"]}, "timestamp": int(time.time() * 1000), "hypothesisId": "HA", "runId": "var_debug"})
-    _debug_log({"location": "match_grid.py:target_var_keys", "message": "VAR target keys in target_by_type_name", "data": {"var_target_keys": [str(k) for k in target_by_type_name.keys() if (isinstance(k, tuple) and len(k) >= 2 and k[0] == "VAR")]}, "timestamp": int(time.time() * 1000), "hypothesisId": "HB", "runId": "var_debug"})
-    # #endregion
     for source in source_items:
         # Use key if available, otherwise fall back to element_mapping_id
         # (Environment variables often have key=null)
@@ -494,34 +459,6 @@ def build_grid_data(
         if confirmed:
             target_id_val = confirmed.get("target_id", "")
             target_name = confirmed.get("target_name", "")
-            _debug_log({
-                "sessionId": "debug-session",
-                "runId": "run1",
-                "hypothesisId": "H1",
-                "location": "match_grid.py:276",
-                "message": "confirmed mapping loaded",
-                "data": {
-                    "source_key": source_key,
-                    "source_type": source_type,
-                    "target_id_val": target_id_val,
-                    "target_id_type": str(type(target_id_val)),
-                    "stored_action": confirmed.get("action"),
-                },
-                "timestamp": int(time.time() * 1000),
-            })
-            if isinstance(target_id_val, str) and target_id_val.lower() == "none":
-                _debug_log({
-                    "sessionId": "debug-session",
-                    "runId": "run1",
-                    "hypothesisId": "H2",
-                    "location": "match_grid.py:283",
-                    "message": "target_id_val is string 'None'",
-                    "data": {
-                        "source_key": source_key,
-                        "target_id_val": target_id_val,
-                    },
-                    "timestamp": int(time.time() * 1000),
-                })
             
             # Compute drift status - compare matched target against TF state
             target_id_int = None
@@ -532,32 +469,7 @@ def build_grid_data(
                     try:
                         target_id_int = int(target_id_val)
                     except (TypeError, ValueError):
-                        _debug_log({
-                            "sessionId": "debug-session",
-                            "runId": "run1",
-                            "hypothesisId": "H3",
-                            "location": "match_grid.py:288",
-                            "message": "target_id_val int conversion failed",
-                            "data": {
-                                "source_key": source_key,
-                                "target_id_val": target_id_val,
-                                "target_id_type": str(type(target_id_val)),
-                            },
-                            "timestamp": int(time.time() * 1000),
-                        })
-            _debug_log({
-                "sessionId": "debug-session",
-                "runId": "run1",
-                "hypothesisId": "H3",
-                "location": "match_grid.py:288",
-                "message": "target_id_int conversion result",
-                "data": {
-                    "source_key": source_key,
-                    "target_id_val": target_id_val,
-                    "target_id_int": target_id_int,
-                },
-                "timestamp": int(time.time() * 1000),
-            })
+                        pass
             state_id, drift_status, state_address = _compute_drift_status(
                 source_type, source_name, target_id_int, state_by_name, bool(state_result),
                 state_by_id=state_by_id,
@@ -569,11 +481,20 @@ def build_grid_data(
             # Adoption requires explicit user opt-in (bulk "Adopt All" or per-row dropdown)
             # However, if the resource is in_sync, override any stored "adopt" back to "match"
             # since the resource is already correctly managed in TF state.
+            # IMPORTANT: If drift_status is "not_in_state", the resource needs adoption
+            # (import) — leaving it as "match" would cause Terraform to create a duplicate.
             stored_action = confirmed.get("action")
             if stored_action == "adopt" and drift_status not in (DRIFT_NOT_IN_STATE, DRIFT_ID_MISMATCH, DRIFT_ATTR_MISMATCH):
                 action = "match"  # Resource is in_sync — adopt is no longer needed
+            elif stored_action == "match" and drift_status == DRIFT_NOT_IN_STATE:
+                action = "adopt"  # Stored "match" is stale — resource not in TF state, needs import
+                # #region agent log
+                import json as _json_dbg_sa, time as _time_dbg_sa; open("/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug.log", "a").write(_json_dbg_sa.dumps({"timestamp": int(_time_dbg_sa.time()*1000), "location": "match_grid.py:confirmed_path:stale_match_override", "message": "Overrode stale stored 'match' to 'adopt' for not_in_state resource", "hypothesisId": "STALE", "data": {"source_key": source_key, "source_type": source_type, "drift_status": drift_status, "stored_action": stored_action, "final_action": "adopt"}}) + "\n")
+                # #endregion
             elif stored_action:
                 action = stored_action
+            elif drift_status == DRIFT_NOT_IN_STATE:
+                action = "adopt"  # Not in TF state — needs import, not match
             else:
                 action = "match"
             
@@ -642,11 +563,6 @@ def build_grid_data(
         clone_config = clone_by_key.get(source_key)
         target = target_by_type_name.get(lookup_key)
         match_confidence = "exact_match" if target else "none"
-        # #region agent log
-        if source_type == "VAR":
-            _debug_log({"location": "match_grid.py:var_lookup", "message": "VAR lookup", "data": {"source_key": source_key, "source_name": source_name, "project_name": project_name, "lookup_key": str(lookup_key), "target_found": target is not None, "target_project": target.get("project_name", "") if target else None, "target_name": target.get("name", "") if target else None}, "timestamp": int(time.time() * 1000), "hypothesisId": "HC", "runId": "var_debug"})
-        # #endregion
-        
         # Special handling for CRD (credentials) - match by parent environment instead of name
         # since credential names are generic like "Credential (snowflake)" and often don't match exactly
         if source_type == "CRD" and not target:
@@ -692,21 +608,6 @@ def build_grid_data(
                 if target_from_state and target_from_state.get("element_type_code") == source_type:
                     target = target_from_state
                     match_confidence = "state_id_match"  # Found via Terraform state ID lookup
-                    _debug_log({
-                        "sessionId": "debug-session",
-                        "runId": "run1",
-                        "hypothesisId": "H20",
-                        "location": "match_grid.py:state-aware-match",
-                        "message": "state-aware auto-match found",
-                        "data": {
-                            "source_key": source_key,
-                            "source_name": source_name,
-                            "state_dbt_id": state_dbt_id,
-                            "target_name": target.get("name"),
-                            "state_address": state_resource.get("address"),
-                        },
-                        "timestamp": int(time.time() * 1000),
-                    })
         
         if target:
             target_id_int = target.get("dbt_id")
@@ -727,7 +628,15 @@ def build_grid_data(
             
             # Default to "match" — adoption requires explicit user opt-in
             # (bulk "Adopt All Matched" or per-row dropdown change)
-            default_action = "match"
+            # EXCEPTION: If drift_status is "not_in_state", default to "adopt" since the
+            # resource exists in the target account but is not tracked in Terraform state.
+            # Leaving it as "match" would cause Terraform to create a duplicate resource.
+            default_action = "adopt" if drift_status == DRIFT_NOT_IN_STATE else "match"
+            
+            # #region agent log
+            if drift_status == DRIFT_NOT_IN_STATE:
+                import json as _json_dbg_nis, time as _time_dbg_nis; open("/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug.log", "a").write(_json_dbg_nis.dumps({"timestamp": int(_time_dbg_nis.time()*1000), "location": "match_grid.py:build_grid_rows:auto_match", "message": "not_in_state resource auto-set to adopt", "hypothesisId": "NIS", "data": {"source_key": source_key, "source_type": source_type, "source_name": source_name, "drift_status": drift_status, "default_action": default_action}}) + "\n")
+            # #endregion
             
             row = {
                 "source_key": source_key,
@@ -1140,7 +1049,6 @@ def build_grid_data(
             # Check if this target-only resource has a confirmed mapping (e.g., adopt)
             confirmed = confirmed_by_source_key.get(target_source_key)
             confirmed_action = confirmed.get("action", "ignore") if confirmed else "ignore"
-            
             target_only_row = {
                 "source_key": target_source_key,
                 "source_name": "",  # Empty source column for target-only
@@ -1176,18 +1084,40 @@ def build_grid_data(
         is_state_protected = ".protected_" in state_address if state_address else False
         
         # Check if user wants it protected (from YAML config)
+        # protected_resources should store bare keys (e.g. "everyone"),
+        # but legacy data may have "target__" prefixed keys. Check all forms:
+        #   1. Exact match (works for bare or prefixed)
+        #   2. Strip "target__" from source_key (for target-only rows)
+        #   3. Add "target__" to source_key (for legacy prefixed stored keys)
         is_yaml_protected = source_key in protected_resources
+        if not is_yaml_protected and source_key.startswith("target__"):
+            is_yaml_protected = source_key[len("target__"):] in protected_resources
+        if not is_yaml_protected and not source_key.startswith("target__"):
+            is_yaml_protected = f"target__{source_key}" in protected_resources
         
         # For state-only resources, the source_key is "state__<full_tf_address>"
         # but the protection intent system stores keys as "TYPE:short_tf_key"
         # (extracted from the ["key"] portion of the state address).
+        # For target-only resources, source_key is "target__<name>" but intent
+        # is stored as "TYPE:name" — build the prefixed key.
         # Normalize the lookup key to match the intent system's key format.
+        # Intent keys are stored as "TYPE:name" (e.g. "GRP:everyone").
+        # Source keys arrive in different formats depending on the page:
+        #   - Match page: "target__everyone" (target-only) or "state__<address>" (state-only)
+        #   - Adopt page: "everyone" (bare key, no prefix)
+        # All must be normalized to "TYPE:name" for intent lookup.
         intent_lookup_key = source_key
         if source_key.startswith("state__") and state_address:
             _m = _re_prot.search(r'\["([^"]+)"\]$', state_address)
             if _m:
                 short_key = _m.group(1)
                 intent_lookup_key = f"{source_type}:{short_key}" if source_type else short_key
+        elif source_key.startswith("target__"):
+            _bare = source_key[len("target__"):]
+            intent_lookup_key = f"{source_type}:{_bare}" if source_type else _bare
+        elif source_type and ":" not in source_key:
+            # Bare key (e.g. "everyone") from Adopt page — add TYPE prefix
+            intent_lookup_key = f"{source_type}:{source_key}"
         
         # Use protection intent manager if available to get effective protection
         # Intent takes precedence over YAML to prevent "flip-flopping"
@@ -1195,16 +1125,17 @@ def build_grid_data(
             is_effective_protected = protection_intent_manager.get_effective_protection(
                 intent_lookup_key, yaml_protected=is_yaml_protected
             )
-            # #region agent log
-            if source_key.startswith("state__"):
-                import json as _json_prot, time as _time_prot
-                _has_intent = protection_intent_manager.has_intent(intent_lookup_key)
-                with open("/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug.log", "a") as _f:
-                    _f.write(_json_prot.dumps({"hypothesisId":"H1_prot_key","location":"match_grid.py:protection_postprocess","message":"State-only protection lookup","data":{"source_key":source_key[:80],"intent_lookup_key":intent_lookup_key,"has_intent":_has_intent,"is_effective_protected":is_effective_protected,"is_yaml_protected":is_yaml_protected,"is_state_protected":is_state_protected,"source_type":source_type},"timestamp":_time_prot.time()}) + "\n")
-            # #endregion
         else:
             # Fallback: use YAML protection directly
             is_effective_protected = is_yaml_protected
+        
+        # #region agent log
+        if source_type == "GRP":
+            import json as _json_dbg2, time as _time_dbg2
+            _dbg_entry2 = {"timestamp": int(_time_dbg2.time()*1000), "location": "match_grid.py:build_grid_data:protection_check", "message": f"GRP protection check for {source_key}", "hypothesisId": "B", "data": {"source_key": source_key, "is_yaml_protected": is_yaml_protected, "is_state_protected": is_state_protected, "is_effective_protected": is_effective_protected, "intent_lookup_key": intent_lookup_key, "action": row.get("action", ""), "has_intent_mgr": protection_intent_manager is not None, "protected_resources_sample": sorted(list(protected_resources))[:20]}}
+            with open("/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug.log", "a") as _f2:
+                _f2.write(_json_dbg2.dumps(_dbg_entry2) + "\n")
+        # #endregion
         
         # Store all values for mismatch detection and UI
         row["yaml_protected"] = is_effective_protected  # User's intended state (intent or YAML)
@@ -1212,6 +1143,14 @@ def build_grid_data(
         
         # Combined value for UI display (protected if either source says so)
         row["protected"] = is_effective_protected or is_state_protected
+        
+        # Suppress protection for non-management actions.
+        # Protection only applies to resources that Terraform will manage (match/adopt).
+        # For ignore/skip/unadopt/create_new, force protected=False to prevent
+        # stale shields from appearing in the grid.
+        if row.get("action", "") in ("ignore", "skip", "unadopt", "create_new"):
+            row["protected"] = False
+            row["yaml_protected"] = False
         
         # Protection mismatch: resource is in TF state but protection level disagrees
         # with what the user intends (e.g., state has protected but user wants unprotected,
@@ -1687,6 +1626,9 @@ def create_match_grid(
     def on_cell_clicked(e):
         if e.args:
             col = e.args.get("colId", "")
+            # #region agent log
+            import json as _json_dbg_cc, time as _time_dbg_cc; open("/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug.log", "a").write(_json_dbg_cc.dumps({"timestamp": int(_time_dbg_cc.time()*1000), "location": "match_grid.py:on_cell_clicked", "message": "cellClicked fired", "hypothesisId": "A", "data": {"colId": col, "has_data": bool(e.args.get("data")), "source_key": e.args.get("data", {}).get("source_key", ""), "current_protected": e.args.get("data", {}).get("protected", "MISSING")}}) + "\n")
+            # #endregion
             if col == "details_btn":
                 data = e.args.get("data", {})
                 source_key = data.get("source_key", "")
@@ -1699,6 +1641,9 @@ def create_match_grid(
                     # Toggle the protection value
                     new_protected = not data.get("protected", False)
                     data["protected"] = new_protected
+                    # #region agent log
+                    open("/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug.log", "a").write(_json_dbg_cc.dumps({"timestamp": int(_time_dbg_cc.time()*1000), "location": "match_grid.py:on_cell_clicked:protected_toggle", "message": "Toggling protection", "hypothesisId": "C", "data": {"source_key": data.get("source_key", ""), "new_protected": new_protected, "old_protected_in_data": not new_protected}}) + "\n")
+                    # #endregion
                     # Trigger the row change handler immediately
                     on_row_change(data)
     

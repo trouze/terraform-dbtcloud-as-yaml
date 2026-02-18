@@ -7,10 +7,16 @@
 # Global resource IDs
 output "connection_ids" {
   description = "Map of connection keys to connection IDs"
-  value = {
-    for key, conn in dbtcloud_global_connection.connections :
-    key => conn.id
-  }
+  value = merge(
+    {
+      for key, conn in dbtcloud_global_connection.connections :
+      key => conn.id
+    },
+    {
+      for key, conn in dbtcloud_global_connection.protected_connections :
+      key => conn.id
+    }
+  )
 }
 
 output "repository_ids" {
@@ -29,18 +35,30 @@ output "repository_ids" {
 
 output "service_token_ids" {
   description = "Map of service token keys to service token IDs"
-  value = {
-    for key, token in dbtcloud_service_token.service_tokens :
-    key => token.id
-  }
+  value = merge(
+    {
+      for key, token in dbtcloud_service_token.service_tokens :
+      key => token.id
+    },
+    {
+      for key, token in dbtcloud_service_token.protected_service_tokens :
+      key => token.id
+    }
+  )
 }
 
 output "group_ids" {
   description = "Map of group keys to group IDs"
-  value = {
-    for key, group in dbtcloud_group.groups :
-    key => group.id
-  }
+  value = merge(
+    {
+      for key, group in dbtcloud_group.groups :
+      key => group.id
+    },
+    {
+      for key, group in dbtcloud_group.protected_groups :
+      key => group.id
+    }
+  )
 }
 
 output "notification_ids" {
@@ -105,13 +123,24 @@ output "credential_ids" {
 # Debug outputs for troubleshooting connection and repository linking
 output "connection_mapping" {
   description = "Debug: Connection key to ID mapping"
-  value = {
-    for key, conn in dbtcloud_global_connection.connections :
-    key => {
-      id   = conn.id
-      name = conn.name
+  value = merge(
+    {
+      for key, conn in dbtcloud_global_connection.connections :
+      key => {
+        id        = conn.id
+        name      = conn.name
+        protected = false
+      }
+    },
+    {
+      for key, conn in dbtcloud_global_connection.protected_connections :
+      key => {
+        id        = conn.id
+        name      = conn.name
+        protected = true
+      }
     }
-  }
+  )
 }
 
 output "environment_connections" {

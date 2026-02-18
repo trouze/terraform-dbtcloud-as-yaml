@@ -904,3 +904,85 @@ class TestE2EProtectedAdopt:
         content = path.read_text()
         assert "protected_projects" in content
         assert '"100"' in content
+
+
+# =============================================================================
+# TestV2AddressGeneration: projects_v2 address generation and target__ prefix
+# =============================================================================
+
+
+class TestV2AddressGeneration:
+    """Tests for comprehensive projects_v2 address generation and target__ prefix stripping."""
+
+    def test_v2_address_for_group(self):
+        """A GRP row generates an import block with dbtcloud_group in the address."""
+        row = _make_adopt_row("GRP", "member", "Member", 800)
+        result = generate_adopt_imports_from_grid([row])
+        assert "import {" in result
+        assert "dbtcloud_group" in result
+        assert '"800"' in result
+
+    def test_v2_address_for_connection(self):
+        """A CON row generates dbtcloud_global_connection."""
+        row = _make_adopt_row("CON", "snowflake_conn", "Snowflake", 801)
+        result = generate_adopt_imports_from_grid([row])
+        assert "import {" in result
+        assert "dbtcloud_global_connection" in result
+        assert '"801"' in result
+
+    def test_v2_address_for_token(self):
+        """A TOK row generates dbtcloud_service_token."""
+        row = _make_adopt_row("TOK", "ci_token", "CI Token", 802)
+        result = generate_adopt_imports_from_grid([row])
+        assert "import {" in result
+        assert "dbtcloud_service_token" in result
+        assert '"802"' in result
+
+    def test_v2_address_for_notification(self):
+        """A NOT row generates dbtcloud_notification."""
+        row = _make_adopt_row("NOT", "slack_notify", "Slack", 803)
+        result = generate_adopt_imports_from_grid([row])
+        assert "import {" in result
+        assert "dbtcloud_notification" in result
+        assert '"803"' in result
+
+    def test_v2_address_for_job_trigger(self):
+        """A JCTG row generates dbtcloud_job_completion_trigger."""
+        row = _make_adopt_row("JCTG", "trigger_1", "Trigger", 804)
+        result = generate_adopt_imports_from_grid([row])
+        assert "import {" in result
+        assert "dbtcloud_job_completion_trigger" in result
+        assert '"804"' in result
+
+    def test_v2_address_for_webhook(self):
+        """A WEB row generates dbtcloud_webhook."""
+        row = _make_adopt_row("WEB", "deploy_hook", "Deploy", 805)
+        result = generate_adopt_imports_from_grid([row])
+        assert "import {" in result
+        assert "dbtcloud_webhook" in result
+        assert '"805"' in result
+
+    def test_target_prefix_stripped_from_resource_name(self):
+        """Row with source_key=target__everyone produces address with bare everyone key (no target__ in to = line)."""
+        row = _make_adopt_row("GRP", "target__everyone", "Everyone", 806)
+        result = generate_adopt_imports_from_grid([row])
+        assert "import {" in result
+        assert "target__" not in result
+        assert "everyone" in result or '"everyone"' in result
+        assert '"806"' in result
+
+    def test_protected_v2_project_address(self):
+        """A protected PRJ row with protected=True generates import block containing protected_projects in the address."""
+        row = _make_adopt_row("PRJ", "my_proj", "My Project", 807, protected=True)
+        result = generate_adopt_imports_from_grid([row])
+        assert "import {" in result
+        assert "protected_projects" in result
+        assert '"807"' in result
+
+    def test_unprotected_v2_project_address(self):
+        """An unprotected PRJ row with protected=False does NOT contain protected_projects."""
+        row = _make_adopt_row("PRJ", "my_proj", "My Project", 808, protected=False)
+        result = generate_adopt_imports_from_grid([row])
+        assert "import {" in result
+        assert "protected_projects" not in result
+        assert '"808"' in result

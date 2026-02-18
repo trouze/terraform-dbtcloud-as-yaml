@@ -8,10 +8,12 @@ from .base_page import BasePage
 from .protection_page import ProtectionManagementPage
 from .match_page import MatchPage
 from .destroy_page import DestroyPage
+from .adopt_page import AdoptPage
 
 __all__ = [
     "BasePage",
     "ProtectionManagementPage",
     "MatchPage",
     "DestroyPage",
+    "AdoptPage",
 ]

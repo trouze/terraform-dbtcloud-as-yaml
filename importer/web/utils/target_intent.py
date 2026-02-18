@@ -250,6 +250,35 @@ class TargetIntentResult:
     tf_state_path: Optional[str] = None
     source_focus_path: Optional[str] = None
     baseline_path: Optional[str] = None
+    workflow_state: dict[str, Any] = field(default_factory=dict)
+
+    # ── Workflow state helpers ────────────────────────────────────────
+
+    def get_adopt_state(self) -> dict[str, Any]:
+        """Return the adopt step sub-dict from workflow_state (empty dict if missing)."""
+        return self.workflow_state.get("adopt", {})
+
+    def set_adopt_state(
+        self,
+        *,
+        complete: bool,
+        skipped: bool = False,
+        imported_count: int = 0,
+        completed_at: str = "",
+    ) -> None:
+        """Record adopt step outcome in workflow_state (caller must save the intent)."""
+        from datetime import datetime
+
+        self.workflow_state["adopt"] = {
+            "complete": complete,
+            "skipped": skipped,
+            "imported_count": imported_count,
+            "completed_at": completed_at or datetime.utcnow().isoformat() + "Z",
+        }
+
+    def clear_adopt_state(self) -> None:
+        """Remove adopt state from workflow_state (caller must save the intent)."""
+        self.workflow_state.pop("adopt", None)
 
     @property
     def retained_keys(self) -> set[str]:
@@ -321,6 +350,7 @@ class TargetIntentResult:
             "orphan_retained_keys": list(self.orphan_retained_keys),
             "coverage_warnings": self.coverage_warnings,
             "drift_warnings": self.drift_warnings,
+            "workflow_state": self.workflow_state,
         }
 
     @classmethod
@@ -345,6 +375,7 @@ class TargetIntentResult:
             tf_state_path=data.get("provenance", {}).get("tf_state_path"),
             source_focus_path=data.get("provenance", {}).get("source_focus_path"),
             baseline_path=data.get("provenance", {}).get("baseline_path"),
+            workflow_state=data.get("workflow_state", {}),
         )
 
 

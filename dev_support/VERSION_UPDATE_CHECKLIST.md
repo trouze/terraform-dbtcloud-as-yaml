@@ -159,7 +159,7 @@ head -30 CHANGELOG.md
 
 ---
 
-**Last Updated:** 2026-01-27  
-**Document Version:** 1.0
+**Last Updated:** 2026-02-17  
+**Document Version:** 1.1
 
 

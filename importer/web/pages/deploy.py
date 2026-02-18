@@ -2064,8 +2064,7 @@ async def _run_generate(
                             terminal.info(f"    ... and {len(keys_to_unprotect) - 5} more")
                     
                     # Mark intents as applied to YAML
-                    for key in all_pending:
-                        protection_intent_manager.mark_applied_to_yaml(key)
+                    protection_intent_manager.mark_applied_to_yaml(set(all_pending))
                     protection_intent_manager.save()
                     
                     terminal.success("  Protection intents applied to YAML")
@@ -2263,54 +2262,15 @@ async def _run_generate(
 
 def _get_terraform_env(state: AppState) -> dict:
     """Get environment variables for Terraform commands.
-    
-    Sets TF_VAR_* variables for terraform input variables and
-    DBT_CLOUD_* for provider fallback (same pattern as e2e test).
-    
-    Requires credentials to be loaded via the Target step.
+
+    Delegates to the canonical ``terraform_helpers.get_terraform_env``
+    — the single source of truth for TF env construction.
+
+    Kept as a thin wrapper so existing callers (including
+    ``destroy.py``) continue to work during the migration period.
     """
-    import os
-    
-    env = dict(os.environ)
-    
-    # Get credentials from state (must be loaded via Target step)
-    api_token = state.target_credentials.api_token
-    account_id = state.target_credentials.account_id
-    host_url = state.target_credentials.host_url
-    token_type = state.target_credentials.token_type
-    
-    # Normalize host URL: strip trailing slash and ensure /api suffix
-    # This matches the e2e test pattern
-    base_host = (host_url or "https://cloud.getdbt.com").rstrip("/")
-    if not base_host.endswith("/api"):
-        host_url = f"{base_host}/api"
-    else:
-        host_url = base_host
-    
-    # TF_VAR_* for terraform input variables
-    env["TF_VAR_dbt_account_id"] = str(account_id)
-    env["TF_VAR_dbt_token"] = api_token
-    env["TF_VAR_dbt_host_url"] = host_url
-    
-    # If using a PAT (user_token), also set TF_VAR_dbt_pat for GitHub App integration
-    # PATs can access the /integrations/github/installations/ endpoint
-    # Service tokens cannot, so they fall back to deploy_key strategy
-    # Also check token prefix as PATs start with 'dbtu_'
-    is_pat = token_type == "user_token" or (api_token and api_token.startswith("dbtu_"))
-    if is_pat:
-        env["TF_VAR_dbt_pat"] = api_token
-    
-    # Log PAT status for debugging
-    import logging
-    log = logging.getLogger(__name__)
-    log.info(f"Token type: {token_type}, Is PAT: {is_pat}, TF_VAR_dbt_pat set: {is_pat}")
-    
-    # DBT_CLOUD_* for provider fallback
-    env["DBT_CLOUD_ACCOUNT_ID"] = str(account_id)
-    env["DBT_CLOUD_TOKEN"] = api_token
-    env["DBT_CLOUD_HOST_URL"] = host_url
-    
-    return env
+    from importer.web.utils.terraform_helpers import get_terraform_env
+    return get_terraform_env(state)
 
 
 async def _run_terraform_init(

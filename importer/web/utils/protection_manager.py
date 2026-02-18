@@ -9,6 +9,7 @@ This module provides utilities for:
 
 import json
 import logging
+import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -20,6 +21,34 @@ from importer.web.utils.ui_logger import traced
 
 logger = logging.getLogger(__name__)
 
+# region agent log
+_DEBUG_LOG_PATH = Path("/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug-65e6e9.log")
+
+
+def _agent_debug_log(
+    hypothesis_id: str,
+    location: str,
+    message: str,
+    data: dict,
+    *,
+    run_id: str = "run1",
+) -> None:
+    try:
+        payload = {
+            "sessionId": "65e6e9",
+            "runId": run_id,
+            "hypothesisId": hypothesis_id,
+            "location": location,
+            "message": message,
+            "data": data,
+            "timestamp": int(time.time() * 1000),
+        }
+        with _DEBUG_LOG_PATH.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(payload, default=str) + "\n")
+    except Exception:
+        pass
+# endregion
+
 
 # Map resource type codes to Terraform resource types and names
 RESOURCE_TYPE_MAP = {
@@ -30,6 +59,11 @@ RESOURCE_TYPE_MAP = {
     "PREP": ("dbtcloud_project_repository", "project_repositories", "protected_project_repositories"),
     "EXTATTR": ("dbtcloud_extended_attributes", "extended_attrs", "protected_extended_attrs"),
     "VAR": ("dbtcloud_environment_variable", "environment_variables", "protected_environment_variables"),
+    # Global resources — protected variants with lifecycle.prevent_destroy
+    "GRP": ("dbtcloud_group", "groups", "protected_groups"),
+    "CON": ("dbtcloud_global_connection", "connections", "protected_connections"),
+    "TOK": ("dbtcloud_service_token", "service_tokens", "protected_service_tokens"),
+    "NOT": ("dbtcloud_notification", "notifications", "notifications"),  # Notifications skipped in TF (user_id mapping)
 }
 
 
@@ -193,6 +227,27 @@ def extract_protected_resources(yaml_config: dict) -> list[ProtectedResource]:
                 name=repo.get("remote_url", repo_key),
                 protected=True,
             ))
+
+    # region agent log
+    try:
+        _agent_debug_log(
+            "D4",
+            "protection_manager.py:extract_protected_resources",
+            "extracted protected resources from yaml",
+            {
+                "protected_count": len(protected),
+                "has_globals_groups": bool(globals_config.get("groups")),
+                "globals_group_keys": [g.get("key", "") for g in globals_config.get("groups", [])[:10]],
+                "protected_group_keys_in_yaml": [
+                    g.get("key", "") for g in globals_config.get("groups", []) if g.get("protected", False)
+                ][:10],
+                "contains_member_in_extracted": any(r.resource_key == "member" for r in protected),
+                "extracted_types": sorted({r.resource_type for r in protected}),
+            },
+        )
+    except Exception:
+        pass
+    # endregion
     
     return protected
 
@@ -411,6 +466,22 @@ def generate_moved_blocks_from_state(
                 yaml_protection[("REP", project_key)] = repo_protected
                 yaml_protection[("PREP", project_key)] = repo_protected
                 break
+
+    # region agent log
+    _agent_debug_log(
+        "H2",
+        "protection_manager.py:generate_moved_blocks_from_state",
+        "yaml protection snapshot for sse_dm_fin_fido",
+        {
+            "state_file": str(state_file),
+            "yaml_PRJ": yaml_protection.get(("PRJ", "sse_dm_fin_fido")),
+            "yaml_REP": yaml_protection.get(("REP", "sse_dm_fin_fido")),
+            "yaml_PREP": yaml_protection.get(("PREP", "sse_dm_fin_fido")),
+            "project_count": len(yaml_config.get("projects", [])),
+            "repo_count": len(yaml_config.get("globals", {}).get("repositories", [])),
+        },
+    )
+    # endregion
     
     # Parse Terraform state to find current resource locations
     resources = state.get("resources", [])
@@ -457,6 +528,21 @@ def generate_moved_blocks_from_state(
                     from_address=get_resource_address(type_code, index_key, protected=False),
                     to_address=get_resource_address(type_code, index_key, protected=True),
                 ))
+                # region agent log
+                if index_key == "sse_dm_fin_fido" and type_code in {"PRJ", "REP", "PREP"}:
+                    _agent_debug_log(
+                        "H3",
+                        "protection_manager.py:generate_moved_blocks_from_state",
+                        "detected protect direction for sse_dm_fin_fido",
+                        {
+                            "resource_type": type_code,
+                            "resource_name": resource_name,
+                            "index_key": index_key,
+                            "yaml_protected": yaml_protected,
+                            "state_protected": state_protected,
+                        },
+                    )
+                # endregion
             elif not yaml_protected and state_protected:
                 # YAML says unprotected, but state has it in protected block
                 changes.append(ProtectionChange(
@@ -467,7 +553,36 @@ def generate_moved_blocks_from_state(
                     from_address=get_resource_address(type_code, index_key, protected=True),
                     to_address=get_resource_address(type_code, index_key, protected=False),
                 ))
+                # region agent log
+                if index_key == "sse_dm_fin_fido" and type_code in {"PRJ", "REP", "PREP"}:
+                    _agent_debug_log(
+                        "H3",
+                        "protection_manager.py:generate_moved_blocks_from_state",
+                        "detected unprotect direction for sse_dm_fin_fido",
+                        {
+                            "resource_type": type_code,
+                            "resource_name": resource_name,
+                            "index_key": index_key,
+                            "yaml_protected": yaml_protected,
+                            "state_protected": state_protected,
+                        },
+                    )
+                # endregion
     
+    # region agent log
+    fido_changes = [
+        {"type": c.resource_type, "direction": c.direction, "from": c.from_address, "to": c.to_address}
+        for c in changes
+        if c.resource_key == "sse_dm_fin_fido"
+    ]
+    _agent_debug_log(
+        "H4",
+        "protection_manager.py:generate_moved_blocks_from_state",
+        "generated changes summary for sse_dm_fin_fido",
+        {"fido_change_count": len(fido_changes), "fido_changes": fido_changes},
+    )
+    # endregion
+
     logger.info(f"State-based protection detection found {len(changes)} change(s)")
     return changes
 
@@ -523,6 +638,20 @@ def write_moved_blocks_file(
     
     # No existing file or preserve_existing is False - write new content
     output_path.write_text(new_content, encoding="utf-8")
+    # region agent log
+    fido_lines = [line for line in new_content.splitlines() if "sse_dm_fin_fido" in line]
+    _agent_debug_log(
+        "H5",
+        "protection_manager.py:write_moved_blocks_file",
+        "wrote protection_moves content for sse_dm_fin_fido",
+        {
+            "output_path": str(output_path),
+            "change_count": len(changes),
+            "fido_line_count": len(fido_lines),
+            "fido_lines": fido_lines,
+        },
+    )
+    # endregion
     logger.info(f"Wrote {len(changes)} moved block(s) to {output_path}")
     return output_path
 
@@ -990,6 +1119,10 @@ EXTENDED_RESOURCE_TYPE_MAP = {
     "JOB": ("dbtcloud_job", "jobs", "protected_jobs"),
     "EXTATTR": ("dbtcloud_extended_attributes", "extended_attrs", "protected_extended_attrs"),
     "VAR": ("dbtcloud_environment_variable", "environment_variables", "protected_environment_variables"),
+    # Global resources — protected variants with lifecycle.prevent_destroy
+    "GRP": ("dbtcloud_group", "groups", "protected_groups"),
+    "CON": ("dbtcloud_global_connection", "connections", "protected_connections"),
+    "TOK": ("dbtcloud_service_token", "service_tokens", "protected_service_tokens"),
 }
 
 
@@ -1337,6 +1470,9 @@ def generate_repair_moved_blocks(
         "PREP": "project_repository link",
         "EXTATTR": "extended_attributes",
         "VAR": "environment_variable",
+        "GRP": "group",
+        "CON": "connection",
+        "TOK": "service_token",
     }
     
     for project_key, project_mismatches in sorted(by_project.items()):

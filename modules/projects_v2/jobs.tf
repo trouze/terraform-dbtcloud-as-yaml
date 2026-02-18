@@ -188,6 +188,18 @@ locals {
     key => local.is_ci_or_merge_job[key] ? null : try(item.job_data.force_node_selection, null)
   }
 
+  # compare_changes_flags is canonicalized by the API for CI/Merge jobs.
+  # Normalize to the API-stable value to avoid provider "inconsistent result"
+  # errors when the server strips "+" and "--exclude ..." suffixes.
+  compare_changes_flags_effective = {
+    for key, item in local.jobs_map :
+    key => (
+      local.is_ci_or_merge_job[key]
+      ? "--select state:modified"
+      : try(item.job_data.compare_changes_flags, "--select state:modified")
+    )
+  }
+
 }
 
 #############################################
@@ -224,7 +236,7 @@ resource "dbtcloud_job" "jobs" {
   # Always pass compare_changes_flags from YAML; the provider internally gates it
   # (only sends to API when run_compare_changes=true), so this is safe and avoids
   # perpetual "(known after apply)" diffs when run_compare_changes is false.
-  compare_changes_flags = try(each.value.job_data.compare_changes_flags, "--select state:modified")
+  compare_changes_flags = local.compare_changes_flags_effective[each.key]
   run_generate_sources  = try(each.value.job_data.run_generate_sources, false)
   run_lint              = try(each.value.job_data.run_lint, false)
   schedule_cron         = local.schedule_cron_effective[each.key]
@@ -292,7 +304,7 @@ resource "dbtcloud_job" "protected_jobs" {
   # Always pass compare_changes_flags from YAML; the provider internally gates it
   # (only sends to API when run_compare_changes=true), so this is safe and avoids
   # perpetual "(known after apply)" diffs when run_compare_changes is false.
-  compare_changes_flags = try(each.value.job_data.compare_changes_flags, "--select state:modified")
+  compare_changes_flags = local.compare_changes_flags_effective[each.key]
   run_generate_sources  = try(each.value.job_data.run_generate_sources, false)
   run_lint              = try(each.value.job_data.run_lint, false)
   schedule_cron         = local.schedule_cron_effective[each.key]

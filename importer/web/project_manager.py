@@ -11,33 +11,12 @@ import asyncio
 import json
 import re
 import shutil
-import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
 from importer.web.state import AppState, WorkflowType
-
-
-# ---------------------------------------------------------------------------
-# Debug logging (per 51.01-Debug-Logging-Standards.md)
-# ---------------------------------------------------------------------------
-_DL = "/tmp/terraform_dbtcloud_project_debug.log"
-
-
-def _log(location: str, **kwargs: object) -> None:
-    """Permanent debug instrumentation for project management operations."""
-    try:
-        with open(_DL, "a") as f:
-            f.write(
-                json.dumps(
-                    {"location": location, "timestamp": time.time(), **kwargs}
-                )
-                + "\n"
-            )
-    except Exception:
-        pass
 
 
 # ---------------------------------------------------------------------------
@@ -230,8 +209,8 @@ outputs/
                     try:
                         with open(config_path, encoding="utf-8") as f:
                             projects.append(ProjectConfig.from_dict(json.load(f)))
-                    except Exception as exc:
-                        _log("list_projects_error", folder=str(folder), error=str(exc))
+                    except Exception:
+                        pass
 
         return sorted(projects, key=lambda p: p.updated_at, reverse=True)
 
@@ -250,8 +229,6 @@ outputs/
 
         if project_path.exists():
             raise ValueError(f"Project with slug '{slug}' already exists")
-
-        _log("create_project", slug=slug, workflow=workflow_type.value)
 
         # Create folder structure
         project_path.mkdir(parents=True)
@@ -285,8 +262,6 @@ outputs/
 
         if not config_path.exists():
             raise FileNotFoundError(f"Project '{slug}' not found")
-
-        _log("load_project", slug=slug)
 
         with open(config_path, encoding="utf-8") as f:
             config = ProjectConfig.from_dict(json.load(f))
@@ -328,8 +303,6 @@ outputs/
         project_path = self.projects_dir / slug
         state_path = project_path / "state.json"
 
-        _log("save_project", slug=slug)
-
         state_dict = state.to_dict()
 
         # Split Tier-2 deploy logs to files
@@ -364,7 +337,6 @@ outputs/
         """Delete project folder recursively."""
         project_path = self.projects_dir / slug
         if project_path.exists():
-            _log("delete_project", slug=slug)
             shutil.rmtree(project_path)
 
     def get_project_path(self, slug: str) -> Path:
@@ -395,8 +367,6 @@ outputs/
         env_file = Path(env_path)
         if not env_file.exists():
             raise FileNotFoundError(f"Env file not found: {env_path}")
-
-        _log("import_credentials", slug=slug, env_path=env_path, source=source, target=target)
 
         # Parse the env file
         env_vars: dict[str, str] = {}
@@ -515,10 +485,9 @@ class StateSaver:
                     self._last_state.active_project,
                     self._last_state,
                 )
-                _log("auto_save_success", slug=self._last_state.active_project)
-            except Exception as exc:
-                # Log but don't interrupt user workflow
-                _log("auto_save_error", slug=self._last_state.active_project, error=str(exc))
+            except Exception:
+                # Don't interrupt user workflow
+                pass
 
     async def force_save(self, state: AppState) -> None:
         """Immediately save without debouncing (e.g., on shutdown)."""
@@ -527,5 +496,5 @@ class StateSaver:
         try:
             self.project_manager.save_project(state.active_project, state)
             self.project_manager.update_account_summary(state.active_project, state)
-        except Exception as exc:
-            _log("force_save_error", slug=state.active_project, error=str(exc))
+        except Exception:
+            pass

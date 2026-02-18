@@ -31,11 +31,6 @@ def apply_adoption_overrides(
     Returns:
         Path to the updated YAML file
     """
-    # #region agent log
-    import json as _json
-    with open("/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug.log", "a") as f:
-        f.write(_json.dumps({"location": "adoption_yaml_updater.py:entry", "message": "apply_adoption_overrides called", "data": {"adopt_data_type": str(type(adopt_data)), "adopt_data_len": len(adopt_data) if adopt_data else 0, "target_items_len": len(target_report_items) if target_report_items else 0}, "timestamp": __import__("time").time() * 1000, "sessionId": "debug-session", "hypothesisId": "H0"}) + "\n")
-    # #endregion
     if not adopt_data:
         logger.info("No adoption data to apply")
         return yaml_file
@@ -54,12 +49,6 @@ def apply_adoption_overrides(
             row for row in adopt_data
             if row.get("target_id")
         ]
-    
-    # #region agent log
-    with open("/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug.log", "a") as f:
-        adopt_summary = [{"source_key": r.get("source_key"), "source_type": r.get("source_type"), "target_id": r.get("target_id")} for r in adopt_rows]
-        f.write(_json.dumps({"location": "adoption_yaml_updater.py:after_normalize", "message": "adopt_rows after normalization", "data": {"adopt_rows_count": len(adopt_rows), "adopt_rows": adopt_summary}, "timestamp": __import__("time").time() * 1000, "sessionId": "debug-session", "hypothesisId": "H0b"}) + "\n")
-    # #endregion
     
     if not adopt_rows:
         logger.info("No adoption mappings to apply")
@@ -140,13 +129,6 @@ def apply_adoption_overrides(
         
         # Apply updates based on resource type
         if resource_type == "REP":
-            # region agent log
-            try:
-                with open("/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug.log", "a") as f:
-                    import json as _json
-                    f.write(_json.dumps({"location": "adoption_yaml_updater.py:apply_adoption_overrides:REP", "message": "Processing REP adoption", "data": {"source_key": source_key, "target_id": target_id, "protected": protected, "target_remote_url": target_data.get("remote_url"), "target_git_clone_strategy": target_data.get("git_clone_strategy")}, "timestamp": __import__("time").time() * 1000, "sessionId": "debug-session", "hypothesisId": "H1"}) + "\n")
-            except: pass
-            # endregion
             changes_made += _update_repository(config, source_key, target_data, project_name, protected)
         elif resource_type == "ENV":
             changes_made += _update_environment(config, source_key, target_data, protected)
@@ -269,15 +251,6 @@ def _update_repository(config: dict, source_key: str, target_data: dict, project
     
     logger.info(f"  Trying to find repository with keys: {keys_to_try}")
     
-    # region agent log
-    try:
-        with open("/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug.log", "a") as f:
-            import json as _json
-            globals_repo_keys = [r.get("key") for r in config.get("globals", {}).get("repositories", [])]
-            f.write(_json.dumps({"location": "adoption_yaml_updater.py:_update_repository:lookup", "message": "Looking for repository", "data": {"keys_to_try": keys_to_try, "globals_repo_keys_sample": globals_repo_keys[:10] if globals_repo_keys else []}, "timestamp": __import__("time").time() * 1000, "sessionId": "debug-session", "hypothesisId": "H2"}) + "\n")
-    except: pass
-    # endregion
-    
     # First check top-level repositories
     for repo in config.get("repositories", []):
         if repo.get("key") in keys_to_try:
@@ -289,13 +262,6 @@ def _update_repository(config: dict, source_key: str, target_data: dict, project
     globals_section = config.get("globals", {})
     for repo in globals_section.get("repositories", []):
         if repo.get("key") in keys_to_try:
-            # region agent log
-            try:
-                with open("/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug.log", "a") as f:
-                    import json as _json
-                    f.write(_json.dumps({"location": "adoption_yaml_updater.py:_update_repository:found_match", "message": "Found matching repository in globals", "data": {"repo_key": repo.get("key"), "old_remote_url": repo.get("remote_url"), "target_remote_url": target_data.get("remote_url")}, "timestamp": __import__("time").time() * 1000, "sessionId": "debug-session", "hypothesisId": "H3"}) + "\n")
-            except: pass
-            # endregion
             if apply_updates(repo):
                 logger.info(f"Updated globals.repositories {repo.get('key')} with target values")
                 return 1
@@ -492,12 +458,6 @@ def apply_protection_from_set(
     Returns:
         Path to the updated YAML file
     """
-    # #region agent log
-    import json as _json_prot
-    with open("/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug.log", "a") as f:
-        f.write(_json_prot.dumps({"hypothesisId": "H_APPLY_PROT", "location": "adoption_yaml_updater.py:apply_protection_from_set:entry", "message": "apply_protection_from_set called", "data": {"yaml_file": yaml_file, "protected_keys": list(protected_keys), "output_path": output_path}, "timestamp": __import__("time").time()}) + "\n")
-    # #endregion
-    
     if not protected_keys:
         logger.info("No protected resources to apply")
         return yaml_file
@@ -519,6 +479,9 @@ def apply_protection_from_set(
     job_keys_to_protect = set()
     conn_keys_to_protect = set()
     var_keys_to_protect = set()  # Environment variables
+    grp_keys_to_protect = set()  # Groups (global)
+    tok_keys_to_protect = set()  # Service tokens (global)
+    not_keys_to_protect = set()  # Notifications (global)
     all_unprefixed = set()  # Fallback for unprefixed keys
     
     for key in protected_keys:
@@ -554,6 +517,12 @@ def apply_protection_from_set(
                 conn_keys_to_protect.add(resource_key)
             elif prefix == "VAR":
                 var_keys_to_protect.add(resource_key)
+            elif prefix == "GRP":
+                grp_keys_to_protect.add(resource_key)
+            elif prefix == "TOK":
+                tok_keys_to_protect.add(resource_key)
+            elif prefix == "NOT":
+                not_keys_to_protect.add(resource_key)
             else:
                 # Unknown prefix, add to unprefixed set
                 all_unprefixed.add(resource_key)
@@ -563,11 +532,6 @@ def apply_protection_from_set(
     
     updated_count = 0
     projects_in_yaml = [p.get("key") for p in config.get("projects", [])]
-    
-    # #region agent log
-    with open("/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug.log", "a") as f:
-        f.write(_json_prot.dumps({"hypothesisId": "H_APPLY_PROT", "location": "adoption_yaml_updater.py:apply_protection_from_set:projects_loaded", "message": "Projects loaded from YAML", "data": {"num_projects": len(projects_in_yaml), "sample_projects": projects_in_yaml[:10], "project_keys_to_protect": list(project_keys_to_protect), "all_unprefixed": list(all_unprefixed)}, "timestamp": __import__("time").time()}) + "\n")
-    # #endregion
     
     # Process projects
     matched_projects = []
@@ -608,12 +572,6 @@ def apply_protection_from_set(
         for job in project.get("jobs", []):
             job_key = job.get("key", "")
             full_job_key = f"{project_key}_{job_key}" if job_key else ""
-            
-            # #region agent log
-            import json as _json_prot2
-            with open("/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug.log", "a") as f:
-                f.write(_json_prot2.dumps({"hypothesisId": "H1_JOB_MATCH", "location": "adoption_yaml_updater.py:apply_protection_from_set:project_job_check", "message": "Checking project-level job", "data": {"job_key": job_key, "full_job_key": full_job_key, "in_job_keys": job_key in job_keys_to_protect, "full_in_job_keys": full_job_key in job_keys_to_protect, "job_keys_to_protect": list(job_keys_to_protect)}, "timestamp": __import__("time").time()}) + "\n")
-            # #endregion
             
             if (job_key in job_keys_to_protect or full_job_key in job_keys_to_protect or
                 job_key in all_unprefixed or full_job_key in all_unprefixed):
@@ -659,6 +617,30 @@ def apply_protection_from_set(
             updated_count += 1
             logger.info(f"  Set protected=True for connection {conn_key}")
     
+    # Process global groups
+    for grp in globals_section.get("groups", []):
+        grp_key = grp.get("key", "")
+        if grp_key in grp_keys_to_protect or grp_key in all_unprefixed:
+            grp["protected"] = True
+            updated_count += 1
+            logger.info(f"  Set protected=True for group {grp_key}")
+    
+    # Process global service tokens
+    for tok in globals_section.get("service_tokens", []):
+        tok_key = tok.get("key", "")
+        if tok_key in tok_keys_to_protect or tok_key in all_unprefixed:
+            tok["protected"] = True
+            updated_count += 1
+            logger.info(f"  Set protected=True for service token {tok_key}")
+    
+    # Process global notifications
+    for notif in globals_section.get("notifications", []):
+        notif_key = notif.get("key", "")
+        if notif_key in not_keys_to_protect or notif_key in all_unprefixed:
+            notif["protected"] = True
+            updated_count += 1
+            logger.info(f"  Set protected=True for notification {notif_key}")
+    
     # Process global repositories
     for repo in globals_section.get("repositories", []):
         repo_key = repo.get("key", "")
@@ -687,18 +669,8 @@ def apply_protection_from_set(
     # Save updated YAML
     output = output_path or yaml_file
     
-    # #region agent log
-    with open("/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug.log", "a") as f:
-        f.write(_json_prot.dumps({"hypothesisId": "H_APPLY_PROT", "location": "adoption_yaml_updater.py:apply_protection_from_set:before_save", "message": "About to save YAML", "data": {"output": output, "updated_count": updated_count, "matched_projects": matched_projects}, "timestamp": __import__("time").time()}) + "\n")
-    # #endregion
-    
     with open(output, "w") as f:
         yaml.dump(config, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
-    
-    # #region agent log
-    with open("/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug.log", "a") as f:
-        f.write(_json_prot.dumps({"hypothesisId": "H_APPLY_PROT", "location": "adoption_yaml_updater.py:apply_protection_from_set:after_save", "message": "YAML saved", "data": {"output": output, "updated_count": updated_count}, "timestamp": __import__("time").time()}) + "\n")
-    # #endregion
     
     logger.info(f"Applied protection to {updated_count} resources in {output}")
     
@@ -744,6 +716,9 @@ def apply_unprotection_from_set(
     job_keys_to_unprotect = set()
     conn_keys_to_unprotect = set()
     var_keys_to_unprotect = set()  # Environment variables
+    grp_keys_to_unprotect = set()  # Groups (global)
+    tok_keys_to_unprotect = set()  # Service tokens (global)
+    not_keys_to_unprotect = set()  # Notifications (global)
     all_unprefixed = set()
     
     for key in unprotected_keys:
@@ -776,6 +751,12 @@ def apply_unprotection_from_set(
                 conn_keys_to_unprotect.add(resource_key)
             elif prefix == "VAR":
                 var_keys_to_unprotect.add(resource_key)
+            elif prefix == "GRP":
+                grp_keys_to_unprotect.add(resource_key)
+            elif prefix == "TOK":
+                tok_keys_to_unprotect.add(resource_key)
+            elif prefix == "NOT":
+                not_keys_to_unprotect.add(resource_key)
             else:
                 all_unprefixed.add(resource_key)
         else:
@@ -887,6 +868,42 @@ def apply_unprotection_from_set(
                 )
             else:
                 logger.info(f"  Removed protection from global repository {repo_key} (matched {matched_key})")
+    
+    # Process global connections
+    for conn in globals_section.get("connections", []):
+        conn_key = conn.get("key", "")
+        if conn_key in conn_keys_to_unprotect or conn_key in all_unprefixed:
+            if "protected" in conn:
+                del conn["protected"]
+                updated_count += 1
+                logger.info(f"  Removed protection from connection {conn_key}")
+    
+    # Process global groups
+    for grp in globals_section.get("groups", []):
+        grp_key = grp.get("key", "")
+        if grp_key in grp_keys_to_unprotect or grp_key in all_unprefixed:
+            if "protected" in grp:
+                del grp["protected"]
+                updated_count += 1
+                logger.info(f"  Removed protection from group {grp_key}")
+    
+    # Process global service tokens
+    for tok in globals_section.get("service_tokens", []):
+        tok_key = tok.get("key", "")
+        if tok_key in tok_keys_to_unprotect or tok_key in all_unprefixed:
+            if "protected" in tok:
+                del tok["protected"]
+                updated_count += 1
+                logger.info(f"  Removed protection from service token {tok_key}")
+    
+    # Process global notifications
+    for notif in globals_section.get("notifications", []):
+        notif_key = notif.get("key", "")
+        if notif_key in not_keys_to_unprotect or notif_key in all_unprefixed:
+            if "protected" in notif:
+                del notif["protected"]
+                updated_count += 1
+                logger.info(f"  Removed protection from notification {notif_key}")
     
     # Save updated YAML
     output = output_path or yaml_file
@@ -1145,14 +1162,6 @@ def cleanup_unadopted_yaml_configs(
 
     # Only clean up keys that are ignored AND not also adopted
     keys_to_remove = ignore_keys - adopt_keys
-    # region agent log
-    try:
-        import json as _json, time as _time
-        with open("/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug.log", "a") as _lf:
-            _lf.write(_json.dumps({"runId":"cleanup","hypothesisId":"H_CLEANUP","location":"adoption_yaml_updater.py:cleanup","message":"cleanup_unadopted_yaml_configs","data":{"ignore_keys":list(map(str,ignore_keys)),"adopt_keys":list(map(str,adopt_keys)),"keys_to_remove":list(map(str,keys_to_remove))},"timestamp":int(_time.time()*1000)})+"\n")
-    except Exception:
-        pass
-    # endregion
     if not keys_to_remove:
         return deployment_yaml, 0
 

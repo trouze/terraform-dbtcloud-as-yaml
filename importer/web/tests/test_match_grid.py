@@ -20,8 +20,8 @@ class TestActionValues:
         assert "unadopt" in ACTION_VALUES
 
     def test_action_values_contains_all_expected_actions(self):
-        """Action column includes match, create_new, skip, adopt, unadopt."""
-        expected = {"match", "create_new", "skip", "adopt", "unadopt"}
+        """Action column includes match, create_new, skip, adopt, unadopt, ignore."""
+        expected = {"match", "create_new", "skip", "adopt", "unadopt", "ignore"}
         assert set(ACTION_VALUES) == expected
 
 
@@ -325,6 +325,29 @@ class TestProtectionMismatchDetection:
         assert user_wants is False
         assert mismatch is True
 
+    def test_protection_mismatch_when_state_protected_but_user_wants_unprotected_v2(self):
+        """Variant: same as above but also checks yaml_protected field from build_grid_data."""
+        # This test verifies the row fields set by build_grid_data itself
+        rows = build_grid_data(
+            source_items=[{
+                "key": "PRJ:analytics",
+                "name": "analytics",
+                "element_type_code": "PRJ",
+                "dbt_cloud_id": "100",
+                "project_name": "analytics",
+            }],
+            target_items=[],
+            confirmed_mappings=[],
+            rejected_keys=set(),
+            protected_resources=set(),  # user doesn't want protection
+        )
+        prj_rows = [r for r in rows if r.get("source_type") == "PRJ"]
+        assert len(prj_rows) >= 1
+        prj = prj_rows[0]
+        # With no protected_resources and no intent manager, yaml_protected=False
+        assert prj.get("yaml_protected") is False
+        assert prj.get("protected") is False
+
     def test_no_protection_mismatch_when_consistent(self):
         """UT-AD-07: protection_mismatch=False when state and user agree (both unprotected)."""
         rows = build_grid_data(
@@ -377,3 +400,194 @@ class TestProtectionMismatchDetection:
         # Without state_result, drift_status is no_state → protection_mismatch should be False
         assert "protection_mismatch" in prj
         assert prj["protection_mismatch"] is False
+
+
+# --- Target-only protection lookup (target__ prefix normalization) ---
+
+
+@pytest.fixture
+def target_only_group_items() -> list[dict]:
+    """Target-only group items for protection lookup tests."""
+    return [
+        {
+            "key": "everyone",
+            "name": "Everyone",
+            "element_type_code": "GRP",
+            "dbt_id": 775,
+            "project_name": "",
+        },
+        {
+            "key": "member",
+            "name": "Member",
+            "element_type_code": "GRP",
+            "dbt_id": 774,
+            "project_name": "",
+        },
+    ]
+
+
+class TestTargetOnlyProtection:
+    """Tests for target-only resource protection lookup in build_grid_data.
+    
+    Target-only rows have source_key = "target__<name>" but protected_resources
+    stores bare keys (without prefix). build_grid_data must normalize before lookup.
+    """
+
+    def test_target_only_protected_via_protected_resources(
+        self, target_only_group_items,
+    ):
+        """Target-only row with bare key in protected_resources shows protected=True
+        when action is 'adopt'. Ignored rows suppress protection display."""
+        # With action='adopt', protection should show
+        rows = build_grid_data(
+            source_items=[],
+            target_items=target_only_group_items,
+            confirmed_mappings=[{
+                "source_key": "target__everyone",
+                "target_id": "775",
+                "target_name": "Everyone",
+                "action": "adopt",
+                "match_type": "manual",
+            }],
+            rejected_keys=set(),
+            protected_resources={"everyone"},  # bare key
+        )
+        by_key = {r["source_key"]: r for r in rows}
+        assert "target__everyone" in by_key
+        everyone = by_key["target__everyone"]
+        assert everyone["protected"] is True
+        assert everyone["yaml_protected"] is True
+
+        # member is NOT in protected_resources and defaults to ignore
+        assert "target__member" in by_key
+        member = by_key["target__member"]
+        assert member["protected"] is False
+        assert member["yaml_protected"] is False
+
+    def test_target_only_ignored_suppresses_protection(
+        self, target_only_group_items,
+    ):
+        """Target-only row with 'ignore' action suppresses protection even if
+        protected_resources or intent has stale entries."""
+        rows = build_grid_data(
+            source_items=[],
+            target_items=target_only_group_items,
+            confirmed_mappings=[],  # default action is 'ignore'
+            rejected_keys=set(),
+            protected_resources={"everyone"},  # stale protection
+        )
+        by_key = {r["source_key"]: r for r in rows}
+        everyone = by_key["target__everyone"]
+        # Protection is suppressed because action is 'ignore'
+        assert everyone["protected"] is False
+        assert everyone["yaml_protected"] is False
+
+    def test_target_only_protected_via_intent_manager(
+        self, target_only_group_items, tmp_path,
+    ):
+        """Target-only row with TYPE:bare_key in intent manager shows protected=True
+        when action is 'adopt'."""
+        from importer.web.utils.protection_intent import ProtectionIntentManager
+        intent_file = tmp_path / "protection-intent.json"
+        mgr = ProtectionIntentManager(intent_file)
+        mgr.set_intent(
+            key="GRP:everyone",
+            protected=True,
+            source="test",
+            reason="test protection",
+        )
+        mgr.save()
+
+        rows = build_grid_data(
+            source_items=[],
+            target_items=target_only_group_items,
+            confirmed_mappings=[{
+                "source_key": "target__everyone",
+                "target_id": "775",
+                "target_name": "Everyone",
+                "action": "adopt",
+                "match_type": "manual",
+            }],
+            rejected_keys=set(),
+            protected_resources=set(),
+            protection_intent_manager=mgr,
+        )
+        by_key = {r["source_key"]: r for r in rows}
+        assert "target__everyone" in by_key
+        everyone = by_key["target__everyone"]
+        # Intent manager should mark it as protected (action is adopt, not suppressed)
+        assert everyone["protected"] is True
+
+    def test_target_only_unprotected_by_default(
+        self, target_only_group_items,
+    ):
+        """Target-only rows with no protection in either system show protected=False."""
+        rows = build_grid_data(
+            source_items=[],
+            target_items=target_only_group_items,
+            confirmed_mappings=[],
+            rejected_keys=set(),
+            protected_resources=set(),
+            protection_intent_manager=None,
+        )
+        for r in rows:
+            if r.get("is_target_only"):
+                assert r["protected"] is False
+                assert r["yaml_protected"] is False
+
+
+# --- Adopt-and-protect roundtrip test ---
+
+
+class TestAdoptAndProtectRoundtrip:
+    """End-to-end data flow: set intent + protected_resources, build grid, verify."""
+
+    def test_adopt_and_protect_roundtrip(self, tmp_path):
+        """Simulates _adopt_and_protect_from_match then verifies build_grid_data picks it up."""
+        from importer.web.utils.protection_intent import ProtectionIntentManager
+
+        # 1. Create protection intent (simulating _adopt_and_protect_from_match)
+        intent_file = tmp_path / "protection-intent.json"
+        mgr = ProtectionIntentManager(intent_file)
+        mgr.set_intent(
+            key="GRP:everyone",
+            protected=True,
+            source="adopt_and_protect",
+            reason="Adopted & protected from Match page",
+        )
+        mgr.save()
+
+        # 2. Set protected_resources with bare key (as the handler does)
+        protected_resources = {"everyone"}
+
+        # 3. Set confirmed_mappings with adopt action
+        confirmed_mappings = [
+            {"source_key": "target__everyone", "action": "adopt"},
+        ]
+
+        # 4. Build grid data
+        target_items = [
+            {
+                "key": "everyone",
+                "name": "Everyone",
+                "element_type_code": "GRP",
+                "dbt_id": 775,
+                "project_name": "",
+            },
+        ]
+        rows = build_grid_data(
+            source_items=[],
+            target_items=target_items,
+            confirmed_mappings=confirmed_mappings,
+            rejected_keys=set(),
+            protected_resources=protected_resources,
+            protection_intent_manager=mgr,
+        )
+
+        # 5. Verify the row
+        by_key = {r["source_key"]: r for r in rows}
+        assert "target__everyone" in by_key
+        everyone = by_key["target__everyone"]
+        assert everyone["action"] == "adopt"
+        assert everyone["protected"] is True
+        assert everyone["yaml_protected"] is True

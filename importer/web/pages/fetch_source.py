@@ -597,23 +597,14 @@ async def _run_fetch(
 
     # Pre-declare FetchCancelledException to avoid UnboundLocalError if import fails
     FetchCancelledException = Exception
-    _DL = "/tmp/terraform_dbtcloud_fetch_debug.log"
-    
-    try:
-        # region agent log
-        open(_DL, "a").write(__import__("json").dumps({"location": "fetch_source:try_start", "hypothesisId": "H1", "message": "entered try block before imports", "timestamp": __import__("time").time()}) + "\n")
-        # endregion agent log
 
+    try:
         # Import fetch dependencies
         from importer.config import Settings
         from importer.client import DbtCloudClient
         from importer.fetcher import fetch_account_snapshot, FetchCancelledException
         from importer.run_tracker import RunTracker
         from importer.reporter import generate_summary_report, generate_detailed_report
-
-        # region agent log
-        open(_DL, "a").write(__import__("json").dumps({"location": "fetch_source:imports_done", "hypothesisId": "H1", "message": "imports succeeded", "FetchCancelledException_is_Exception": FetchCancelledException is Exception, "FetchCancelledException_name": FetchCancelledException.__name__, "timestamp": __import__("time").time()}) + "\n")
-        # endregion agent log
 
         # Create settings
         settings = Settings(
@@ -642,25 +633,6 @@ async def _run_fetch(
         event = cancel_event["event"]
         event.clear()  # Ensure no stale set() from a previous run or shared reference
         import time
-        _repo = Path(__file__).resolve().parents[3]
-        _debug_log = _repo / ".cursor" / "debug.log"
-        _debug_fallback = _repo / "dev_support" / "debug.log"
-        _debug_tmp = Path("/tmp/terraform_dbtcloud_fetch_debug.log")
-        _payload = __import__("json").dumps({
-            "location": "fetch_source:before_to_thread",
-            "message": "event state before starting fetch thread",
-            "event_is_set": event.is_set(),
-            "event_id": id(event),
-            "timestamp": time.time(),
-        }) + "\n"
-        for _path in (_debug_log, _debug_fallback, _debug_tmp):
-            try:
-                if _path.parent != Path("/tmp"):
-                    _path.parent.mkdir(parents=True, exist_ok=True)
-                _path.open("a").write(_payload)
-                break
-            except Exception:
-                continue
         fetch_start_time = time.time()
         
         def do_fetch():
@@ -798,10 +770,6 @@ async def _run_fetch(
         # Task was cancelled (e.g. navigation away); don't treat as user cancel
         raise
     except FetchCancelledException as _fce:
-        # region agent log
-        import traceback as _tb
-        open(_DL, "a").write(__import__("json").dumps({"location": "fetch_source:except_FetchCancelled", "hypothesisId": "H1,H2", "message": "caught FetchCancelledException handler", "exc_type": type(_fce).__name__, "exc_str": str(_fce), "FetchCancelledException_is_Exception": FetchCancelledException is Exception, "traceback": _tb.format_exc()[-2000:], "timestamp": __import__("time").time()}) + "\n")
-        # endregion agent log
         terminal.warning("")
         terminal.warning("━━━ FETCH CANCELLED ━━━")
         terminal.warning("The fetch operation was cancelled by the user.")
@@ -812,10 +780,6 @@ async def _run_fetch(
         ui.notify("Fetch cancelled", type="warning")
 
     except Exception as e:
-        # region agent log
-        import traceback as _tb2
-        open(_DL, "a").write(__import__("json").dumps({"location": "fetch_source:except_Exception", "hypothesisId": "H2", "message": "caught generic Exception handler", "exc_type": type(e).__name__, "exc_str": str(e), "traceback": _tb2.format_exc()[-2000:], "timestamp": __import__("time").time()}) + "\n")
-        # endregion agent log
         terminal.error("")
         terminal.error(f"Fetch failed: {e}")
         

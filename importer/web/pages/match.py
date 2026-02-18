@@ -1139,8 +1139,9 @@ def _create_matching_content(
             if match:
                 return match.group(1)
         
-        # Fallback: use source_key as-is
-        return source_key
+        # Fallback: strip "target__" prefix so intent keys are consistent
+        # (e.g., "target__everyone" → "everyone" → prefixed to "GRP:everyone")
+        return source_key.removeprefix("target__")
     
     def _get_intent_key_for_source_key(source_key: str, source_type: str) -> str:
         """Get the canonical intent key for a source_key by looking up the grid row.
@@ -1246,7 +1247,8 @@ def _create_matching_content(
                 tf_state_at_decision=tf_state_at_decision,
                 yaml_state_before=yaml_state_before,
             )
-            state.map.protected_resources.add(key)
+            # Strip "target__" prefix for consistent keys between match/adopt
+            state.map.protected_resources.add(key.removeprefix("target__"))
         
         # Save intent file
         protection_intent.save()
@@ -1323,7 +1325,9 @@ def _create_matching_content(
                 tf_state_at_decision=tf_state_at_decision,
                 yaml_state_before=yaml_state_before,
             )
+            # Discard both prefixed and bare versions for clean-up
             state.map.protected_resources.discard(key)
+            state.map.protected_resources.discard(key.removeprefix("target__"))
         
         # Save intent file
         protection_intent.save()
@@ -1359,6 +1363,15 @@ def _create_matching_content(
         new_protected = row_data.get("protected", False)
         row_data.get("status")
         
+        # Capture the OLD action from the grid before overwriting, so we can
+        # distinguish "user changed action" vs "user clicked shield on existing action".
+        _old_action_for_row = None
+        for row in grid_data_ref["data"]:
+            if row.get("source_key") == source_key:
+                _old_action_for_row = row.get("action", "")
+                break
+        _action_changed = _old_action_for_row is not None and _old_action_for_row != action
+        
         # IMPORTANT: Always update grid_data_ref immediately so dialogs see current state
         # This must happen BEFORE any early returns for cascade dialogs
         # Also update yaml_protected to stay consistent with the user's intent
@@ -1369,21 +1382,47 @@ def _create_matching_content(
                 break
         
         # Check if protection status changed
+        # Must use the SAME logic as build_grid_data to determine old_protected:
+        # 1. Check protected_resources set (YAML-derived, in-memory)
+        # 2. Also consult the protection intent manager (persisted intent file)
+        # This prevents mismatch where the grid shows 🛡️ (from intent manager)
+        # but old_protected is False (from empty protected_resources set after restart).
+        _bare_key = source_key.removeprefix("target__")
         old_protected = source_key in state.map.protected_resources
+        if not old_protected:
+            old_protected = _bare_key in state.map.protected_resources
+        # Also check protection intent manager (matches what build_grid_data uses)
+        if not old_protected and protection_intent_manager is not None:
+            _source_type = row_data.get("source_type", "")
+            _intent_key = f"{_source_type}:{_bare_key}" if _source_type else _bare_key
+            old_protected = protection_intent_manager.get_effective_protection(
+                _intent_key, yaml_protected=False
+            )
+        # #region agent log
+        import json as _json_dbg_orc, time as _time_dbg_orc; open("/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug.log", "a").write(_json_dbg_orc.dumps({"timestamp": int(_time_dbg_orc.time()*1000), "location": "match.py:on_row_change:entry", "message": "on_row_change called", "hypothesisId": "D", "data": {"source_key": source_key, "action": action, "new_protected": new_protected, "old_protected": old_protected, "_action_changed": _action_changed, "_old_action_for_row": _old_action_for_row, "protected_resources_has_key": source_key in state.map.protected_resources, "bare_key": _bare_key, "intent_checked": protection_intent_manager is not None}}) + "\n")
+        # #endregion
+        # If the OLD action was a non-management action (ignore/skip/unadopt/create_new),
+        # the grid suppresses protection display — so from the user's perspective the
+        # resource was NOT protected, regardless of stale protected_resources entries.
+        if _old_action_for_row in ("ignore", "skip", "unadopt", "create_new"):
+            old_protected = False
         
         if new_protected and not old_protected:
             # ── Guard: target-only ignored resources cannot be protected ──
             # If the resource is target-only (action != "adopt" and
             # drift_status "not_in_state") and the user tries to protect it,
             # show a dialog asking if they want to adopt AND protect.
+            # BUT: if the action is changing to a non-adopt action, skip the
+            # guard entirely — the action-change handler below will clear
+            # protection as a side effect.
             row_action = row_data.get("action", "")
-            row_drift = row_data.get("drift_status", "")
-            is_target_only_ignored = (
+            if _action_changed and row_action in ("skip", "create_new", "unadopt", "ignore"):
+                pass  # Fall through to action-change handler which clears protection
+            elif (
                 row_action != "adopt"
-                and row_drift in ("not_in_state", "id_mismatch")
+                and row_data.get("drift_status", "") in ("not_in_state", "id_mismatch")
                 and row_data.get("is_target_only", False)
-            )
-            if is_target_only_ignored:
+            ):
                 display_name = row_data.get("source_name") or row_data.get("target_name") or row_data.get("name") or source_key
 
                 def _revert_protection_in_grid():
@@ -1461,10 +1500,13 @@ def _create_matching_content(
                     protection_intent.save()
                     bare_key = sk.removeprefix("target__")
                     state.map.protected_resources.add(bare_key)
-                    save_state()
                     # #region agent log
-                    import json as _json_dbg1, time as _time_dbg1; open("/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug.log","a").write(_json_dbg1.dumps({"hypothesisId":"H1,H2","location":"match.py:adopt_and_protect","message":"stored_keys","data":{"sk":sk,"bare_key":bare_key,"intent_key":intent_key,"protected_resources":list(state.map.protected_resources)[:20]},"timestamp":int(_time_dbg1.time()*1000)})+"\n")
+                    import json as _json_dbg3, time as _time_dbg3
+                    _dbg_entry3 = {"timestamp": int(_time_dbg3.time()*1000), "location": "match.py:_adopt_and_protect_from_match", "message": "adopt-and-protect persist", "hypothesisId": "E", "data": {"sk": sk, "bare_key": bare_key, "intent_key": intent_key, "protected_resources_after": sorted(state.map.protected_resources), "source_type": st}}
+                    with open("/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug.log", "a") as _f3:
+                        _f3.write(_json_dbg3.dumps(_dbg_entry3) + "\n")
                     # #endregion
+                    save_state()
                     ui.notify(f"Adopted & protected: {display_name}", type="positive")
                     ui.navigate.reload()
 
@@ -1530,7 +1572,10 @@ def _create_matching_content(
                     yaml_state_before=old_protected,
                 )
                 protection_intent.save()
-                state.map.protected_resources.add(source_key)
+                # Strip "target__" prefix before adding to protected_resources
+                # so the key is consistent between match and adopt pages.
+                _prot_key = source_key.removeprefix("target__")
+                state.map.protected_resources.add(_prot_key)
                 save_state()
                 ui.notify(f"Protected: {target_resource.name}", type="positive")
                 # Reload to refresh protection mismatch panel
@@ -1562,6 +1607,9 @@ def _create_matching_content(
                 # For sub-project resources (ENV, JOB, EXTATTR), use the TF state key
                 intent_key = _get_intent_key_for_row(row_data)
                 prefixed_key = _make_prefixed_intent_key(source_type, intent_key)
+                # #region agent log
+                import json as _json_dbg_up, time as _time_dbg_up; open("/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug.log", "a").write(_json_dbg_up.dumps({"timestamp": int(_time_dbg_up.time()*1000), "location": "match.py:on_row_change:unprotect", "message": "Unprotecting resource", "hypothesisId": "F", "data": {"source_key": source_key, "intent_key": intent_key, "prefixed_key": prefixed_key, "source_type": source_type, "state_address": row_data.get("state_address", ""), "protected_resources_before": sorted(list(state.map.protected_resources))[:20]}}) + "\n")
+                # #endregion
                 protection_intent.set_intent(
                     key=prefixed_key,
                     protected=False,
@@ -1572,7 +1620,9 @@ def _create_matching_content(
                     yaml_state_before=old_protected,
                 )
                 protection_intent.save()
+                # Discard both prefixed and bare versions for clean-up
                 state.map.protected_resources.discard(source_key)
+                state.map.protected_resources.discard(source_key.removeprefix("target__"))
                 save_state()
                 ui.notify(f"Unprotected: {target_resource.name}", type="info")
                 # Reload to refresh protection mismatch panel
@@ -1599,6 +1649,7 @@ def _create_matching_content(
                 )
                 return  # Wait for dialog
         
+        
         # Persist adopt/match actions to confirmed_mappings so they survive page reloads
         if action in ("adopt", "match") and row_data.get("target_id"):
             # Remove existing mapping for this key first
@@ -1624,10 +1675,12 @@ def _create_matching_content(
                 if m.get("source_key") != source_key
             ]
             # ── Clear protection when action becomes non-adopt ──
-            if source_key in state.map.protected_resources:
+            # Normalize: protected_resources stores bare keys, but source_key
+            # for target-only resources has a "target__" prefix. Check both.
+            bare_key = source_key.removeprefix("target__")
+            _is_protected = source_key in state.map.protected_resources or bare_key in state.map.protected_resources
+            if _is_protected:
                 state.map.protected_resources.discard(source_key)
-                # Also strip target__ prefix variant
-                bare_key = source_key.removeprefix("target__")
                 state.map.protected_resources.discard(bare_key)
                 row_data["protected"] = False
                 row_data["yaml_protected"] = False
@@ -1637,23 +1690,28 @@ def _create_matching_content(
                         grid_data_ref["data"][i]["protected"] = False
                         grid_data_ref["data"][i]["yaml_protected"] = False
                         break
-                # Update protection intent file
+                # Remove protection intent entries — resource is no longer managed,
+                # so any pending intent is moot.  Remove ALL key variants
+                # (bare, target__-prefixed, TYPE:-prefixed) to avoid ghosts.
                 try:
                     protection_intent = state.get_protection_intent_manager()
                     source_type = row_data.get("source_type", "")
                     intent_key = _get_intent_key_for_row(row_data)
                     prefixed_key = _make_prefixed_intent_key(source_type, intent_key)
-                    tf_state_at_decision = "protected" if row_data.get("state_protected") else "unprotected"
-                    protection_intent.set_intent(
-                        key=prefixed_key,
-                        protected=False,
-                        source="action_change",
-                        reason=f"Protection cleared: action changed to '{action}'",
-                        resource_type=source_type or None,
-                        tf_state_at_decision=tf_state_at_decision,
-                        yaml_state_before=True,
-                    )
-                    protection_intent.save()
+                    _any_removed = False
+                    # Remove the canonical prefixed key (e.g. GRP:target__owner)
+                    _any_removed |= protection_intent.remove_intent(prefixed_key, source="action_change")
+                    # Also remove the bare-name variant (e.g. GRP:owner)
+                    if intent_key.startswith("target__"):
+                        bare_intent_key = intent_key[len("target__"):]
+                        bare_prefixed = _make_prefixed_intent_key(source_type, bare_intent_key)
+                        _any_removed |= protection_intent.remove_intent(bare_prefixed, source="action_change")
+                    else:
+                        # Also try the target__-prefixed variant
+                        target_prefixed = _make_prefixed_intent_key(source_type, f"target__{intent_key}")
+                        _any_removed |= protection_intent.remove_intent(target_prefixed, source="action_change")
+                    if _any_removed:
+                        protection_intent.save()
                 except Exception as _pi_err:
                     logging.warning(f"Failed to clear protection intent on action change: {_pi_err}")
                 _protection_was_cleared = True
@@ -2990,12 +3048,14 @@ def _create_matching_content(
                                                 # Revert protected_resources to match
                                                 source_key = _find_source_key_for_intent_key(key_to_undo)
                                                 if source_key:
+                                                    _bare_sk = source_key.removeprefix("target__")
                                                     if intent_to_undo.protected:
                                                         # Was a protect intent → remove from protected_resources
                                                         state.map.protected_resources.discard(source_key)
+                                                        state.map.protected_resources.discard(_bare_sk)
                                                     else:
-                                                        # Was an unprotect intent → add back to protected_resources
-                                                        state.map.protected_resources.add(source_key)
+                                                        # Was an unprotect intent → add back (bare key)
+                                                        state.map.protected_resources.add(_bare_sk)
                                                 del protection_intent_manager._intent[key_to_undo]
                                                 protection_intent_manager.save()
                                                 save_state()
@@ -3226,16 +3286,26 @@ def _create_matching_content(
                             # Step 3: Update YAML files
                             append_output("\n📝 Updating YAML files...")
                             
-                            # Get terraform directory
+                            # Get terraform directory — use same resolution as adopt.py
                             tf_dir = state.deploy.terraform_dir or "deployments/migration"
                             tf_path = Path(tf_dir)
                             if not tf_path.is_absolute():
-                                # Project root is parent of importer directory (not inside importer)
-                                project_root = Path(__file__).parent.parent.parent.parent.resolve()
+                                # Resolve project root robustly: prefer fetch output_dir
+                                # parent chain, fall back to cwd, then __file__ traversal.
+                                if state.fetch.output_dir:
+                                    project_root = Path(state.fetch.output_dir).parent.parent.resolve()
+                                else:
+                                    project_root = Path.cwd().resolve()
                                 tf_path = project_root / tf_dir
                             
-                            # Look for YAML config file - check multiple possible locations
+                            # Look for YAML config file - check multiple possible names & locations
                             yaml_file = tf_path / "dbt-cloud-config.yml"
+                            if not yaml_file.exists():
+                                # Also check for merged YAML (written by target intent manager)
+                                merged_yaml = tf_path / "dbt-cloud-config-merged.yml"
+                                if merged_yaml.exists():
+                                    yaml_file = merged_yaml
+                            
                             if not yaml_file.exists():
                                 # Try fetch output dir
                                 if state.fetch.output_dir:
@@ -3245,13 +3315,16 @@ def _create_matching_content(
                             
                             if not yaml_file.exists():
                                 # Find any YAML file matching our naming pattern in dev_support/samples
-                                samples_dir = Path(__file__).parent.parent.parent.resolve() / "dev_support" / "samples"
-                                yaml_files = list(samples_dir.glob("*__yaml__*.yml")) + list(samples_dir.glob("account_*.yml"))
-                                if yaml_files:
-                                    yaml_file = sorted(yaml_files, key=lambda f: f.stat().st_mtime, reverse=True)[0]
+                                # match.py lives at importer/web/pages/ → 4 parents to repo root
+                                samples_dir = Path(__file__).parent.parent.parent.parent.resolve() / "dev_support" / "samples"
+                                if samples_dir.exists():
+                                    yaml_files = list(samples_dir.glob("*__yaml__*.yml")) + list(samples_dir.glob("account_*.yml"))
+                                    if yaml_files:
+                                        yaml_file = sorted(yaml_files, key=lambda f: f.stat().st_mtime, reverse=True)[0]
                             
                             if not yaml_file.exists():
                                 append_output(f"   ⚠️ YAML file not found: {yaml_file}", "#F59E0B")
+                                append_output(f"   Searched in: {tf_path}", "#F59E0B")
                                 append_output("   Skipping YAML update - will still generate moved blocks", "#F59E0B")
                             else:
                                 from importer.web.utils.adoption_yaml_updater import apply_protection_from_set, apply_unprotection_from_set
@@ -3302,9 +3375,20 @@ def _create_matching_content(
                                     logger.warning(f"Baseline merge failed (non-fatal): {merge_err}")
                                     append_output(f"   ⚠️ Baseline merge skipped: {merge_err}", "#F59E0B")
                                 
-                                # Separate keys by protection status
+                                # Separate keys by protection status from pending intents
                                 keys_to_protect = {k for k, i in pending.items() if i.protected}
                                 keys_to_unprotect = {k for k, i in pending.items() if not i.protected}
+                                
+                                # IMPORTANT: After baseline merge, also re-apply ALL previously
+                                # applied intents (applied_to_yaml=True) that are not in the
+                                # pending set. The baseline merge may have overwritten their
+                                # protection flags with the baseline's defaults.
+                                all_intents = protection_intent_manager.get_all_intents()
+                                for key, intent in all_intents.items():
+                                    if key not in pending and intent.applied_to_yaml and intent.protected:
+                                        keys_to_protect.add(key)
+                                    elif key not in pending and intent.applied_to_yaml and not intent.protected:
+                                        keys_to_unprotect.add(key)
                                 
                                 if keys_to_protect:
                                     apply_protection_from_set(str(yaml_file), keys_to_protect)
@@ -3397,6 +3481,29 @@ def _create_matching_content(
                                 )
                                 moves_data.append(mismatch)
                             
+                            # Read TF state resource addresses to determine which resources
+                            # are actually in state (and thus need moved blocks).
+                            # Resources NOT in state (e.g., being adopted via import) should
+                            # NOT get moved blocks — they'll be imported directly.
+                            _tf_state_addresses = set()
+                            try:
+                                import json as _json_mv
+                                _tf_state_mv = tf_path / "terraform.tfstate"
+                                if _tf_state_mv.exists():
+                                    _st = _json_mv.loads(_tf_state_mv.read_text())
+                                    for res in _st.get("resources", []):
+                                        mod = res.get("module", "")
+                                        rtype = res.get("type", "")
+                                        rname = res.get("name", "")
+                                        for inst in res.get("instances", []):
+                                            ik = inst.get("index_key", "")
+                                            if ik:
+                                                _tf_state_addresses.add(f'{mod}.{rtype}.{rname}["{ik}"]')
+                                            else:
+                                                _tf_state_addresses.add(f'{mod}.{rtype}.{rname}')
+                            except Exception:
+                                pass  # If we can't read state, generate all moved blocks
+                            
                             for key, intent in pending.items():
                                 # Parse key to get resource type and resource key
                                 # Key format is "TYPE:resource_key" (e.g., "PRJ:my_project", "REPO:my_project")
@@ -3409,6 +3516,19 @@ def _create_matching_content(
                                     resource_key = key
                                 
                                 yaml_protected = intent.protected
+                                
+                                # Skip resources that are NOT in TF state yet.
+                                # These will be imported (via adopt_imports.tf) directly into
+                                # the correct protected/unprotected resource block.
+                                # Generating a moved block for them would cause errors.
+                                if _tf_state_addresses and resource_type in RESOURCE_TYPE_MAP:
+                                    tf_type, unprotected_name, protected_name = RESOURCE_TYPE_MAP[resource_type]
+                                    # Check if resource exists in either protected or unprotected state
+                                    unprotected_addr = f'{module_prefix}.{tf_type}.{unprotected_name}["{resource_key}"]'
+                                    protected_addr = f'{module_prefix}.{tf_type}.{protected_name}["{resource_key}"]'
+                                    if unprotected_addr not in _tf_state_addresses and protected_addr not in _tf_state_addresses:
+                                        append_output(f"   ℹ️ Skipping {key}: not in TF state (will be imported directly)", "#60A5FA")
+                                        continue
                                 
                                 # Add the mismatch for this resource
                                 add_mismatch(resource_type, resource_key, yaml_protected)
@@ -3456,7 +3576,8 @@ def _create_matching_content(
                             if tf_path.exists():
                                 moves_file = tf_path / "protection_moves.tf"
                             else:
-                                samples_dir = Path(__file__).parent.parent.parent.resolve() / "dev_support" / "samples"
+                                # match.py lives at importer/web/pages/ → 4 parents to repo root
+                                samples_dir = Path(__file__).parent.parent.parent.parent.resolve() / "dev_support" / "samples"
                                 samples_dir.mkdir(parents=True, exist_ok=True)
                                 moves_file = samples_dir / "protection_moves.tf"
                             
@@ -3472,6 +3593,39 @@ def _create_matching_content(
                                 append_output("   No moved blocks needed", "#6B7280")
                             
                             await asyncio.sleep(0.2)
+                            
+                            # Step 4b: Update adopt_imports.tf if it exists
+                            # When protection status changes, the import target address
+                            # must point to the correct protected/unprotected resource.
+                            adopt_imports_file = tf_path / "adopt_imports.tf"
+                            if adopt_imports_file.exists():
+                                try:
+                                    import re as _re_adopt
+                                    content = adopt_imports_file.read_text(encoding="utf-8")
+                                    updated = False
+                                    for key, intent in pending.items():
+                                        if ":" not in key:
+                                            continue
+                                        rtype, rkey = key.split(":", 1)
+                                        if rtype not in RESOURCE_TYPE_MAP:
+                                            continue
+                                        tf_type, unprotected_name, protected_name = RESOURCE_TYPE_MAP[rtype]
+                                        if intent.protected:
+                                            # Should target protected_* variant
+                                            old_addr = f'{module_prefix}.{tf_type}.{unprotected_name}["{rkey}"]'
+                                            new_addr = f'{module_prefix}.{tf_type}.{protected_name}["{rkey}"]'
+                                        else:
+                                            # Should target unprotected variant
+                                            old_addr = f'{module_prefix}.{tf_type}.{protected_name}["{rkey}"]'
+                                            new_addr = f'{module_prefix}.{tf_type}.{unprotected_name}["{rkey}"]'
+                                        if old_addr in content:
+                                            content = content.replace(old_addr, new_addr)
+                                            updated = True
+                                    if updated:
+                                        adopt_imports_file.write_text(content, encoding="utf-8")
+                                        append_output("   ✓ Updated adopt_imports.tf with corrected protection targets", "#10B981")
+                                except Exception as _adopt_err:
+                                    append_output(f"   ⚠️ adopt_imports.tf update skipped: {_adopt_err}", "#F59E0B")
                             
                             # Step 5: Mark as applied to YAML
                             append_output("\n✅ Marking intents as applied...")
@@ -3576,9 +3730,25 @@ def _create_matching_content(
                                     if _addr_from_tf not in _target_addresses:
                                         _target_addresses.append(_addr_from_tf)
                             
+                            # Also include targets from adopt_imports.tf
+                            # (import blocks reference the destination address in the "to" field)
+                            _imports_tf = tf_path_for_cmd / "adopt_imports.tf"
+                            if _imports_tf.exists():
+                                import re as _re_imports
+                                _imports_content = _imports_tf.read_text()
+                                # HCL import blocks:  to = module.dbt_cloud.module.projects_v2[0].dbtcloud_group.groups["everyone"]
+                                for _match in _re_imports.finditer(r'to\s*=\s*(module\.\S+)', _imports_content):
+                                    _addr_from_import = _match.group(1)
+                                    if _addr_from_import not in _target_addresses:
+                                        _target_addresses.append(_addr_from_import)
+                            
                             _target_flags: list[str] = []
                             for _addr in _target_addresses:
                                 _target_flags.extend(["-target", _addr])
+                            
+                            # #region agent log
+                            import json as _json_dbg_tgt, time as _time_dbg_tgt; open("/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug.log", "a").write(_json_dbg_tgt.dumps({"timestamp": int(_time_dbg_tgt.time()*1000), "location": "match.py:build_target_flags", "message": "Target flags computed", "hypothesisId": "TGT", "data": {"target_count": len(_target_addresses), "target_addresses": _target_addresses[:20], "has_moves_tf": (_moves_tf).exists() if _moves_tf else False, "has_imports_tf": (_imports_tf).exists() if _imports_tf else False, "intents_with_needs_move": [k for k, v in protection_intent_manager._intent.items() if v.needs_tf_move]}}) + "\n")
+                            # #endregion
                             
                             # Info about what will happen
                             if _target_addresses:
@@ -3806,7 +3976,8 @@ def _create_matching_content(
                             
                             if not yaml_file.exists():
                                 # Try finding any YAML file matching our naming pattern
-                                samples_dir = Path(__file__).parent.parent.parent.resolve() / "dev_support" / "samples"
+                                # match.py lives at importer/web/pages/ → 4 parents to repo root
+                                samples_dir = Path(__file__).parent.parent.parent.parent.resolve() / "dev_support" / "samples"
                                 yaml_files = list(samples_dir.glob("*__yaml__*.yml")) + list(samples_dir.glob("account_*.yml"))
                                 if yaml_files:
                                     yaml_file = sorted(yaml_files, key=lambda f: f.stat().st_mtime, reverse=True)[0]

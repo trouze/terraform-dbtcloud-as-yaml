@@ -637,6 +637,7 @@ class DeployState:
     adopt_step_backup_path: str = ""  # Path to terraform.tfstate.adopt-backup
     adopt_step_last_output: str = ""  # Last execution output for display
     adopt_step_error: str = ""  # Error message if failed
+    adopt_step_imported_count: int = 0  # Actual number of resources imported (from TF apply output)
 
     def has_state_file(self) -> bool:
         """Check if a Terraform state file exists.
@@ -1033,6 +1034,9 @@ class AppState:
             return self.env_credentials.step_complete or not self.env_credentials.has_selected_environments()
         elif step == WorkflowStep.DESTROY:
             return self.deploy.has_state_file()
+        elif step == WorkflowStep.ADOPT:
+            # Adopt is accessible whenever Match (Set Target Intent) is accessible
+            return self.map.normalize_complete and self.target_fetch.fetch_complete
         elif step == WorkflowStep.UTILITIES:
             return True  # Always accessible - can load state, manage protection intents, etc.
         # Jobs as Code Generator steps
@@ -1171,6 +1175,8 @@ class AppState:
                 # Resource protection state
                 "protected_resources": sorted(self.map.protected_resources),
                 "unprotected_keys": sorted(self.map.unprotected_keys),
+                # Removal intent: keys flagged for unadoption (PRD 43.03 fix)
+                "removal_keys": sorted(self.map.removal_keys),
                 # Protection fix state
                 "protection_fix_pending": self.map.protection_fix_pending,
                 "protection_fix_file_path": self.map.protection_fix_file_path,
@@ -1427,6 +1433,8 @@ class AppState:
             # Resource protection state
             state.map.protected_resources = set(m.get("protected_resources", []))
             state.map.unprotected_keys = set(m.get("unprotected_keys", []))
+            # Removal intent (PRD 43.03 fix — unadopt decisions survive restart)
+            state.map.removal_keys = set(m.get("removal_keys", []))
             # Protection fix state
             state.map.protection_fix_pending = m.get("protection_fix_pending", False)
             state.map.protection_fix_file_path = m.get("protection_fix_file_path", "")
