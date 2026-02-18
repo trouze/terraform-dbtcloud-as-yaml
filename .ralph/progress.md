@@ -67,3 +67,19 @@ Key files changed:
 - `importer/web/tests/test_adoption_imports.py` — 62 tests total (was 19 → 62)
 
 All 126 tests pass across 4 test files. All 37 RALPH_TASK.md criteria marked [x].
+
+### 2026-02-18
+**Adopt/Deploy leakage + count semantics guardrails recorded**
+
+Captured and codified learnings from the Adopt/Deploy leakage incident and
+count reconciliation review:
+
+- Added new persistent signs to `.ralph/guardrails.md` for:
+  - immediate unadopt artifact invalidation,
+  - zero-adopt deployment YAML reset,
+  - adopt baseline merge scoping,
+  - source-vs-Terraform count semantics.
+- Updated `docs/guides/intent-workflow-guardrails.md` with Adopt/Deploy-specific
+  prevention rules and validation expectations.
+- Added a standards section to `prd/00.01-Standards-of-Development.md` so
+  future implementation/review work applies these rules by default.

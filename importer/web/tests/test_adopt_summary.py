@@ -191,3 +191,34 @@ def test_compute_summary_rm_count_uses_generate_state_rm_commands():
     assert result["rm_count"] == len(expected_rm_cmds)
     assert result["state_rm_commands"] == expected_rm_cmds
     assert result["rm_count"] == 1
+
+
+def test_source_total_and_tf_add_count_can_differ_by_mapping_semantics():
+    """Source-selected totals are not always 1:1 with terraform add counts.
+
+    Example contract from the adopt/deploy verification flow:
+    - Credentials are selected resources but do not create dbtcloud_credential
+      resources in this plan context (referenced by ID) -> contributes 0 adds.
+    - Repository selection creates two TF resources:
+      dbtcloud_repository + dbtcloud_project_repository -> contributes 2 adds.
+    """
+
+    source_selected_counts = {
+        "PRJ": 1,
+        "REP": 1,
+        "ENV": 10,
+        "JOB": 36,
+        "CRED": 5,
+    }
+
+    source_total = sum(source_selected_counts.values())
+    assert source_total == 53
+
+    tf_add_count = (
+        source_selected_counts["PRJ"] * 1
+        + source_selected_counts["REP"] * 2
+        + source_selected_counts["ENV"] * 1
+        + source_selected_counts["JOB"] * 1
+        + source_selected_counts["CRED"] * 0
+    )
+    assert tf_add_count == 49

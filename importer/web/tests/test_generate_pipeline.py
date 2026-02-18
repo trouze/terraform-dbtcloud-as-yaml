@@ -410,3 +410,69 @@ class TestP8NothingPending:
         assert result.moves_count == 0
         assert result.imports_file is None
         assert len(result.intents_applied) == 0
+
+
+# ---------------------------------------------------------------------------
+# P-9: Adopt-only baseline merge is projects-only
+# ---------------------------------------------------------------------------
+
+class TestP9AdoptBaselineProjectsOnly:
+    """Adopt-only baseline merge must not pull in baseline globals."""
+
+    def test_adopt_only_merge_trims_baseline_to_projects(
+        self, tmp_path, mock_state, intent_manager
+    ):
+        source_config = {
+            "version": 2,
+            "projects": [{"key": "proj_a", "name": "Source Project"}],
+        }
+        baseline_config = {
+            "version": 2,
+            "globals": {
+                "connections": [{"key": "baseline_conn", "name": "Baseline Conn"}],
+                "environments": [{"key": "baseline_env", "name": "Baseline Env"}],
+            },
+            "projects": [
+                {"key": "proj_a", "name": "Adopt Project A"},
+                {"key": "proj_b", "name": "Other Baseline Project"},
+            ],
+        }
+        _make_yaml(tmp_path, source_config)
+        baseline_path = tmp_path / "target-baseline.yml"
+        baseline_path.write_text(
+            yaml.dump(baseline_config, default_flow_style=False, sort_keys=False)
+        )
+
+        mock_state.target_fetch.target_baseline_yaml = str(baseline_path)
+        mock_state.get_protection_intent_manager.return_value = intent_manager
+        adopt_rows = [
+            {
+                "source_key": "target__proj_a",
+                "source_type": "PRJ",
+                "target_id": "601",
+                "action": "adopt",
+                "drift_status": "not_in_state",
+            }
+        ]
+
+        with patch(
+            "importer.web.utils.generate_pipeline.resolve_deployment_paths"
+        ) as mock_paths:
+            mock_paths.return_value = (tmp_path, tmp_path / "dbt-cloud-config.yml", None)
+            result = asyncio.get_event_loop().run_until_complete(
+                run_generate_pipeline(
+                    mock_state,
+                    include_adopt=True,
+                    adopt_rows=adopt_rows,
+                    merge_baseline=True,
+                    regenerate_hcl=False,
+                    include_protection_moves=False,
+                )
+            )
+
+        assert result.ok
+        merged_yaml = yaml.safe_load((tmp_path / "dbt-cloud-config.yml").read_text())
+        assert "globals" not in merged_yaml or not merged_yaml.get("globals")
+        merged_project_keys = {p.get("key") for p in merged_yaml.get("projects", [])}
+        assert "proj_a" in merged_project_keys
+        assert "proj_b" not in merged_project_keys

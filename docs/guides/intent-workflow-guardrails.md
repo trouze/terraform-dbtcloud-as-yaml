@@ -108,3 +108,23 @@ Check:
   - explicit moved-object scenario and recovery
   - output dialog shows the failure reason banner on failed plan
 
+## Adopt/Deploy-specific guardrails (2026-02 learnings)
+
+1. **Unadopt invalidation is immediate**
+   - When a row changes from `adopt` to `ignore`/`unadopt`, delete `adopt_imports.tf` and `adopt.tfplan` in the same handler.
+   - Rationale: prevents stale import targets from failing Deploy (`Configuration for import target does not exist`).
+
+2. **Zero-adopt must reset deployment YAML**
+   - If adopt count reaches zero after previous adopt planning, copy source-normalized YAML (`state.map.last_yaml_file`) over deployment YAML and regenerate HCL.
+   - Rationale: removes target baseline artifacts that are valid for scoped adoption but invalid for full Deploy plans.
+
+3. **Adopt baseline merge is project-only**
+   - In adopt-mode generate runs, merge only project records from baseline; never baseline globals.
+   - Rationale: avoids unrelated global connection/environment leakage into Deploy.
+
+4. **Count reconciliation rule**
+   - Do not compare Source Select totals 1:1 with Terraform `to add` without mapping semantics.
+   - Expected differences:
+     - one source repository can create multiple Terraform resources (for example repository + project_repository link),
+     - source credential entries may resolve to IDs and not emit credential creates.
+

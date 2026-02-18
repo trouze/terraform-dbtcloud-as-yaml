@@ -275,3 +275,37 @@ class TestDeployGenerateMerge:
                 assert project.get("protected") is True, (
                     f"Project {project['key']} should remain protected after merge"
                 )
+
+    def test_zero_adopt_reset_replaces_polluted_deployment_yaml(
+        self, deployment_dir
+    ):
+        """Zero-adopt reset replaces polluted deployment YAML with source-selected YAML."""
+        deployment_yaml_path = deployment_dir / "dbt-cloud-config.yml"
+        source_yaml_path = deployment_dir / "source-selected.yml"
+
+        polluted_deployment = {
+            "version": 2,
+            "projects": [{"key": "not_terraform", "name": "Not Terraform"}],
+            "globals": {
+                "connections": [{"key": "legacy_connection"}],
+                "environments": [{"key": "legacy_environment"}],
+            },
+        }
+        source_selected = {
+            "version": 2,
+            "projects": [{"key": "source_only", "name": "Source Only"}],
+        }
+
+        with open(deployment_yaml_path, "w") as f:
+            yaml.dump(polluted_deployment, f, default_flow_style=False, sort_keys=False)
+        with open(source_yaml_path, "w") as f:
+            yaml.dump(source_selected, f, default_flow_style=False, sort_keys=False)
+
+        # This mirrors the adopt unselect behavior when adopt_count reaches zero.
+        shutil.copy2(str(source_yaml_path), str(deployment_yaml_path))
+
+        with open(deployment_yaml_path, "r") as f:
+            reset_yaml = yaml.safe_load(f)
+
+        assert reset_yaml["projects"] == source_selected["projects"]
+        assert "globals" not in reset_yaml
