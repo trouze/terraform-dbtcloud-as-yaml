@@ -39,8 +39,22 @@ logger = logging.getLogger(__name__)
 
 
 def _dbg_673991(hypothesis_id: str, location: str, message: str, data: dict) -> None:
-    """Debug logging disabled after fix verification."""
-    return
+    """Append debug NDJSON for session 673991."""
+    # region agent log
+    try:
+        with Path("/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug-673991.log").open("a", encoding="utf-8") as f:
+            f.write(json.dumps({
+                "sessionId": "673991",
+                "runId": "run2",
+                "hypothesisId": hypothesis_id,
+                "location": location,
+                "message": message,
+                "data": data,
+                "timestamp": int(__import__("time").time() * 1000),
+            }, default=str) + "\n")
+    except Exception:
+        pass
+    # endregion
 
 
 # ---------------------------------------------------------------------------
@@ -209,6 +223,27 @@ async def run_generate_pipeline(
                         for p in baseline_config["projects"]
                         if p.get("key") in deploy_project_keys
                     ]
+                # In adopt-only runs, only project records should be merged from
+                # target baseline. Merging baseline globals pollutes deployment YAML
+                # and causes unrelated resources in later full deploy plans.
+                if include_adopt and not include_protection_moves:
+                    baseline_config = {
+                        "projects": baseline_config.get("projects", []),
+                    }
+                    # region agent log
+                    _dbg_673991(
+                        "H36",
+                        "generate_pipeline.py:step3",
+                        "trimmed baseline to projects-only for adopt merge",
+                        {
+                            "include_adopt": include_adopt,
+                            "include_protection_moves": include_protection_moves,
+                            "baseline_projects_count": len(
+                                baseline_config.get("projects", [])
+                            ),
+                        },
+                    )
+                    # endregion
                 # region agent log
                 _dbg_673991(
                     "H5",

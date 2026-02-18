@@ -12,8 +12,9 @@ import logging
 import re
 import shutil
 import subprocess
+import time
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Optional
 
 from nicegui import ui
 
@@ -46,8 +47,22 @@ PHASE_COLORS = {
 
 
 def _dbg_673991(hypothesis_id: str, location: str, message: str, data: dict) -> None:
-    """Debug logging disabled after fix verification."""
-    return
+    """Append debug NDJSON for session 673991."""
+    # region agent log
+    try:
+        with Path("/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug-673991.log").open("a", encoding="utf-8") as f:
+            f.write(json.dumps({
+                "sessionId": "673991",
+                "runId": "run2",
+                "hypothesisId": hypothesis_id,
+                "location": location,
+                "message": message,
+                "data": data,
+                "timestamp": int(time.time() * 1000),
+            }, default=str) + "\n")
+    except Exception:
+        pass
+    # endregion
 
 
 def _get_terraform_dir(state: AppState) -> Path:
@@ -366,6 +381,75 @@ def _compute_adopt_summary(
         "protected_count": protected_count,
         "adopt_rows": adopt_rows,
         "state_rm_commands": state_rm_cmds,
+    }
+
+
+def _invalidate_adopt_artifacts_for_action_change(
+    tf_path: Path,
+    adopt_grid_data: list[dict],
+    new_action: str,
+    adopt_count: int,
+    source_yaml_file: Optional[str],
+) -> dict:
+    """Invalidate adopt artifacts after action changes.
+
+    Removes stale adopt artifacts and, when unselecting target-only resources,
+    cleans stale YAML entries. If adopt scope becomes empty, reset deployment
+    YAML to source-normalized YAML and regenerate HCL.
+    """
+    removed_imports = False
+    removed_plan = False
+    cleaned_yaml_entries = 0
+    regenerated_hcl_after_cleanup = False
+    reset_deployment_yaml_from_source = False
+    reset_source_yaml_path = None
+    cleanup_error = None
+    try:
+        imports_file = tf_path / "adopt_imports.tf"
+        if imports_file.exists():
+            imports_file.unlink()
+            removed_imports = True
+
+        adopt_plan_file = tf_path / "adopt.tfplan"
+        if adopt_plan_file.exists():
+            adopt_plan_file.unlink()
+            removed_plan = True
+
+        if new_action in ("ignore", "unadopt"):
+            from importer.web.utils.adoption_yaml_updater import cleanup_unadopted_yaml_configs
+            from importer.yaml_converter import YamlToTerraformConverter
+
+            deployment_yaml = tf_path / "dbt-cloud-config.yml"
+            cleaned_yaml_path, cleaned_yaml_entries = cleanup_unadopted_yaml_configs(
+                str(deployment_yaml),
+                adopt_grid_data,
+            )
+            if cleaned_yaml_entries > 0:
+                converter = YamlToTerraformConverter()
+                converter.convert(str(cleaned_yaml_path), str(tf_path))
+                regenerated_hcl_after_cleanup = True
+
+            # Reset deployment YAML to source-normalized scope when no adopts remain.
+            if adopt_count == 0 and source_yaml_file:
+                source_yaml = Path(source_yaml_file)
+                if source_yaml.exists():
+                    shutil.copy2(str(source_yaml), str(deployment_yaml))
+                    converter = YamlToTerraformConverter()
+                    converter.convert(str(deployment_yaml), str(tf_path))
+                    regenerated_hcl_after_cleanup = True
+                    reset_deployment_yaml_from_source = True
+                    reset_source_yaml_path = str(source_yaml)
+    except Exception as _cleanup_err:
+        cleanup_error = str(_cleanup_err)
+
+    return {
+        "removed_imports": removed_imports,
+        "removed_plan": removed_plan,
+        "cleaned_yaml_entries": cleaned_yaml_entries,
+        "regenerated_hcl_after_cleanup": regenerated_hcl_after_cleanup,
+        "reset_deployment_yaml_from_source": reset_deployment_yaml_from_source,
+        "reset_source_yaml_path": reset_source_yaml_path,
+        "cleanup_error": cleanup_error,
     }
 
 
@@ -1701,6 +1785,86 @@ def create_adopt_page(
                 btn_refs["view_plan"].set_visibility(False)
             if btn_refs.get("skip"):
                 btn_refs["skip"].set_visibility(True)
+
+            # Remove stale adoption artifacts immediately when selections change.
+            # This prevents Deploy from consuming old import blocks if the user
+            # navigates away before re-running Plan Adoption.
+            cleanup_result = _invalidate_adopt_artifacts_for_action_change(
+                tf_path=tf_path,
+                adopt_grid_data=adopt_grid_data,
+                new_action=new_action,
+                adopt_count=adopt_count,
+                source_yaml_file=state.map.last_yaml_file,
+            )
+            removed_imports = bool(cleanup_result["removed_imports"])
+            removed_plan = bool(cleanup_result["removed_plan"])
+            cleaned_yaml_entries = int(cleanup_result["cleaned_yaml_entries"])
+            regenerated_hcl_after_cleanup = bool(
+                cleanup_result["regenerated_hcl_after_cleanup"]
+            )
+            reset_deployment_yaml_from_source = bool(
+                cleanup_result["reset_deployment_yaml_from_source"]
+            )
+            reset_source_yaml_path = cleanup_result["reset_source_yaml_path"]
+            cleanup_error = cleanup_result["cleanup_error"]
+
+            # region agent log
+            imports_file = tf_path / "adopt_imports.tf"
+            imports_has_not_terraform = False
+            imports_count = 0
+            if imports_file.exists():
+                try:
+                    imports_content = imports_file.read_text(encoding="utf-8")
+                    imports_count = len(re.findall(r"^\s*import\s*\{", imports_content, flags=re.MULTILINE))
+                    imports_has_not_terraform = 'dbtcloud_project.projects["not_terraform"]' in imports_content
+                except Exception:
+                    pass
+            _dbg_673991(
+                "H31",
+                "adopt.py:_on_adopt_cell_changed",
+                "adopt action changed and plan invalidated",
+                {
+                    "source_key": source_key,
+                    "new_action": new_action,
+                    "adopt_count": adopt_count,
+                    "plan_btn_visible": bool(btn_refs.get("plan") and btn_refs["plan"].visible),
+                    "plan_btn_enabled": bool(btn_refs.get("plan") and btn_refs["plan"].enabled),
+                    "apply_btn_visible": bool(btn_refs.get("apply") and btn_refs["apply"].visible),
+                    "adopt_imports_exists": imports_file.exists(),
+                    "adopt_imports_count": imports_count,
+                    "adopt_imports_has_not_terraform": imports_has_not_terraform,
+                    "removed_imports_file": removed_imports,
+                    "removed_adopt_tfplan": removed_plan,
+                    "cleaned_yaml_entries": cleaned_yaml_entries,
+                    "regenerated_hcl_after_cleanup": regenerated_hcl_after_cleanup,
+                    "reset_deployment_yaml_from_source": reset_deployment_yaml_from_source,
+                    "reset_source_yaml_path": reset_source_yaml_path,
+                    "cleanup_error": cleanup_error,
+                },
+            )
+            # Additional YAML/HCL invalidation evidence
+            deployment_yaml = tf_path / "dbt-cloud-config.yml"
+            yaml_has_not_terraform = False
+            if deployment_yaml.exists():
+                try:
+                    yaml_has_not_terraform = 'key: not_terraform' in deployment_yaml.read_text(encoding="utf-8")
+                except Exception:
+                    pass
+            _dbg_673991(
+                "H38",
+                "adopt.py:_on_adopt_cell_changed",
+                "post-cleanup deployment yaml snapshot",
+                {
+                    "source_key": source_key,
+                    "new_action": new_action,
+                    "deployment_yaml_exists": deployment_yaml.exists(),
+                    "deployment_yaml_has_not_terraform": yaml_has_not_terraform,
+                    "cleaned_yaml_entries": cleaned_yaml_entries,
+                    "regenerated_hcl_after_cleanup": regenerated_hcl_after_cleanup,
+                    "reset_deployment_yaml_from_source": reset_deployment_yaml_from_source,
+                },
+            )
+            # endregion
 
         adopt_grid.on("cellClicked", _on_adopt_cell_clicked)
         adopt_grid.on("cellValueChanged", _on_adopt_cell_changed)

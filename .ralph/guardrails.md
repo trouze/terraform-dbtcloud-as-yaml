@@ -49,3 +49,27 @@
 - **Evidence**: `TF State Protected = 1` while intent table showed only synced rows and hid `GRP:member`
 - **Added after**: 2026-02-18 protection visibility incident
 
+### Sign: Unadopt Must Clear Artifacts
+- **Trigger**: User changes an Adopt row back to `ignore`/`unadopt`
+- **Instruction**: Immediately delete stale `adopt_imports.tf` and `adopt.tfplan`; never allow Deploy to consume prior adopt artifacts.
+- **Evidence**: Deploy failed with `Configuration for import target does not exist` after a previously adopted project was ignored.
+- **Added after**: 2026-02-18 stale import target incident
+
+### Sign: Zero-Adopt Reset Baseline
+- **Trigger**: Adopt selection count becomes zero after prior adopt planning
+- **Instruction**: Reset `deployments/migration/dbt-cloud-config.yml` from source-normalized YAML (`state.map.last_yaml_file`) and regenerate HCL to remove baseline-injected target globals.
+- **Evidence**: Full Deploy plan showed unrelated global connections after unadopt unless deployment YAML was reset.
+- **Added after**: 2026-02-18 adopt/deploy leakage incident
+
+### Sign: Adopt Baseline Merge Scope
+- **Trigger**: Running generate pipeline in adopt mode (`include_adopt=true`, no protection-moves run)
+- **Instruction**: Merge only project records from target baseline in adopt-mode; do not merge baseline globals.
+- **Evidence**: Baseline global merge produced large unrelated `+ create` plans in Deploy.
+- **Added after**: 2026-02-18 adopt baseline merge incident
+
+### Sign: Scope Count vs TF Count
+- **Trigger**: Source Select resource total differs from Terraform `Plan: X to add`
+- **Instruction**: Cross-reference by Terraform resource shape before calling it a bug (for example: one source repo may map to `dbtcloud_repository` + `dbtcloud_project_repository`; credential entries may be referenced IDs, not `+ create` resources).
+- **Evidence**: Source total `53` vs TF plan `49` was valid after accounting for resource mapping semantics.
+- **Added after**: 2026-02-18 count reconciliation review
+
