@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.23.1] - 2026-02-18
+
+### Fixed
+- **Adopt Output Dialog Stability**: `View Output` no longer crashes with `TypeError: __init__() got an unexpected keyword argument 'sanitize'` on NiceGUI versions that do not support the `sanitize` argument.
+- **NiceGUI Compatibility**: Plan/output HTML rendering in `create_plan_viewer_dialog` now uses a version-compatible fallback so rendered logs open reliably across supported local environments.
+
 ## [0.23.0] - 2026-02-17
 
 ### Added
