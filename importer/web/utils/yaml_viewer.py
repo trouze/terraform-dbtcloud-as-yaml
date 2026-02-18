@@ -3,7 +3,7 @@
 import json
 import re
 from pathlib import Path
-from typing import Any, Dict, Optional, Callable, Set, Tuple
+from typing import Any, Dict, Optional, Callable, Set, Tuple, cast
 
 import yaml
 from nicegui import ui
@@ -512,10 +512,17 @@ def create_plan_viewer_dialog(
 
             with ui.scroll_area().classes("w-full").style("flex: 1; min-height: 0;"):
                 # Use html element with pre/code for monospace display
-                ui.html(
-                    f'<pre class="plan-viewer-code text-sm font-mono whitespace-pre-wrap p-4 bg-slate-50 dark:bg-slate-900 rounded overflow-x-auto"><code>{colorized_content}</code></pre>',
-                    sanitize=False,
-                ).classes("w-full")
+                html_widget = cast(Any, ui.html)
+                html_content = (
+                    '<pre class="plan-viewer-code text-sm font-mono '
+                    'whitespace-pre-wrap p-4 bg-slate-50 dark:bg-slate-900 '
+                    f'rounded overflow-x-auto"><code>{colorized_content}</code></pre>'
+                )
+                try:
+                    html_widget(html_content, sanitize=False).classes("w-full")
+                except TypeError:
+                    # NiceGUI versions differ on whether ui.html accepts sanitize.
+                    html_widget(html_content).classes("w-full")
 
             # JavaScript for search highlighting
             async def on_search(e):
