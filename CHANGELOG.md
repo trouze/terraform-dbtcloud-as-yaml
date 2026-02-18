@@ -9,6 +9,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-02-17
+
+### Added
+- **Protection Management Overhaul**: Protection Management page is now a full intent editing surface with status cards, AG grid showing Intent + State columns, and state-only resource visibility (e.g., `GRP:member`)
+- **Workflow Alignment Matrix**: Canonical shared contracts for reconcile source, generate entrypoint, and terraform helpers — all intent-driven workflows now consume shared code paths
+- **Architecture Documentation**: `docs/architecture/canonical-contracts.md`, `docs/architecture/workflow-mapping.md`, `docs/architecture/refactoring-tasks.md` define and track architectural alignment
+- **Contract Enforcement Tests**: `test_contract_enforcement.py` (11 tests) prevents reintroduction of inline path resolution, env construction, or other contract violations
+- **State Visibility Regression Tests**: `test_state_visibility_regression.py` (8 tests) ensures `GRP` and state-only resources remain visible in UI
+- **Cross-Page Pipeline Consistency Tests**: `test_cross_page_pipeline_consistency.py` (5 tests) verifies `run_generate_pipeline` produces consistent output regardless of calling page
+- **Terraform Helpers Equivalence Tests**: `test_terraform_helpers_equivalence.py` (13 tests) validates shared helper delegation from adopt/deploy/destroy pages
+- **Shared Terraform Helpers Module**: `terraform_helpers.py` consolidates `get_terraform_env`, `resolve_deployment_paths`, `run_terraform_command`, and `read_tf_state_addresses`
+- **Protection Grid Intent UX PRD**: `prd/31.03-Protection-Grid-Intent-UX.md` for upcoming dense baseline, bulk intent editing, and shared detail dialog features
+- **Cursor Rule — Canonical Contracts**: `.cursor/rules/canonical-workflow-contracts.mdc` enforces contract compliance during development
+- **Cursor Rule — Intent Workflow Guardrails**: `.cursor/rules/intent-workflow-guardrails.mdc` captures root-cause lessons from protection debugging
+- **PRD Governance Sections**: All intent-related PRDs updated with reuse-first + test-gate + lean story requirements (§0.17)
+- **Match Page Chip Bar**: Replaced stat tile cards with compact chip bar for summary counters
+
+### Fixed
+- **Protected Resource Visibility**: `GRP:member` (and other state-only protected resources) now correctly appear in Protection Management grid and `TF State Protected` summary card
+- **Unprotection Loop (`sse_dm_fin_fido`)**: Fixed `Error: Moved object still exists` loop caused by stale `protection_moves.tf` and incorrect protection change detection
+- **Misleading Toast on Move-Only Plans**: `terraform plan` with only moved blocks no longer shows "no applies needed and intent was synced"
+- **Preflight Credential Validation**: TF Plan/Apply now checks for missing API token before execution, preventing cryptic `dbt_token cannot be empty` errors
+- **Reconcile State Refresh**: UI now refreshes reconcile state from `terraform show -json` after successful plan/apply, eliminating phantom mismatches
+- **Python 3.9 Compatibility**: Replaced `str | None` union syntax with `Optional[str]` for Python 3.9 support
+
+### Changed
+- **Shared Helper Consolidation**: `adopt.py`, `deploy.py`, `destroy.py` now delegate to `terraform_helpers` for env construction and path resolution instead of maintaining inline copies
+- **"Pending TF Apply" → "Pending TF Intents"**: Renamed label to distinguish intent count from resource count in plan output
+
 ## [0.22.0] - 2026-02-12
 
 ### Added

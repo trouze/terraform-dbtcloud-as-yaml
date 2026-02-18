@@ -8,32 +8,32 @@
 locals {
   # Create maps keyed by resource keys for easy lookup
   connections_map = {
-    for conn in var.globals.connections :
+    for conn in try(var.globals.connections, []) :
     conn.key => conn
   }
 
   repositories_map = {
-    for repo in var.globals.repositories :
+    for repo in try(var.globals.repositories, []) :
     repo.key => repo
   }
 
   service_tokens_map = {
-    for token in var.globals.service_tokens :
+    for token in try(var.globals.service_tokens, []) :
     token.key => token
   }
 
   groups_map = {
-    for group in var.globals.groups :
+    for group in try(var.globals.groups, []) :
     group.key => group
   }
 
   notifications_map = {
-    for notif in var.globals.notifications :
+    for notif in try(var.globals.notifications, []) :
     notif.key => notif
   }
 
   privatelink_endpoints_map = {
-    for ple in var.globals.privatelink_endpoints :
+    for ple in try(var.globals.privatelink_endpoints, []) :
     ple.key => ple
   }
 

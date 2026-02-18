@@ -52,17 +52,6 @@ RESOURCE_TYPE_TO_TF = {
 }
 
 
-def _debug_log(payload: dict) -> None:
-    """Append a debug log line for runtime evidence."""
-    # region agent log
-    try:
-        with open("/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug.log", "a") as log_file:
-            log_file.write(json.dumps(payload) + "\n")
-    except Exception:
-        pass
-    # endregion
-
-
 def get_terraform_resource_address(
     source_key: str,
     resource_type: str,
@@ -95,22 +84,6 @@ def get_terraform_resource_address(
         resource_name = "resource"
     
     address = f"module.{module_name}.{tf_type}.{resource_name}"
-    _debug_log({
-        "sessionId": "debug-session",
-        "runId": "run1",
-        "hypothesisId": "H1",
-        "location": "terraform_import.py:83",
-        "message": "computed terraform resource address",
-        "data": {
-            "source_key": source_key,
-            "resource_type": resource_type,
-            "module_name": module_name,
-            "tf_type": tf_type,
-            "resource_name": resource_name,
-            "address": address,
-        },
-        "timestamp": int(time.time() * 1000),
-    })
     return address
 
 
@@ -134,18 +107,6 @@ def generate_import_blocks(
     blocks.append("# Run 'terraform plan' to process these imports")
     blocks.append("")
     
-    _debug_log({
-        "sessionId": "debug-session",
-        "runId": "run1",
-        "hypothesisId": "H2",
-        "location": "terraform_import.py:106",
-        "message": "generate_import_blocks start",
-        "data": {
-            "module_name": module_name,
-            "mapping_count": len(mappings),
-        },
-        "timestamp": int(time.time() * 1000),
-    })
     for mapping in mappings:
         source_key = mapping.get("source_key", "")
         target_id = mapping.get("target_id", "")
@@ -157,20 +118,6 @@ def generate_import_blocks(
         
         # Get the Terraform resource address
         tf_address = get_terraform_resource_address(source_key, resource_type, module_name)
-        _debug_log({
-            "sessionId": "debug-session",
-            "runId": "run1",
-            "hypothesisId": "H3",
-            "location": "terraform_import.py:120",
-            "message": "import block mapping",
-            "data": {
-                "source_key": source_key,
-                "resource_type": resource_type,
-                "target_id": target_id,
-                "tf_address": tf_address,
-            },
-            "timestamp": int(time.time() * 1000),
-        })
         
         # Add comment with human-readable info
         blocks.append(f"# {source_name} -> Target ID {target_id}")
@@ -577,23 +524,6 @@ def generate_reconcile_import_blocks(
             elif element_code == "JCTG":
                 tf_address = f"{_v2}.dbtcloud_job_completion_trigger.job_triggers[\"{safe_name}\"]"
                 address_reason = "projects_v2_job_trigger"
-        _debug_log({
-            "sessionId": "debug-session",
-            "runId": "run1",
-            "hypothesisId": "H11",
-            "location": "terraform_import.py:472",
-            "message": "reconcile import address computed",
-            "data": {
-                "element_code": element_code,
-                "resource_name": resource_name,
-                "state_address": state_address,
-                "target_id": target_id,
-                "module_name": module_name,
-                "tf_address": tf_address,
-                "address_reason": address_reason,
-            },
-            "timestamp": int(time.time() * 1000),
-        })
         
         # Determine the import ID format based on resource type
         # Some resources need composite IDs like project_id:resource_id
@@ -689,19 +619,6 @@ def generate_adopt_imports_from_grid(
     """
     from importer.web.utils.drift_detector import DriftType
     
-    _debug_log({
-        "sessionId": "debug-session",
-        "runId": "run1",
-        "hypothesisId": "H4",
-        "location": "terraform_import.py:536",
-        "message": "generate_adopt_imports_from_grid start",
-        "data": {
-            "module_name": module_name,
-            "grid_row_count": len(grid_rows),
-        },
-        "timestamp": int(time.time() * 1000),
-    })
-    
     # Build a lookup map of project_name -> target_id from PRJ rows
     # This allows us to find project_id for REP rows even if not passed through
     project_id_by_name: dict[str, str] = {}
@@ -712,19 +629,6 @@ def generate_adopt_imports_from_grid(
             pid = row.get("target_id") or row.get("source_id")
             if pname and pid:
                 project_id_by_name[pname] = str(pid)
-    
-    _debug_log({
-        "sessionId": "debug-session",
-        "runId": "run1",
-        "hypothesisId": "H15",
-        "location": "terraform_import.py:570",
-        "message": "project_id_by_name lookup built",
-        "data": {
-            "project_count": len(project_id_by_name),
-            "sample": dict(list(project_id_by_name.items())[:5]),
-        },
-        "timestamp": int(time.time() * 1000),
-    })
     
     # Convert grid rows to drift result format
     drift_results = []
@@ -742,23 +646,6 @@ def generate_adopt_imports_from_grid(
         drift_status = row.get("drift_status", "")
         if drift_status == "in_sync":
             continue
-        _debug_log({
-            "sessionId": "debug-session",
-            "runId": "run1",
-            "hypothesisId": "H5",
-            "location": "terraform_import.py:560",
-            "message": "adopt row selected",
-            "data": {
-                "source_key": row.get("source_key"),
-                "source_type": row.get("source_type"),
-                "source_name": row.get("source_name"),
-                "project_name": row.get("project_name"),
-                "project_id": row.get("project_id"),
-                "target_id": target_id,
-                "target_id_type": str(type(target_id)),
-            },
-            "timestamp": int(time.time() * 1000),
-        })
         
         # Get project_id - from row, or lookup by project_name
         element_code = row.get("source_type", "")
@@ -774,6 +661,10 @@ def generate_adopt_imports_from_grid(
             try:
                 from importer.web.utils.protection_manager import get_resource_address
                 resource_key = row.get("source_key", "") or row.get("source_name", "")
+                # Strip "target__" prefix — the Terraform for_each uses the bare
+                # YAML key (e.g. "not_terraform"), not the internal marker.
+                if resource_key.startswith("target__"):
+                    resource_key = resource_key[len("target__"):]
                 pre_computed_address = get_resource_address(
                     element_code, resource_key, protected=True, module_name=module_name,
                 )
@@ -805,20 +696,6 @@ def generate_adopt_imports_from_grid(
         # For repository adopts in projects_v2, also import project_repository link
         if element_code == "REP":
             # project_name and project_id are already populated above
-            _debug_log({
-                "sessionId": "debug-session",
-                "runId": "run1",
-                "hypothesisId": "H14",
-                "location": "terraform_import.py:610",
-                "message": "rep link import decision",
-                "data": {
-                    "project_id": project_id,
-                    "project_id_source": "row" if row.get("project_id") else "lookup",
-                    "project_name": project_name,
-                    "target_id": target_id,
-                },
-                "timestamp": int(time.time() * 1000),
-            })
             if project_id and project_name:
                 link_target_id = f"{project_id}:{target_id}"
                 # Also use protected address for PREP if the repo is protected
@@ -866,32 +743,6 @@ def generate_state_rm_commands(grid_rows: list[dict]) -> list[str]:
     """
     commands = []
     seen_addresses = set()
-    
-    # Debug: log all adopt rows with their drift info
-    adopt_rows = [r for r in grid_rows if r.get("action") == "adopt"]
-    _debug_log({
-        "sessionId": "debug-session",
-        "runId": "run1",
-        "hypothesisId": "H16",
-        "location": "terraform_import.py:740",
-        "message": "generate_state_rm_commands adopt rows",
-        "data": {
-            "adopt_count": len(adopt_rows),
-            "samples": [
-                {
-                    "source_name": r.get("source_name"),
-                    "source_type": r.get("source_type"),
-                    "project_name": r.get("project_name"),
-                    "drift_status": r.get("drift_status"),
-                    "state_address": r.get("state_address"),
-                    "state_id": r.get("state_id"),
-                    "target_id": r.get("target_id"),
-                }
-                for r in adopt_rows[:5]
-            ],
-        },
-        "timestamp": int(time.time() * 1000),
-    })
     
     for row in grid_rows:
         if row.get("action") != "adopt":
@@ -1014,20 +865,6 @@ def write_adopt_imports_file(
         Tuple of (file_path, error_message)
     """
     try:
-        _debug_log({
-            "sessionId": "debug-session",
-            "runId": "run1",
-            "hypothesisId": "H6",
-            "location": "terraform_import.py:601",
-            "message": "write_adopt_imports_file start",
-            "data": {
-                "module_name": module_name,
-                "output_dir": str(output_dir),
-                "filename": filename,
-                "grid_row_count": len(grid_rows),
-            },
-            "timestamp": int(time.time() * 1000),
-        })
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
         
@@ -1035,18 +872,6 @@ def write_adopt_imports_file(
         file_path = output_dir / filename
         
         file_path.write_text(content, encoding="utf-8")
-        _debug_log({
-            "sessionId": "debug-session",
-            "runId": "run1",
-            "hypothesisId": "H7",
-            "location": "terraform_import.py:608",
-            "message": "write_adopt_imports_file wrote file",
-            "data": {
-                "file_path": str(file_path),
-                "content_length": len(content),
-            },
-            "timestamp": int(time.time() * 1000),
-        })
         return file_path, None
         
     except Exception as e:

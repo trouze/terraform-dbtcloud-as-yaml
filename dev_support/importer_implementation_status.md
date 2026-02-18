@@ -1,7 +1,7 @@
 # Importer Implementation Status & Tracking
 
-**Last Updated:** 2026-02-11  
-**Current Importer Version:** 0.21.2  
+**Last Updated:** 2026-02-17  
+**Current Importer Version:** 0.23.0  
 **Status:** Phase 3 Complete + Interactive Mode + Web UI + E2E Testing Infrastructure + Destroy Workflow + Target Match Feature + Jobs as Code Generator + dbt-jobs-as-code Validation + SAO Support + Native Integration Detection + Target Credentials Redesign + Resource Protection with Cascade + Destroy Page Enhancements + State-Aware Matching Fix + Match Diagnostics Improvements + AG Grid Standardization + Dialog Width Fix + Protection Mismatch Fix + Adoption Override Data Flow Fix + Debug Logging Standards + View Output Plan Dialog Fix + Independent Protection Architecture + Comprehensive Protection Unit Tests + Repository Key Prefix Matching Fix + Extended Attributes (EXTATTR) Support + Target Intent State File + Protection as Disposition Property + Explicit Global Intent Filtering + Drift Detection + TF State Repo Identity Fixup + Global Resources Configuration + Protection Intent Key Fix + EnvVar Protection + State-Only Resource Fixes + TF Plan Stability + Plan Targeting Fix + Deploy Page State-Based Protection
 
 > **⚠️ IMPORTANT: Keep This Document Updated**
@@ -420,9 +420,9 @@ Before starting end-to-end testing with a real account, verify:
 ## Version Tracking
 
 ### Importer Version
-- **Current:** 0.21.0
+- **Current:** 0.23.0
 - **File:** `importer/VERSION`
-- **Last Updated:** 2026-02-09
+- **Last Updated:** 2026-02-17
 
 ### Terraform Module Version
 - **Current:** Supports v1 and v2 schemas
@@ -666,6 +666,24 @@ The following items require API endpoint research before implementation can begi
 ---
 
 ## Change Log
+
+### 2026-02-17 (v0.23.0)
+- **Version:** Incremented to 0.23.0 (minor release - Protection Management Overhaul + Workflow Alignment + Architecture Docs)
+- Protection Management page upgraded to full intent editing surface with Intent + State columns and state-only resource visibility
+- Canonical shared contracts defined for reconcile source, generate entrypoint, and terraform helpers
+- Shared `terraform_helpers.py` module consolidates `get_terraform_env`, `resolve_deployment_paths`, `run_terraform_command`
+- `adopt.py`, `deploy.py`, `destroy.py` delegate to shared helpers instead of inline copies
+- 37 new tests: contract enforcement, state visibility regression, cross-page pipeline consistency, terraform helpers equivalence
+- Architecture docs: `canonical-contracts.md`, `workflow-mapping.md`, `refactoring-tasks.md`
+- PRD governance updates: reuse-first + test-gate requirements added to all intent-related PRDs
+- Match page stat tiles replaced with compact chip bar
+- Fixed: protected `GRP:member` visibility, unprotection loop (`sse_dm_fin_fido`), misleading toast on move-only plans, preflight credential validation, reconcile state refresh after plan/apply, Python 3.9 compatibility
+
+### 2026-02-12 (v0.22.0)
+- **Version:** Incremented to 0.22.0 (minor release - Dedicated Adopt Resources Page)
+- New `/adopt` page with AG Grid, two-step Plan/Apply workflow, targeted TF plan, auto YAML injection/cleanup
+- Comprehensive resource type address mapping for `projects_v2` module
+- State backup & restore for safe rollback
 
 ### 2026-02-11 (v0.21.2)
 - **Version:** Incremented to 0.21.2 (patch - Deploy Page State-Based Protection Detection)

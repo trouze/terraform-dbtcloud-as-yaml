@@ -1,8 +1,8 @@
 # Phase 5: End-to-End Testing Guide
 
 **Version:** 2.0  
-**Date:** 2026-02-11  
-**Importer Version:** 0.21.2  
+**Date:** 2026-02-17  
+**Importer Version:** 0.23.0  
 **Status:** Ready for Execution
 
 ---

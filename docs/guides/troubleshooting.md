@@ -2,6 +2,24 @@
 
 Common issues and their solutions.
 
+## Intent Workflow Drift and Mismatch
+
+If an intent workflow appears "stuck" (for example, repeated move errors, counters that do not settle, or intent status inconsistent with plan/apply results), follow:
+
+- `docs/guides/intent-workflow-guardrails.md`
+
+That guide includes:
+- Root causes from the protection mismatch incident
+- Build-from-start guardrails for future intent workflows
+- Debugging order of operations and required test coverage
+
+Quick triage for this class of mismatch:
+- If `TF State Protected` is non-zero but the grid looks fully synced, inspect whether state-only resources are missing from the table model.
+- Verify the grid includes separate `Intent` and `State` columns.
+- Verify state-only rows (for example `GRP:member`) appear as `State Only` rather than being silently omitted.
+
+---
+
 ## Terraform Errors
 
 ### "No value for required variable"

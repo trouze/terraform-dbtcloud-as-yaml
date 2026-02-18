@@ -24,22 +24,17 @@ variable "account" {
 
 variable "globals" {
   description = "Global resources (connections, repositories, service tokens, groups, notifications, PrivateLink endpoints)"
-  type = object({
-    connections           = optional(list(any), [])
-    repositories          = optional(list(any), [])
-    service_tokens        = optional(list(any), [])
-    groups                = optional(list(any), [])
-    notifications         = optional(list(any), [])
-    privatelink_endpoints = optional(list(any), [])
-  })
-  default = {
-    connections           = []
-    repositories          = []
-    service_tokens        = []
-    groups                = []
-    notifications         = []
-    privatelink_endpoints = []
-  }
+  # Using any type to allow yamldecode() tuples with heterogeneous structures
+  # (e.g., some items with protected: true and others without).
+  # Expected shape:
+  #   connections           = list(any)
+  #   repositories          = list(any)
+  #   service_tokens        = list(any)
+  #   groups                = list(any)
+  #   notifications         = list(any)
+  #   privatelink_endpoints = list(any)
+  type    = any
+  default = {}
 }
 
 variable "projects" {

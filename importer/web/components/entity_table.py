@@ -1330,13 +1330,6 @@ def show_match_detail_dialog(
         on_target_selected: Callback when user selects a target from dropdown
         on_adopt: Callback when user clicks "Set to Adopt" button
     """
-    # region agent log
-    try:
-        with open("/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug.log", "a") as f:
-            import json as _json
-            f.write(_json.dumps({"location": "entity_table.py:show_match_detail_dialog", "message": "ENTER show_match_detail_dialog", "data": {"source_name": source_data.get("name"), "source_key": source_data.get("key"), "grid_row_source_key": grid_row.get("source_key")}, "timestamp": __import__("time").time() * 1000, "sessionId": "debug-session", "hypothesisId": "H5"}) + "\n")
-    except: pass
-    # endregion
     type_code = source_data.get("element_type_code", "UNK")
     type_info = RESOURCE_TYPES.get(type_code, {"name": type_code, "code": type_code, "icon": "info", "color": "#6B7280"})
     
@@ -1610,13 +1603,6 @@ def show_match_detail_dialog(
                         app_state=app_state,
                     )
     
-    # region agent log
-    try:
-        with open("/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug.log", "a") as f:
-            import json as _json
-            f.write(_json.dumps({"location": "entity_table.py:show_match_detail_dialog", "message": "Calling dialog.open()", "data": {"dialog_exists": dialog is not None}, "timestamp": __import__("time").time() * 1000, "sessionId": "debug-session", "hypothesisId": "H5"}) + "\n")
-    except: pass
-    # endregion
     dialog.open()
 
 
@@ -2135,14 +2121,6 @@ def _render_match_debug_tab(
                 intent_status_container = ui.element("div").classes("w-full")
                 
                 def set_intent_protected():
-                    # #region agent log - Hypothesis A,E: Log key used when saving intent
-                    import json as _json_debug
-                    _debug_log_path = "/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug.log"
-                    try:
-                        with open(_debug_log_path, "a") as _f:
-                            _f.write(_json_debug.dumps({"location": "entity_table.py:set_intent_protected", "message": "Saving intent", "hypothesisId": "A,E", "data": {"resource_key": resource_key, "source_type": source_type, "state_resource_index": state_resource_index, "source_key": source_key, "project_name": grid_row.get("project_name")}, "timestamp": __import__("time").time()}) + "\n")
-                    except: pass
-                    # #endregion
                     protection_intent.set_intent(
                         key=resource_key,
                         protected=True,
@@ -2161,13 +2139,6 @@ def _render_match_debug_tab(
                         protection_intent.set_intent(key=linked_key, protected=True, source="detail_dialog_linked", reason=f"Linked to PREP:{base_key}", resource_type="REP")
                         linked_keys.append(linked_key)
                     protection_intent.save()
-                    # #region agent log - Hypothesis D: Log intent state after save
-                    try:
-                        _all_intents = list(protection_intent._intent.keys()) if hasattr(protection_intent, '_intent') else []
-                        with open(_debug_log_path, "a") as _f:
-                            _f.write(_json_debug.dumps({"location": "entity_table.py:set_intent_protected", "message": "Intent saved", "hypothesisId": "D", "data": {"all_intent_keys": _all_intents, "intent_count": len(_all_intents), "linked_keys": linked_keys}, "timestamp": __import__("time").time()}) + "\n")
-                    except: pass
-                    # #endregion
                     with intent_status_container:
                         intent_status_container.clear()
                         with ui.row().classes("items-center gap-2 p-2 rounded bg-green-500 bg-opacity-20"):
@@ -2376,32 +2347,11 @@ def _build_llm_diagnostic(
     base_key_for_intent = state_resource_index or source_key or ""
     resource_key_for_intent = f"{source_type}:{base_key_for_intent}" if base_key_for_intent else ""
     current_intent = None
-    # #region agent log - Hypothesis A,B,C,D: Debug intent retrieval in diagnostic
-    import json as _json_debug
-    _debug_log_path = "/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug.log"
-    try:
-        with open(_debug_log_path, "a") as _f:
-            _f.write(_json_debug.dumps({"location": "entity_table.py:_build_llm_diagnostic", "message": "Intent retrieval start", "hypothesisId": "A,B", "data": {"source_type": source_type, "source_key": source_key, "state_resource_index": state_resource_index, "resource_key_for_intent": resource_key_for_intent, "app_state_is_none": app_state is None}, "timestamp": __import__("time").time()}) + "\n")
-    except: pass
-    # #endregion
     if app_state is not None and resource_key_for_intent:
         try:
             protection_intent_manager = app_state.get_protection_intent_manager()
             current_intent = protection_intent_manager.get_intent(resource_key_for_intent)
-            # #region agent log - Hypothesis C,D: Check what intent manager returns
-            try:
-                _all_intents = list(protection_intent_manager._intent.keys()) if hasattr(protection_intent_manager, '_intent') else []
-                with open(_debug_log_path, "a") as _f:
-                    _f.write(_json_debug.dumps({"location": "entity_table.py:_build_llm_diagnostic", "message": "Intent lookup result", "hypothesisId": "C,D", "data": {"resource_key_for_intent": resource_key_for_intent, "current_intent_found": current_intent is not None, "current_intent_protected": current_intent.protected if current_intent else None, "all_intent_keys": _all_intents[:10], "intent_count": len(_all_intents)}, "timestamp": __import__("time").time()}) + "\n")
-            except: pass
-            # #endregion
         except Exception as e:
-            # #region agent log - Hypothesis D: Exception during intent retrieval
-            try:
-                with open(_debug_log_path, "a") as _f:
-                    _f.write(_json_debug.dumps({"location": "entity_table.py:_build_llm_diagnostic", "message": "Intent retrieval exception", "hypothesisId": "D", "data": {"error": str(e), "resource_key_for_intent": resource_key_for_intent}, "timestamp": __import__("time").time()}) + "\n")
-            except: pass
-            # #endregion
             pass  # Intent not available
     
     # Check for intent drift (intent differs from current state)

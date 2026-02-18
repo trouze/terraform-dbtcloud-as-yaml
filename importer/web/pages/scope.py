@@ -146,15 +146,6 @@ def _create_no_data_message(on_step_change: Callable[[WorkflowStep], None]) -> N
 
 def _load_report_items(state: AppState) -> list:
     """Load report items, preferring derivation from account JSON so extended_attributes (EXTATTR) are included."""
-    # #region agent log
-    import time as _time
-    _debug_log = "/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug.log"
-    try:
-        with open(_debug_log, "a", encoding="utf-8") as _f:
-            _f.write(json.dumps({"timestamp": int(_time.time() * 1000), "location": "scope._load_report_items.entry", "message": "state", "data": {"last_fetch_file": state.fetch.last_fetch_file, "last_report_items_file": state.fetch.last_report_items_file, "last_summary_file": state.fetch.last_summary_file}, "hypothesisId": "A"}) + "\n")
-    except Exception:
-        pass
-    # #endregion
     # Prefer: derive from account JSON so EXTATTR and other project-level items stay in sync
     if state.fetch.last_fetch_file:
         json_path = Path(state.fetch.last_fetch_file)
@@ -163,14 +154,6 @@ def _load_report_items(state: AppState) -> list:
                 payload = json.loads(json_path.read_text(encoding="utf-8"))
                 if payload and payload.get("projects"):
                     items = apply_element_ids(payload)
-                    # #region agent log
-                    try:
-                        extattr_count = sum(1 for r in items if r.get("element_type_code") == "EXTATTR")
-                        with open(_debug_log, "a", encoding="utf-8") as _f:
-                            _f.write(json.dumps({"timestamp": int(_time.time() * 1000), "location": "scope._load_report_items.return", "message": "derived from last_fetch_file", "data": {"total": len(items), "EXTATTR": extattr_count}, "hypothesisId": "A"}) + "\n")
-                    except Exception:
-                        pass
-                    # #endregion
                     return items
             except (json.JSONDecodeError, TypeError, IOError):
                 pass
@@ -180,14 +163,6 @@ def _load_report_items(state: AppState) -> list:
             path = Path(state.fetch.last_report_items_file)
             if path.exists():
                 items = json.loads(path.read_text(encoding="utf-8"))
-                # #region agent log
-                try:
-                    extattr_count = sum(1 for r in items if r.get("element_type_code") == "EXTATTR")
-                    with open(_debug_log, "a", encoding="utf-8") as _f:
-                        _f.write(json.dumps({"timestamp": int(_time.time() * 1000), "location": "scope._load_report_items.return", "message": "from report_items file", "data": {"total": len(items), "EXTATTR": extattr_count}, "hypothesisId": "A"}) + "\n")
-                except Exception:
-                    pass
-                # #endregion
                 return items
         except (json.JSONDecodeError, IOError):
             pass
@@ -205,34 +180,11 @@ def _load_report_items(state: AppState) -> list:
                     data = json.loads(candidate.read_text(encoding="utf-8"))
                     if "__json__" in name and isinstance(data, dict) and data.get("projects"):
                         items = apply_element_ids(data)
-                        # #region agent log
-                        try:
-                            extattr_count = sum(1 for r in items if r.get("element_type_code") == "EXTATTR")
-                            with open(_debug_log, "a", encoding="utf-8") as _f:
-                                _f.write(json.dumps({"timestamp": int(_time.time() * 1000), "location": "scope._load_report_items.return", "message": "derived from summary dir JSON", "data": {"total": len(items), "EXTATTR": extattr_count}, "hypothesisId": "A"}) + "\n")
-                        except Exception:
-                            pass
-                        # #endregion
                         return items
                     if "__report_items__" in name and isinstance(data, list):
-                        # #region agent log
-                        try:
-                            extattr_count = sum(1 for r in data if r.get("element_type_code") == "EXTATTR")
-                            with open(_debug_log, "a", encoding="utf-8") as _f:
-                                _f.write(json.dumps({"timestamp": int(_time.time() * 1000), "location": "scope._load_report_items.return", "message": "from summary dir report_items file", "data": {"total": len(data), "EXTATTR": extattr_count}, "hypothesisId": "A"}) + "\n")
-                        except Exception:
-                            pass
-                        # #endregion
                         return data
                 except (json.JSONDecodeError, TypeError, IOError):
                     pass
-    # #region agent log
-    try:
-        with open(_debug_log, "a", encoding="utf-8") as _f:
-            _f.write(json.dumps({"timestamp": int(_time.time() * 1000), "location": "scope._load_report_items.return", "message": "empty", "data": {}, "hypothesisId": "A"}) + "\n")
-    except Exception:
-        pass
-    # #endregion
     return []
 
 

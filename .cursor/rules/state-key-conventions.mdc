@@ -1,0 +1,131 @@
+---
+description: Key normalization, state persistence, and event handler conventions for importer web UI
+globs:
+  - importer/web/**/*.py
+alwaysApply: false
+---
+
+# State Key Conventions & Event Handler Contract
+
+## Key Namespaces
+
+Three key formats exist; mismatches between them are the #1 source of bugs.
+
+| Namespace               | Format                                                          | Example                              | Where used                      |
+|-------------------------|-----------------------------------------------------------------|--------------------------------------|---------------------------------|
+| Grid `source_key`       | bare, `target__`-prefixed (target-only), `state__` (state-only) | `target__everyone`, `sse_dm_fin_fido` | Grid rows, `confirmed_mappings` |
+| `protected_resources`   | **Bare keys only** (always strip prefixes before add/discard)   | `everyone`, `sse_dm_fin_fido`        | `state.map.protected_resources` |
+| Protection intent       | `TYPE:bare_key` (via `_make_prefixed_intent_key`)               | `GRP:everyone`, `PRJ:sse_dm_fin_fido`| `protection-intent.json`        |
+
+## Key Normalization Rules
+
+### MUST DO
+
+- **Looking up** `source_key` in `protected_resources`: always check BOTH the raw key AND the stripped key (`source_key.removeprefix("target__")`)
+- **Adding** to `protected_resources`: always strip prefix first: `bare_key = source_key.removeprefix("target__")`
+- **Discarding** from `protected_resources`: discard BOTH the raw key and the stripped key
+- **Building** a protection intent key: always strip `target__`/`state__` prefix first, then apply `_make_prefixed_intent_key(source_type, bare_key)`
+- **Filtering** `confirmed_mappings` by `source_key`: check both `mk == source_key` and `mk == f"target__{source_key}"` (or vice versa)
+
+### MUST NOT
+
+- Never add a `target__`-prefixed key to `protected_resources` — lookups will miss it
+- Never look up a `target__`-prefixed `source_key` directly in `protected_resources` without also checking the bare form
+- Never assume `source_key` format is consistent — always normalize before comparing
+
+## Event Handler Contract
+
+Every grid event handler (`on_row_change`, `_on_adopt_cell_changed`, `_on_adopt_cell_clicked`) MUST follow this contract:
+
+### A. Determine What Changed First
+
+When the handler fires, determine which column actually changed before entering column-specific logic:
+
+- Did the **action** column change? (compare `row_data["action"]` vs previous in `confirmed_mappings`)
+- Did the **protection** (shield) change? (compare `row_data["protected"]` vs `old_protected`)
+
+The `old_protected` check MUST use normalized keys:
+
+```python
+old_protected = source_key in state.map.protected_resources
+if not old_protected and source_key.startswith("target__"):
+    old_protected = source_key[len("target__"):] in state.map.protected_resources
+```
+
+### B. Action Changes Take Priority Over Protection Guard
+
+If the action is changing to a non-adopt action (`ignore`, `skip`, `unadopt`, `create_new`):
+
+- Do NOT enter the protection guard dialog branch
+- Fall through to the action-change handler, which clears protection as a side effect
+- The protection guard dialog is ONLY for when the user explicitly clicks the shield on a non-adopted resource
+
+### C. State Mutation Completeness Checklist
+
+After any handler completes, ALL relevant stores must be updated:
+
+| Store                                          | When to update                              |
+|------------------------------------------------|---------------------------------------------|
+| In-memory grid data                            | Always (immediate visual feedback)          |
+| `state.map.confirmed_mappings`                 | Any action change                           |
+| `state.map.protected_resources`                | Any protection change (add/remove)          |
+| `target-intent.json` via `TargetIntentManager` | Any action change (source of truth on reload)|
+| `protection-intent.json` via intent manager    | Any protection change                       |
+| `save_state()`                                 | Always after mutations                      |
+| `ui.navigate.reload()`                         | Match page: after protection/action changes |
+
+### D. Action-Protection Coupling Rules
+
+- Setting action to `ignore`/`skip`/`unadopt`/`create_new` on a protected resource MUST clear protection from: `protected_resources`, `protection-intent.json`, and the grid row
+- Clicking the shield on a non-adopted target-only resource MUST show the adopt-and-protect guard dialog
+- After adopt-and-protect, BOTH action AND protection must be persisted to ALL stores
+
+## Match Page vs Adopt Page Handler Patterns
+
+| Aspect            | Match page                                  | Adopt page                                           |
+|-------------------|---------------------------------------------|------------------------------------------------------|
+| Handler routing   | Single `on_row_change` handles both         | Separate `_on_adopt_cell_changed` and `_cell_clicked` |
+| Grid data         | `grid_data_ref["data"]` dict                | `adopt_grid_data` local list                         |
+| After mutation    | Usually `ui.navigate.reload()`              | In-place: `adopt_grid.update()` + label updates      |
+| Protection helper | Inline logic in `on_row_change`             | `_persist_protection()` + `_update_protection_in_grid()` |
+| Intent key helper | `_make_prefixed_intent_key()` + `_get_intent_key_for_row()` | `_make_adopt_intent_key()` |
+
+When adding new handlers, follow the page's existing pattern.
+
+## Grid Rendering Rules
+
+- Use `len(rows) > 0` (not summary counts like `adopt_count > 0`) to decide whether to render grids
+- Summary counts reflect a filtered subset (e.g., only "adopt" action); the grid should show ALL relevant resources regardless of action
+- Example: the adopt grid must show ignored resources too, so users can change them to adopt
+
+## Generation Pipeline Rules
+
+All protection and adoption terraform artifacts (YAML flags, HCL regeneration, `protection_moves.tf`, `adopt_imports.tf`) MUST be generated by the **single headless pipeline** in `generate_pipeline.py`:
+
+- **Match page**: NEVER runs terraform. Only records intents (shield clicks, action changes). Uses "Continue to Adopt & Apply" button.
+- **Adopt page**: Calls `run_generate_pipeline(include_adopt=True)` then runs terraform plan/apply.
+- **Utilities page**: Calls `run_generate_pipeline(include_adopt=False)` then runs terraform plan/apply.
+
+No page should have its own baseline merge, HCL regeneration, or moved-block generation code.
+
+See [PRD 43.03 — Unified Protect & Adopt Pipeline](../prd/43.03-Unified-Protect-Adopt-Pipeline.md) for full architecture.
+
+## State Persistence Requirements
+
+All state that affects generation or grid rendering MUST be persisted. Known fields:
+
+| Field | File | Notes |
+|-------|------|-------|
+| `map.protected_resources` | `state.json` | Set of bare keys |
+| `map.confirmed_mappings` | `state.json` + `target-intent.json` | Dual persistence |
+| `map.removal_keys` | `state.json` | **Must be persisted** (lost on restart = lost unadopt decisions) |
+| Protection intents | `protection-intent.json` | Via `ProtectionIntentManager` |
+| Target intents | `target-intent.json` | Via `TargetIntentManager` |
+| `deploy.adopt_step_complete` | `target-intent.json` | Workflow state |
+
+## Testing Requirements
+
+- Any new state mutation flow must have a unit test that verifies the roundtrip: mutate state, rebuild grid data, verify the mutation is visible
+- Protection lookup tests must cover all three key namespaces (bare, `target__`, `state__`)
+- When adding or modifying a handler, verify against the state mutation checklist (Section C) and add tests for any new persistence paths
+- Pipeline changes require tests from **all 7 harnesses** defined in PRD 43.03: regression, combination matrix, intent key, golden file, state machine, cross-page, and integration

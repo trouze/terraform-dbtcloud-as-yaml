@@ -2,6 +2,10 @@
 
 import asyncio
 import json
+import re
+import shutil
+import subprocess
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Callable, Optional
@@ -9,6 +13,40 @@ from typing import Callable, Optional
 from nicegui import ui
 
 from importer.web.state import AppState, WorkflowStep
+from importer.web.utils.terraform_helpers import (
+    build_target_flags,
+    get_terraform_env,
+    resolve_deployment_paths,
+    run_terraform_command,
+)
+
+# region agent log
+_DEBUG_LOG_PATH = Path("/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug-65e6e9.log")
+
+
+def _agent_debug_log(
+    hypothesis_id: str,
+    location: str,
+    message: str,
+    data: dict,
+    *,
+    run_id: str = "run1",
+) -> None:
+    try:
+        payload = {
+            "sessionId": "65e6e9",
+            "runId": run_id,
+            "hypothesisId": hypothesis_id,
+            "location": location,
+            "message": message,
+            "data": data,
+            "timestamp": int(time.time() * 1000),
+        }
+        with _DEBUG_LOG_PATH.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(payload, default=str) + "\n")
+    except Exception:
+        pass
+# endregion
 
 
 def create_utilities_page(
@@ -49,18 +87,66 @@ def _create_protection_status_section(
     # Get TF state protected resources
     state_protected_resources = set()
     state_unprotected_resources = set()
+    state_protected_resources_display = set()
+    state_unprotected_resources_display = set()
     
     if has_state and state.deploy.reconcile_state_loaded and state.deploy.reconcile_state_resources:
+        # region agent log
+        code_counts: dict[str, int] = {}
+        for resource in state.deploy.reconcile_state_resources:
+            code = resource.get("element_code", "UNKNOWN")
+            code_counts[code] = code_counts.get(code, 0) + 1
+        member_rows = [
+            {
+                "element_code": r.get("element_code"),
+                "tf_name": r.get("tf_name"),
+                "resource_index": r.get("resource_index"),
+            }
+            for r in state.deploy.reconcile_state_resources
+            if r.get("resource_index") == "member"
+        ]
+        _agent_debug_log(
+            "D3",
+            "utilities.py:_create_protection_status_section",
+            "reconcile rows entering protection status summary",
+            {
+                "reconcile_count": len(state.deploy.reconcile_state_resources),
+                "element_code_counts": code_counts,
+                "member_rows": member_rows[:5],
+            },
+        )
+        # endregion
         for resource in state.deploy.reconcile_state_resources:
             tf_name = resource.get("tf_name", "")
             resource_index = resource.get("resource_index", "")
             element_code = resource.get("element_code", "")
             
+            if element_code in ("PRJ", "REP", "PREP", "GRP") and resource_index:
+                if "protected_" in tf_name:
+                    state_protected_resources_display.add(resource_index)
+                else:
+                    state_unprotected_resources_display.add(resource_index)
+
             if element_code in ("PRJ", "REP", "PREP") and resource_index:
                 if "protected_" in tf_name:
                     state_protected_resources.add(resource_index)
                 else:
                     state_unprotected_resources.add(resource_index)
+    # region agent log
+    _agent_debug_log(
+        "D6",
+        "utilities.py:_create_protection_status_section",
+        "derived protection status counts for summary cards",
+        {
+            "tf_state_protected_display_count": len(state_protected_resources_display),
+            "tf_state_unprotected_display_count": len(state_unprotected_resources_display),
+            "tf_state_protected_mismatch_count": len(state_protected_resources),
+            "tf_state_unprotected_mismatch_count": len(state_unprotected_resources),
+            "member_in_display_protected": "member" in state_protected_resources_display,
+            "member_in_mismatch_protected": "member" in state_protected_resources,
+        },
+    )
+    # endregion
     
     # Calculate mismatches
     # Resources in YAML as protected but in state as unprotected (or vice versa)
@@ -110,7 +196,7 @@ def _create_protection_status_section(
                 with ui.row().classes("items-center gap-2"):
                     ui.icon("cloud", size="sm").classes("text-green-600")
                     ui.label("TF State Protected").classes("font-semibold text-green-600")
-                count = len(state_protected_resources) if has_state else "—"
+                count = len(state_protected_resources_display) if has_state else "—"
                 ui.label(str(count)).classes("text-3xl font-bold text-green-700 mt-2")
                 ui.label("From terraform state" if has_state else "Load state to see").classes("text-xs opacity-70")
             
@@ -126,6 +212,36 @@ def _create_protection_status_section(
         # Mismatches expansion (if any)
         if len(mismatches) > 0:
             protection_intent = state.get_protection_intent_manager()
+            mismatch_resource_types = ("PRJ", "REP", "PREP")
+
+            def mismatch_intent_keys(base_key: str) -> list[str]:
+                return [f"{rtype}:{base_key}" for rtype in mismatch_resource_types] + [base_key]
+
+            def has_mismatch_intent(base_key: str) -> bool:
+                return any(protection_intent.has_intent(k) for k in mismatch_intent_keys(base_key))
+
+            def get_mismatch_intent(base_key: str):
+                for key in mismatch_intent_keys(base_key):
+                    intent = protection_intent.get_intent(key)
+                    if intent is not None:
+                        return intent
+                return None
+
+            def set_mismatch_intent(base_key: str, protected: bool, source: str, reason: str) -> None:
+                # Mismatch rows are project-scoped. Persist explicit typed intents for
+                # PRJ/REP/PREP so downstream TF targeting stays deterministic.
+                for rtype in mismatch_resource_types:
+                    protection_intent.set_intent(
+                        key=f"{rtype}:{base_key}",
+                        protected=protected,
+                        source=source,
+                        reason=reason,
+                        resource_type=rtype,
+                    )
+
+                # Remove any legacy unprefixed key to avoid UNKNOWN rows and stale lookups.
+                if protection_intent.has_intent(base_key):
+                    protection_intent.remove_intent(base_key, source=source)
             
             with ui.expansion(
                 f"⚠️ {len(mismatches)} Protection Mismatches - Click to Resolve",
@@ -142,7 +258,7 @@ def _create_protection_status_section(
                     state_prot = m["state_protected"]
                     
                     # Check if intent already recorded
-                    has_intent = protection_intent.has_intent(key)
+                    has_intent = has_mismatch_intent(key)
                     
                     with ui.card().classes("w-full p-2 mb-2 bg-red-500 bg-opacity-10"):
                         with ui.row().classes("items-center justify-between"):
@@ -157,7 +273,7 @@ def _create_protection_status_section(
                                         f"color={'blue' if state_prot else 'grey'} dense"
                                     )
                                     if has_intent:
-                                        intent = protection_intent.get_intent(key)
+                                        intent = get_mismatch_intent(key)
                                         intent_label = "→ Protect" if intent.protected else "→ Unprotect"
                                         ui.badge(f"Intent: {intent_label}").props("color=amber dense")
                             
@@ -165,8 +281,8 @@ def _create_protection_status_section(
                                 with ui.row().classes("items-center gap-1"):
                                     def make_protect_handler(rkey=key):
                                         def handler():
-                                            protection_intent.set_intent(
-                                                key=rkey,
+                                            set_mismatch_intent(
+                                                base_key=rkey,
                                                 protected=True,
                                                 source="protection_status",
                                                 reason="Resolve mismatch: protect",
@@ -178,8 +294,8 @@ def _create_protection_status_section(
                                     
                                     def make_unprotect_handler(rkey=key):
                                         def handler():
-                                            protection_intent.set_intent(
-                                                key=rkey,
+                                            set_mismatch_intent(
+                                                base_key=rkey,
                                                 protected=False,
                                                 source="protection_status",
                                                 reason="Resolve mismatch: unprotect",
@@ -194,8 +310,12 @@ def _create_protection_status_section(
                             else:
                                 def make_undo_handler(rkey=key):
                                     def handler():
-                                        if protection_intent.has_intent(rkey):
-                                            del protection_intent._intent[rkey]
+                                        removed = False
+                                        for intent_key in mismatch_intent_keys(rkey):
+                                            if protection_intent.has_intent(intent_key):
+                                                protection_intent.remove_intent(intent_key, source="protection_status")
+                                                removed = True
+                                        if removed:
                                             protection_intent.save()
                                             ui.notify(f"Cleared intent for {rkey}", type="info")
                                             ui.navigate.reload()
@@ -209,13 +329,13 @@ def _create_protection_status_section(
                 # Bulk resolution buttons
                 ui.separator().classes("my-2")
                 
-                unresolved = [m for m in mismatches if not protection_intent.has_intent(m["key"])]
+                unresolved = [m for m in mismatches if not has_mismatch_intent(m["key"])]
                 
                 with ui.row().classes("items-center gap-2"):
                     def protect_all_unresolved():
                         for m in unresolved:
-                            protection_intent.set_intent(
-                                key=m["key"],
+                            set_mismatch_intent(
+                                base_key=m["key"],
                                 protected=True,
                                 source="protection_status_bulk",
                                 reason="Bulk resolve: protect all",
@@ -226,8 +346,8 @@ def _create_protection_status_section(
                     
                     def unprotect_all_unresolved():
                         for m in unresolved:
-                            protection_intent.set_intent(
-                                key=m["key"],
+                            set_mismatch_intent(
+                                base_key=m["key"],
                                 protected=False,
                                 source="protection_status_bulk",
                                 reason="Bulk resolve: unprotect all",
@@ -239,8 +359,8 @@ def _create_protection_status_section(
                     def follow_yaml():
                         """Set intents to match what YAML says."""
                         for m in unresolved:
-                            protection_intent.set_intent(
-                                key=m["key"],
+                            set_mismatch_intent(
+                                base_key=m["key"],
                                 protected=m["yaml_protected"],
                                 source="protection_status_bulk",
                                 reason="Follow YAML configuration",
@@ -252,8 +372,8 @@ def _create_protection_status_section(
                     def follow_state():
                         """Set intents to match what TF state says."""
                         for m in unresolved:
-                            protection_intent.set_intent(
-                                key=m["key"],
+                            set_mismatch_intent(
+                                base_key=m["key"],
                                 protected=m["state_protected"],
                                 source="protection_status_bulk",
                                 reason="Follow TF state",
@@ -278,13 +398,7 @@ def _create_protection_status_section(
                 ui.label("Load Terraform state to see current protection status and detect mismatches").classes("text-sm opacity-70")
                 
                 async def load_state_action():
-                    tf_dir = state.deploy.terraform_dir or "deployments/migration"
-                    from pathlib import Path
-                    tf_path = Path(tf_dir)
-                    if not tf_path.is_absolute():
-                        project_root = Path(__file__).parent.parent.parent.resolve()
-                        tf_path = project_root / tf_dir
-                    
+                    tf_path, _yaml, _baseline = resolve_deployment_paths(state)
                     state_file = tf_path / "state.json"
                     if not state_file.exists():
                         ui.notify(f"State file not found: {state_file}. Run 'terraform show -json > state.json' in your TF directory.", type="negative")
@@ -347,13 +461,13 @@ def _create_protection_management_section(
                 ui.label(str(pending_generate)).classes("text-3xl font-bold text-amber-700 mt-2")
                 ui.label("Need YAML updates").classes("text-xs text-slate-500")
             
-            # Pending TF Apply card
+            # Pending TF Intents card
             with ui.card().classes("flex-1 p-4").style("border: 2px solid #3B82F6;"):
                 with ui.row().classes("items-center gap-2"):
                     ui.icon("cloud_sync", size="sm").classes("text-blue-600")
-                    ui.label("Pending TF Apply").classes("font-semibold text-blue-600")
+                    ui.label("Pending TF Intents").classes("font-semibold text-blue-600")
                 ui.label(str(pending_tf)).classes("text-3xl font-bold text-blue-700 mt-2")
-                ui.label("Need terraform apply").classes("text-xs text-slate-500")
+                ui.label("Need terraform apply (intent count)").classes("text-xs text-slate-500")
             
             # Synced card
             with ui.card().classes("flex-1 p-4").style("border: 2px solid #10B981;"):
@@ -363,6 +477,18 @@ def _create_protection_management_section(
                 ui.label(str(synced)).classes("text-3xl font-bold text-green-700 mt-2")
                 ui.label("Fully applied").classes("text-xs text-slate-500")
         
+        # Build TF-state protection map used by filters and table state column.
+        # Key format mirrors intent keys: "<TYPE>:<resource_key>".
+        state_protection_by_key: dict[str, bool] = {}
+        if state.deploy.reconcile_state_loaded and state.deploy.reconcile_state_resources:
+            for resource in state.deploy.reconcile_state_resources:
+                element_code = resource.get("element_code", "")
+                resource_index = resource.get("resource_index", "")
+                tf_name = resource.get("tf_name", "")
+                if element_code in ("PRJ", "REP", "PREP", "GRP") and resource_index:
+                    typed_key = f"{element_code}:{resource_index}"
+                    state_protection_by_key[typed_key] = "protected_" in tf_name
+
         # Filters and Search
         filter_state = {"status": "all", "type": "all", "search": ""}
         
@@ -371,7 +497,7 @@ def _create_protection_management_section(
             status_options = {
                 "all": "All Status",
                 "pending_generate": "Pending Generate",
-                "pending_tf": "Pending TF Apply",
+                "pending_tf": "Pending TF Intents",
                 "synced": "Synced",
             }
             status_select = ui.select(
@@ -391,6 +517,9 @@ def _create_protection_management_section(
                 else:
                     rtype = "UNKNOWN"
                 unique_types.add(rtype)
+            for state_key in state_protection_by_key.keys():
+                if ":" in state_key:
+                    unique_types.add(state_key.split(":")[0])
             for t in sorted(unique_types):
                 type_options[t] = t
             
@@ -412,7 +541,7 @@ def _create_protection_management_section(
             showing_label = ui.label(f"Showing: {total_intents}/{total_intents}").classes("text-sm text-slate-500")
         
         # Bulk Action Buttons
-        with ui.row().classes("w-full gap-2 mb-4"):
+        with ui.column().classes("w-full gap-3 mb-4 p-3 border border-slate-200 rounded-lg"):
             async def reset_all_to_yaml():
                 """Reset all intents, falling back to YAML flags."""
                 dialog = ui.dialog()
@@ -441,12 +570,6 @@ def _create_protection_management_section(
                     protection_intent.save()
                     ui.notify("All intents reset to YAML defaults", type="positive")
                     ui.navigate.reload()
-            
-            ui.button(
-                "Reset All to YAML",
-                icon="restart_alt",
-                on_click=reset_all_to_yaml,
-            ).props("outline color=red").tooltip("Clear all intents, fall back to YAML flags")
             
             async def sync_from_tf_state():
                 """Sync intents from current TF state - set intents to match what's in TF state."""
@@ -495,6 +618,7 @@ def _create_protection_management_section(
                             protected=is_protected,
                             source="sync_from_tf_state",
                             reason=f"Synced from TF state - was in {tf_name}",
+                            resource_type=element_code,
                         )
                         # Intent was derived FROM TF state, so TF state already matches.
                         # Mark as applied_to_tf_state=True to avoid requiring a TF plan/apply.
@@ -505,12 +629,6 @@ def _create_protection_management_section(
                 ui.notify(f"Synced {count} resources from TF state", type="positive")
                 ui.navigate.reload()
             
-            ui.button(
-                "Sync from TF State",
-                icon="cloud_download",
-                on_click=sync_from_tf_state,
-            ).props("outline").tooltip("Create intents to match current TF state")
-            
             async def generate_all_pending():
                 """Process all pending-generate intents at once.
                 
@@ -518,6 +636,7 @@ def _create_protection_management_section(
                 1. Read pending intents
                 2. Apply intents to YAML
                 3. Generate protection_moves.tf from state comparison
+                4. Regenerate Terraform files from YAML (shared converter path)
                 """
                 # Get both pending YAML updates AND pending TF apply items
                 pending_yaml = protection_intent.get_pending_yaml_updates()
@@ -525,52 +644,150 @@ def _create_protection_management_section(
                              if i.applied_to_yaml and not i.applied_to_tf_state}
                 
                 pending = {**pending_yaml, **pending_tf}
+                # region agent log
+                _agent_debug_log(
+                    "H1",
+                    "utilities.py:generate_all_pending",
+                    "pending intent snapshot before generation",
+                    {
+                        "pending_yaml_count": len(pending_yaml),
+                        "pending_tf_count": len(pending_tf),
+                        "pending_yaml_has_fido": any("sse_dm_fin_fido" in k for k in pending_yaml),
+                        "pending_tf_has_fido": any("sse_dm_fin_fido" in k for k in pending_tf),
+                    },
+                )
+                # endregion
                 
                 if not pending:
                     ui.notify("No pending intents to generate", type="warning")
                     return
                 
-                from pathlib import Path
-                
-                tf_dir = state.deploy.terraform_dir or "deployments/migration"
-                tf_path = Path(tf_dir)
-                if not tf_path.is_absolute():
-                    project_root = Path(__file__).parent.parent.parent.resolve()
-                    tf_path = project_root / tf_dir
-                
-                yaml_file = tf_path / "dbt-cloud-config.yml"
+                tf_path, yaml_file, _baseline = resolve_deployment_paths(state)
                 if not yaml_file.exists():
                     ui.notify(f"YAML file not found: {yaml_file}", type="negative")
                     return
+                # region agent log
+                _agent_debug_log(
+                    "H1",
+                    "utilities.py:generate_all_pending",
+                    "selected yaml file for generation",
+                    {
+                        "tf_path": str(tf_path),
+                        "yaml_file": str(yaml_file),
+                        "merged_exists": (tf_path / "dbt-cloud-config-merged.yml").exists(),
+                        "base_exists": (tf_path / "dbt-cloud-config.yml").exists(),
+                    },
+                )
+                # endregion
                 
                 # Step 1: Apply intents to YAML
-                from importer.web.utils.adoption_yaml_updater import apply_protection_from_set, apply_unprotection_from_set
-                
-                keys_to_protect = {k for k, i in pending.items() if i.protected}
-                keys_to_unprotect = {k for k, i in pending.items() if not i.protected}
-                
-                if keys_to_protect:
-                    apply_protection_from_set(str(yaml_file), keys_to_protect)
-                if keys_to_unprotect:
-                    apply_unprotection_from_set(str(yaml_file), keys_to_unprotect)
-                
-                # Mark as applied to YAML
-                for key in pending_yaml.keys():
-                    protection_intent.mark_applied_to_yaml(key)
-                protection_intent.save()
+                try:
+                    from importer.web.utils.adoption_yaml_updater import apply_protection_from_set, apply_unprotection_from_set
+                    
+                    keys_to_protect = {k for k, i in pending.items() if i.protected}
+                    keys_to_unprotect = {k for k, i in pending.items() if not i.protected}
+                    
+                    if keys_to_protect:
+                        apply_protection_from_set(str(yaml_file), keys_to_protect)
+                    if keys_to_unprotect:
+                        apply_unprotection_from_set(str(yaml_file), keys_to_unprotect)
+                    
+                    # Mark as applied to YAML
+                    protection_intent.mark_applied_to_yaml(set(pending_yaml.keys()))
+                    protection_intent.save()
+                    if save_state:
+                        save_state()
+                except Exception as e:
+                    import traceback
+                    ui.notify(f"Error applying YAML changes: {e}", type="negative")
+                    traceback.print_exc()
+                    return
                 
                 # Step 2: Generate protection_moves.tf by comparing YAML to state
-                state_file = tf_path / "terraform.tfstate"
-                if state_file.exists():
+                try:
                     from importer.web.utils.protection_manager import (
+                        ProtectionChange,
                         generate_moved_blocks_from_state,
+                        get_resource_address,
+                        load_yaml_config,
                         write_moved_blocks_file,
                     )
-                    from importer.web.utils.protection_manager import load_yaml_config
-                    
+
                     yaml_config = load_yaml_config(str(yaml_file))
-                    protection_changes = generate_moved_blocks_from_state(yaml_config, str(state_file))
-                    
+                    protection_changes: list[ProtectionChange] = []
+
+                    # Prefer loaded reconcile state (from terraform show -json) so
+                    # move direction matches what the UI mismatch cards display.
+                    if state.deploy.reconcile_state_loaded and state.deploy.reconcile_state_resources:
+                        # Build YAML protection map for PRJ/REP/PREP.
+                        yaml_protection: dict[tuple[str, str], bool] = {}
+                        project_keys = set()
+                        for project in yaml_config.get("projects", []):
+                            project_key = project.get("key", "")
+                            project_keys.add(project_key)
+                            yaml_protection[("PRJ", project_key)] = bool(project.get("protected", False))
+                        for repo in yaml_config.get("globals", {}).get("repositories", []):
+                            repo_key = repo.get("key", "")
+                            repo_protected = bool(repo.get("protected", False))
+                            yaml_protection[("REP", repo_key)] = repo_protected
+                            for project_key in project_keys:
+                                if project_key in repo_key or repo_key.endswith(project_key):
+                                    yaml_protection[("REP", project_key)] = repo_protected
+                                    yaml_protection[("PREP", project_key)] = repo_protected
+                                    break
+
+                        # region agent log
+                        _agent_debug_log(
+                            "H6",
+                            "utilities.py:generate_all_pending",
+                            "using reconcile_state_resources as move generation source",
+                            {
+                                "resource_count": len(state.deploy.reconcile_state_resources),
+                                "has_fido_reconcile": any(r.get("resource_index") == "sse_dm_fin_fido" for r in state.deploy.reconcile_state_resources),
+                            },
+                        )
+                        # endregion
+
+                        for resource in state.deploy.reconcile_state_resources:
+                            element_code = resource.get("element_code", "")
+                            resource_index = resource.get("resource_index", "")
+                            tf_name = resource.get("tf_name", "")
+                            if element_code not in ("PRJ", "REP", "PREP") or not resource_index:
+                                continue
+                            state_protected = "protected_" in tf_name
+                            yaml_protected = yaml_protection.get((element_code, resource_index), False)
+                            if yaml_protected == state_protected:
+                                continue
+                            direction = "protect" if yaml_protected else "unprotect"
+                            protection_changes.append(
+                                ProtectionChange(
+                                    resource_key=resource_index,
+                                    resource_type=element_code,
+                                    name=resource_index,
+                                    direction=direction,
+                                    from_address=get_resource_address(element_code, resource_index, protected=state_protected),
+                                    to_address=get_resource_address(element_code, resource_index, protected=yaml_protected),
+                                )
+                            )
+                    else:
+                        state_file = tf_path / "terraform.tfstate"
+                        # region agent log
+                        _agent_debug_log(
+                            "H2",
+                            "utilities.py:generate_all_pending",
+                            "starting terraform.tfstate comparison for moved block generation",
+                            {
+                                "yaml_file": str(yaml_file),
+                                "state_file": str(state_file),
+                                "state_file_exists": state_file.exists(),
+                            },
+                        )
+                        # endregion
+                        if state_file.exists():
+                            protection_changes = generate_moved_blocks_from_state(yaml_config, str(state_file))
+                        else:
+                            ui.notify("YAML updated - no state file found to compare", type="info")
+
                     if protection_changes:
                         moved_file = write_moved_blocks_file(
                             protection_changes,
@@ -581,19 +798,38 @@ def _create_protection_management_section(
                         if moved_file:
                             ui.notify(f"Generated {len(protection_changes)} moved block(s) → {moved_file.name}", type="positive")
                     else:
+                        # Clear stale generated moves to prevent old directions from
+                        # blocking plan/apply with "Moved object still exists".
+                        moves_file = tf_path / "protection_moves.tf"
+                        if moves_file.exists():
+                            moves_file.write_text(
+                                "# Protection moves cleared - no pending protection moves\n",
+                                encoding="utf-8",
+                            )
                         ui.notify("YAML updated - no moved blocks needed (state already matches)", type="info")
-                else:
-                    ui.notify("YAML updated - no state file found to compare", type="info")
+                except Exception as e:
+                    import traceback
+                    ui.notify(f"Error generating moved blocks: {e}", type="negative")
+                    traceback.print_exc()
+
+                # Step 3: Regenerate Terraform files so moved blocks can apply
+                # (moves fail if HCL still declares resources in protected_* blocks).
+                try:
+                    from importer.yaml_converter import YamlToTerraformConverter
+
+                    converter = YamlToTerraformConverter()
+                    await asyncio.to_thread(
+                        converter.convert,
+                        str(yaml_file),
+                        str(tf_path),
+                    )
+                    ui.notify("Regenerated Terraform files from updated YAML", type="positive")
+                except Exception as e:
+                    ui.notify(f"Error regenerating Terraform files: {e}", type="negative")
+                    return
                 
                 ui.notify(f"Processed {len(pending)} protection intent(s)", type="positive")
                 ui.navigate.reload()
-            
-            generate_btn = ui.button(
-                f"Generate All Pending ({pending_generate})" if pending_generate > 0 else "Generate All Pending",
-                icon="auto_fix_high",
-                on_click=generate_all_pending,
-            ).props("color=green")
-            generate_btn.set_enabled(pending_generate > 0)
             
             def export_json():
                 """Download protection-intent.json."""
@@ -605,29 +841,328 @@ def _create_protection_management_section(
                 ui.download(json_str.encode(), "protection-intent.json")
                 ui.notify("Exported protection-intent.json", type="positive")
             
-            ui.button(
-                "Export JSON",
-                icon="download",
-                on_click=export_json,
-            ).props("outline").tooltip("Download protection-intent.json")
+            ui.label("Intent Actions").classes("text-xs font-semibold uppercase tracking-wide text-slate-500")
+            with ui.row().classes("w-full items-center gap-2 flex-wrap"):
+                ui.button(
+                    "Reset All to YAML",
+                    icon="restart_alt",
+                    on_click=reset_all_to_yaml,
+                ).props("outline color=red").tooltip("Clear all intents, fall back to YAML flags")
+                ui.button(
+                    "Sync from TF State",
+                    icon="cloud_download",
+                    on_click=sync_from_tf_state,
+                ).props("outline").tooltip("Create intents to match current TF state")
+                generate_btn = ui.button(
+                    f"Generate All Pending ({pending_generate + pending_tf})" if (pending_generate + pending_tf) > 0 else "Generate All Pending",
+                    icon="auto_fix_high",
+                    on_click=generate_all_pending,
+                ).props("color=green")
+                generate_btn.set_enabled((pending_generate + pending_tf) > 0)
+                ui.button(
+                    "Export JSON",
+                    icon="download",
+                    on_click=export_json,
+                ).props("outline").tooltip("Download protection-intent.json")
+
+            # Terraform actions for pending TF intents from this page.
+            tf_outputs: dict[str, str] = {"init": "", "plan": "", "apply": ""}
+            tf_failures: dict[str, Optional[str]] = {"init": None, "plan": None, "apply": None}
+
+            def _resolve_tf_path() -> Path:
+                tf_path, _yaml, _baseline = resolve_deployment_paths(state)
+                return tf_path
+
+            def _pending_tf_keys() -> set[str]:
+                return {
+                    key
+                    for key in protection_intent._intent
+                    if protection_intent._intent[key].applied_to_yaml
+                    and not protection_intent._intent[key].applied_to_tf_state
+                }
+
+            def _extract_first_error_reason(output: str) -> Optional[str]:
+                for line in output.splitlines():
+                    if line.startswith("Error:"):
+                        return line.replace("Error:", "", 1).strip() or "terraform command failed"
+                return None
+
+            def _run_tf_preflight(
+                action_label: str,
+                *,
+                require_pending_intents: bool,
+            ) -> Optional[tuple[Path, dict[str, str], list[str]]]:
+                tf_path = _resolve_tf_path()
+                if not tf_path.exists() or not tf_path.is_dir():
+                    ui.notify(f"{action_label} blocked: terraform directory not found", type="negative")
+                    return None
+
+                if shutil.which("terraform") is None:
+                    ui.notify(f"{action_label} blocked: terraform CLI not found in PATH", type="negative")
+                    return None
+
+                env = get_terraform_env(state)
+                missing: list[str] = []
+                if not env.get("TF_VAR_dbt_token", "").strip():
+                    missing.append("TF_VAR_dbt_token")
+                if not env.get("TF_VAR_dbt_account_id", "").strip():
+                    missing.append("TF_VAR_dbt_account_id")
+                if not env.get("TF_VAR_dbt_host_url", "").strip():
+                    missing.append("TF_VAR_dbt_host_url")
+
+                if missing:
+                    ui.notify(
+                        f"{action_label} blocked: missing terraform credentials ({', '.join(missing)})",
+                        type="negative",
+                    )
+                    return None
+
+                pending_keys = _pending_tf_keys()
+                if require_pending_intents and not pending_keys:
+                    ui.notify(f"{action_label} blocked: no pending TF intents", type="warning")
+                    return None
+
+                target_flags = build_target_flags(tf_path, protection_intent)
+                if not target_flags:
+                    ui.notify(
+                        f"{action_label} blocked: no terraform targets found (refresh state or regenerate pending)",
+                        type="warning",
+                    )
+                    return None
+
+                return tf_path, env, target_flags
+
+            async def _refresh_reconcile_state_from_terraform(tf_path: Path) -> None:
+                """Refresh in-memory reconcile state from live terraform show -json."""
+                try:
+                    from importer.web.utils.terraform_state_reader import read_terraform_state
+
+                    result = await read_terraform_state(tf_path)
+                    if result.success:
+                        state.deploy.reconcile_state_resources = [r.__dict__ for r in result.resources]
+                        state.deploy.reconcile_state_loaded = True
+                        if save_state:
+                            save_state()
+                        # region agent log
+                        _agent_debug_log(
+                            "H7",
+                            "utilities.py:_refresh_reconcile_state_from_terraform",
+                            "reconcile state refreshed from terraform show",
+                            {
+                                "tf_path": str(tf_path),
+                                "resource_count": len(result.resources),
+                                "has_fido": any(r.resource_index == "sse_dm_fin_fido" for r in result.resources),
+                            },
+                        )
+                        # endregion
+                except Exception:
+                    # Non-blocking; stale reconcile state should not block plan/apply completion.
+                    pass
+
+            async def run_tf_init():
+                tf_path = _resolve_tf_path()
+                env = get_terraform_env(state)
+                result = await asyncio.to_thread(
+                    subprocess.run,
+                    ["terraform", "init", "-no-color", "-input=false"],
+                    cwd=str(tf_path),
+                    capture_output=True,
+                    text=True,
+                    env=env,
+                )
+                tf_outputs["init"] = result.stdout + result.stderr
+                tf_failures["init"] = _extract_first_error_reason(tf_outputs["init"]) if result.returncode != 0 else None
+                if result.returncode == 0:
+                    ui.notify("Terraform init completed", type="positive")
+                else:
+                    ui.notify("Terraform init failed", type="negative")
+
+            async def run_tf_plan_pending():
+                preflight = _run_tf_preflight("TF Plan Pending", require_pending_intents=False)
+                if preflight is None:
+                    return
+                tf_path, env, target_flags = preflight
+                result = await asyncio.to_thread(
+                    subprocess.run,
+                    ["terraform", "plan", "-no-color", "-input=false", *target_flags],
+                    cwd=str(tf_path),
+                    capture_output=True,
+                    text=True,
+                    env=env,
+                )
+                plan_output = result.stdout + result.stderr
+                tf_outputs["plan"] = plan_output
+
+                if result.returncode != 0:
+                    reason = _extract_first_error_reason(plan_output)
+                    tf_failures["plan"] = reason
+                    if "Moved object still exists" in plan_output:
+                        ui.notify("Plan failed: run Generate All Pending, then plan again", type="warning")
+                    ui.notify(f"Terraform plan failed: {reason or 'see output'}", type="negative")
+                    return
+
+                tf_failures["plan"] = None
+                # Move-only plans still require apply; do not auto-sync intents.
+                has_moved_objects = (
+                    " has moved to " in plan_output
+                    or re.search(r"\b\d+\s+to move\b", plan_output) is not None
+                )
+                no_changes = (
+                    (
+                        "No changes." in plan_output
+                        or "Your infrastructure matches the configuration" in plan_output
+                    )
+                    and not has_moved_objects
+                )
+                if no_changes:
+                    keys = _pending_tf_keys()
+                    # region agent log
+                    _agent_debug_log(
+                        "H8",
+                        "utilities.py:run_tf_plan_pending",
+                        "plan detected no changes; syncing pending tf intents",
+                        {"pending_tf_keys_count": len(keys), "contains_fido": any("sse_dm_fin_fido" in k for k in keys)},
+                    )
+                    # endregion
+                    if keys:
+                        protection_intent.mark_applied_to_tf_state(keys)
+                        protection_intent.save()
+                        if save_state:
+                            save_state()
+                    await _refresh_reconcile_state_from_terraform(tf_path)
+                    ui.notify("No TF changes needed; pending intents marked synced", type="positive")
+                    ui.navigate.reload()
+                elif has_moved_objects:
+                    ui.notify("Terraform plan includes moved resources; run TF Apply Pending Intents", type="warning")
+                else:
+                    ui.notify("Terraform plan completed", type="positive")
+
+            async def run_tf_apply_pending():
+                preflight = _run_tf_preflight("TF Apply Pending Intents", require_pending_intents=True)
+                if preflight is None:
+                    return
+                tf_path, env, target_flags = preflight
+                result = await asyncio.to_thread(
+                    subprocess.run,
+                    ["terraform", "apply", "-auto-approve", "-no-color", "-input=false", *target_flags],
+                    cwd=str(tf_path),
+                    capture_output=True,
+                    text=True,
+                    env=env,
+                )
+                tf_outputs["apply"] = result.stdout + result.stderr
+                tf_failures["apply"] = _extract_first_error_reason(tf_outputs["apply"]) if result.returncode != 0 else None
+                if result.returncode == 0:
+                    keys = _pending_tf_keys()
+                    if keys:
+                        protection_intent.mark_applied_to_tf_state(keys)
+                        protection_intent.save()
+                        if save_state:
+                            save_state()
+                    await _refresh_reconcile_state_from_terraform(tf_path)
+                    ui.notify("Terraform apply completed; pending intents synced", type="positive")
+                    ui.navigate.reload()
+                else:
+                    ui.notify(f"Terraform apply failed: {tf_failures['apply'] or 'see output'}", type="negative")
+
+            async def refresh_tf_state():
+                tf_path = _resolve_tf_path()
+                await _refresh_reconcile_state_from_terraform(tf_path)
+                ui.notify("Refreshed TF state from terraform show -json", type="positive")
+                ui.navigate.reload()
+
+            def show_tf_output(kind: str, title: str):
+                output = tf_outputs.get(kind, "")
+                if not output:
+                    ui.notify(f"No {kind} output yet", type="warning")
+                    return
+                from importer.web.utils.yaml_viewer import create_plan_viewer_dialog
+                create_plan_viewer_dialog(
+                    output,
+                    title,
+                    failure_reason=tf_failures.get(kind),
+                ).open()
+
+            ui.label("Terraform Actions").classes("text-xs font-semibold uppercase tracking-wide text-slate-500")
+            with ui.column().classes("w-full gap-2"):
+                with ui.row().classes("w-full items-center gap-2 flex-wrap"):
+                    ui.button(
+                        "TF Init",
+                        icon="download",
+                        on_click=run_tf_init,
+                    ).props("outline").tooltip("Run terraform init in deployment directory")
+                    ui.button(
+                        "TF Plan Pending",
+                        icon="preview",
+                        on_click=run_tf_plan_pending,
+                    ).props("outline color=primary").tooltip("Run targeted terraform plan for pending protection moves")
+                    ui.button(
+                        "Refresh TF State",
+                        icon="refresh",
+                        on_click=refresh_tf_state,
+                    ).props("outline").tooltip("Reload protection state from terraform show -json")
+                    apply_btn = ui.button(
+                        f"TF Apply Pending Intents ({pending_tf})",
+                        icon="cloud_sync",
+                        on_click=run_tf_apply_pending,
+                    ).props("color=blue")
+                    apply_btn.set_enabled(pending_tf > 0)
+
+                ui.label("Outputs").classes("text-xs font-semibold uppercase tracking-wide text-slate-500")
+                with ui.row().classes("w-full items-center gap-2 flex-wrap"):
+                    ui.button(
+                        "View Init Output",
+                        icon="visibility",
+                        on_click=lambda: show_tf_output("init", "Protection TF Init Output"),
+                    ).props("flat")
+                    ui.button(
+                        "View Plan Output",
+                        icon="visibility",
+                        on_click=lambda: show_tf_output("plan", "Protection TF Plan Output"),
+                    ).props("flat")
+                    ui.button(
+                        "View Apply Output",
+                        icon="visibility",
+                        on_click=lambda: show_tf_output("apply", "Protection TF Apply Output"),
+                    ).props("flat")
         
         # AG Grid for Current Intents
         if total_intents > 0:
             # Build row data
             row_data = []
+            state_only_protected_count = 0
+            state_only_unprotected_count = 0
+            used_state_keys: set[str] = set()
             for key, intent in protection_intent._intent.items():
                 # Extract type from key
                 if ":" in key:
                     rtype = key.split(":")[0]
                 else:
                     rtype = "UNKNOWN"
+
+                state_protected = state_protection_by_key.get(key)
+                if state_protected is not None:
+                    used_state_keys.add(key)
+                state_label = (
+                    "Protected"
+                    if state_protected is True
+                    else "Unprotected"
+                    if state_protected is False
+                    else "Unknown"
+                )
                 
                 # Determine status
                 if not intent.applied_to_yaml:
                     status = "Pending Generate"
                     status_class = "bg-amber-100 text-amber-800"
+                elif (
+                    state_protected is not None
+                    and state_protected != bool(intent.protected)
+                ):
+                    status = "State Mismatch"
+                    status_class = "bg-red-100 text-red-800"
                 elif not intent.applied_to_tf_state:
-                    status = "Pending TF Apply"
+                    status = "Pending TF Intents"
                     status_class = "bg-blue-100 text-blue-800"
                 else:
                     status = "Synced"
@@ -637,11 +1172,52 @@ def _create_protection_management_section(
                     "resource_key": key,
                     "type": rtype,
                     "intent": "Protect" if intent.protected else "Unprotect",
+                    "state": state_label,
                     "status": status,
                     "status_class": status_class,
                     "set_at": intent.set_at[:19].replace("T", " ") if intent.set_at else "",
                     "intent_obj": intent,
                 })
+
+            # Include state-only resources so protected objects without an explicit
+            # intent are visible in this grid (e.g. GRP:member).
+            for state_key, state_protected in state_protection_by_key.items():
+                if state_key in used_state_keys:
+                    continue
+                if ":" in state_key:
+                    rtype = state_key.split(":")[0]
+                else:
+                    rtype = "UNKNOWN"
+                if state_protected:
+                    state_only_protected_count += 1
+                else:
+                    state_only_unprotected_count += 1
+                row_data.append({
+                    "resource_key": state_key,
+                    "type": rtype,
+                    "intent": "No Intent",
+                    "state": "Protected" if state_protected else "Unprotected",
+                    "status": "State Only",
+                    "status_class": "bg-slate-100 text-slate-700",
+                    "set_at": "",
+                    "intent_obj": None,
+                })
+
+            # region agent log
+            _agent_debug_log(
+                "D7",
+                "utilities.py:_create_protection_management_section",
+                "protection grid row composition",
+                {
+                    "intent_row_count": len(protection_intent._intent),
+                    "state_rows_total": len(state_protection_by_key),
+                    "state_only_protected_count": state_only_protected_count,
+                    "state_only_unprotected_count": state_only_unprotected_count,
+                    "member_state_row_present": "GRP:member" in state_protection_by_key,
+                    "member_in_row_data": any(r.get("resource_key") == "GRP:member" for r in row_data),
+                },
+            )
+            # endregion
             
             # Pre-sort by set_at descending
             row_data.sort(key=lambda r: r.get("set_at", ""), reverse=True)
@@ -651,6 +1227,7 @@ def _create_protection_management_section(
                 {"field": "resource_key", "colId": "resource_key", "headerName": "Resource Key", "flex": 2, "checkboxSelection": True, "headerCheckboxSelection": True},
                 {"field": "type", "colId": "type", "headerName": "Type", "width": 80},
                 {"field": "intent", "colId": "intent", "headerName": "Intent", "width": 100},
+                {"field": "state", "colId": "state", "headerName": "State", "width": 110},
                 {"field": "status", "colId": "status", "headerName": "Status", "width": 140},
                 {"field": "set_at", "colId": "set_at", "headerName": "Set At", "width": 160},
                 {"field": "actions", "colId": "actions", "headerName": "Actions", "width": 100, "cellRenderer": "agGroupCellRenderer"},

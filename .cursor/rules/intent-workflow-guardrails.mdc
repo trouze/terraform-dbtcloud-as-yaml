@@ -1,0 +1,70 @@
+---
+description: Guardrails for intent-driven workflows (protect/adopt/destroy)
+globs:
+  - importer/web/pages/**/*.py
+  - importer/web/utils/**/*.py
+alwaysApply: false
+---
+
+# Intent Workflow Guardrails
+
+Apply these rules when adding or debugging intent workflows.
+
+## Source of truth
+
+- Pick one canonical reconcile source and use it for:
+  - UI counters/mismatches
+  - generated terraform artifacts
+  - sync decisions
+- Never mix in-memory reconcile data and raw tfstate parsing for the same decision without explicit reconciliation.
+
+## Generation contract
+
+- All generate actions must call the shared headless pipeline.
+- Derived files (`protection_moves.tf`, import files, generated HCL) must be regenerated from current intent each run.
+- If computed deltas are empty, explicitly clear derived artifact files to avoid stale operations.
+
+## Plan/apply semantics
+
+- Distinguish:
+  - no changes + no moves
+  - move-only plans
+  - mutable add/change/destroy plans
+- Never mark intents `applied_to_tf_state` on move-only plans.
+- Mark as synced only when plan/apply semantics prove state alignment.
+
+## Post-command consistency
+
+- After plan no-change sync and apply success:
+  - refresh reconcile state from `terraform show -json`
+  - persist state
+  - reload UI
+
+## UI visibility parity
+
+- If a resource is counted in TF-state summary cards, it must be representable in the management table.
+- Do not build table rows from intents alone; merge intent rows with state-only rows.
+- Render state-only resources with a distinct status (for example `State Only`) and avoid implying they are synced intents.
+- Keep `Intent` and `State` as separate columns so operators can see desired vs actual at row level.
+
+## Preflight + failures
+
+- Before plan/apply, validate:
+  - terraform binary in PATH
+  - deployment directory exists
+  - required credentials (`TF_VAR_dbt_token`, `TF_VAR_dbt_account_id`, `TF_VAR_dbt_host_url`)
+  - valid target scope
+- Bubble up first failure reason (`Error:` line) in toast and output viewer banner.
+
+## Required tests for new intent workflows
+
+- Unit:
+  - source-of-truth consistency
+  - stale artifact clearing
+  - plan classification
+  - sync/refresh behavior
+  - preflight matrix
+- E2E:
+  - intent -> generate -> plan -> apply -> refresh -> zero mismatch
+  - moved-object failure and recovery
+

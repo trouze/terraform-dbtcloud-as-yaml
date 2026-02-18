@@ -425,6 +425,42 @@ class ProtectionIntentManager:
         """
         return key in self._intent
     
+    @traced
+    def remove_intent(self, key: str, *, source: str = "cleanup") -> bool:
+        """Remove a protection intent entry entirely.
+        
+        Use when a resource is no longer being managed (e.g., action changed
+        to 'ignore') and the intent is no longer relevant.  Adds a history
+        entry for audit trail.
+        
+        Args:
+            key: Resource key to remove (e.g., "GRP:owner")
+            source: Source of the removal for audit trail
+            
+        Returns:
+            True if an intent was removed, False if key was not found
+        """
+        intent = self._intent.pop(key, None)
+        if intent is None:
+            return False
+        
+        # Record removal in history for audit trail
+        timestamp = datetime.utcnow().isoformat() + "Z"
+        self._history.append(HistoryEntry(
+            resource_key=key,
+            action="remove",
+            timestamp=timestamp,
+            source=source,
+        ))
+        
+        log_state_change(
+            "protection_intent",
+            "remove",
+            data={"key": key, "source": source, "was_protected": intent.protected},
+        )
+        logger.info(f"Removed protection intent for '{key}' (was protected={intent.protected}, source={source})")
+        return True
+    
     @traced(log_result=True)
     def get_effective_protection(self, key: str, yaml_protected: bool) -> bool:
         """Get the effective protection status for a resource.
@@ -490,6 +526,14 @@ class ProtectionIntentManager:
             for key, intent in self._intent.items()
             if not intent.applied_to_yaml
         }
+    
+    def get_all_intents(self) -> dict[str, ProtectionIntent]:
+        """Get all intents (both pending and applied).
+        
+        Returns:
+            Dict of resource_key -> ProtectionIntent for all intents
+        """
+        return dict(self._intent)
     
     @traced(log_result=True)
     def get_pending_tf_moves(self) -> list[ProtectionIntent]:

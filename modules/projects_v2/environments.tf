@@ -84,6 +84,9 @@ locals {
       # Check if connection key exists in the connections map
       contains(keys(dbtcloud_global_connection.connections), item.env_data.connection) ?
       dbtcloud_global_connection.connections[item.env_data.connection].id :
+      # Check protected connections too
+      contains(keys(dbtcloud_global_connection.protected_connections), item.env_data.connection) ?
+      dbtcloud_global_connection.protected_connections[item.env_data.connection].id :
       # Fall back to numeric ID (for backward compatibility)
       # Use try() to safely attempt conversion - returns null if conversion fails
       try(tonumber(item.env_data.connection), null) != null ?
@@ -425,9 +428,7 @@ resource "dbtcloud_environment" "protected_environments" {
   project_id    = each.value.project_id
   name          = each.value.env_data.name
   type          = each.value.env_data.type
-  connection_id = local.resolve_connection_id["${each.value.project_key}_${each.value.env_key}"]
-
-  # Look up credential_id from the appropriate credential resource based on type
+  connection_id = local.resolve_connection_id["${each.value.project_key}_${each.value.env_key}"]  # Look up credential_id from the appropriate credential resource based on type
   # Use try() to handle environments without credentials (returns null)
   credential_id = try(coalesce(
     try(dbtcloud_databricks_credential.credentials[each.key].credential_id, null),
@@ -442,9 +443,7 @@ resource "dbtcloud_environment" "protected_environments" {
     try(dbtcloud_starburst_credential.credentials[each.key].credential_id, null),
     try(dbtcloud_spark_credential.credentials[each.key].credential_id, null),
     try(dbtcloud_teradata_credential.credentials[each.key].credential_id, null),
-  ), null)
-
-  # Optional fields
+  ), null)  # Optional fields
   dbt_version                = try(each.value.env_data.dbt_version, null)
   enable_model_query_history = try(each.value.env_data.enable_model_query_history, null)
   custom_branch              = try(each.value.env_data.custom_branch, null)

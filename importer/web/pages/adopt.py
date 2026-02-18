@@ -25,8 +25,15 @@ from importer.web.utils.terraform_import import (
     write_adopt_imports_file,
 )
 from importer.web.utils.adoption_yaml_updater import (
+    apply_protection_from_set,
+    apply_unprotection_from_set,
     cleanup_unadopted_yaml_configs,
     inject_adopted_resource_configs,
+)
+from importer.web.utils.terraform_helpers import (
+    get_terraform_env as _get_terraform_env_shared,
+    resolve_deployment_paths,
+    run_terraform_command,
 )
 
 logger = logging.getLogger(__name__)
@@ -47,44 +54,87 @@ PHASE_COLORS = {
 
 
 def _get_terraform_dir(state: AppState) -> Path:
-    """Resolve the terraform directory from state."""
-    tf_dir = state.deploy.terraform_dir or "deployments/migration"
-    tf_path = Path(tf_dir)
-    if not tf_path.is_absolute():
-        project_root = (
-            Path(state.fetch.output_dir).parent.parent
-            if state.fetch.output_dir
-            else Path.cwd()
-        )
-        tf_path = project_root / tf_dir
+    """Resolve the terraform directory from state.
+
+    Delegates to the canonical ``resolve_deployment_paths`` helper and
+    returns only the ``tf_path`` component for backward compatibility.
+    """
+    tf_path, _yaml_file, _baseline = resolve_deployment_paths(state)
     return tf_path
 
 
 def _get_terraform_env(state: AppState) -> dict:
-    """Get environment variables for terraform commands (mirrors deploy.py)."""
-    env = dict(os.environ)
+    """Get environment variables for terraform commands.
 
-    api_token = state.target_credentials.api_token
-    account_id = state.target_credentials.account_id
-    host_url = state.target_credentials.host_url
+    Delegates to ``terraform_helpers.get_terraform_env`` — the single
+    source of truth for TF env construction.
+    """
+    return _get_terraform_env_shared(state)
 
-    base_host = (host_url or "https://cloud.getdbt.com").rstrip("/")
-    if not base_host.endswith("/api"):
-        host_url = f"{base_host}/api"
-    else:
-        host_url = base_host
 
-    env["TF_VAR_dbt_account_id"] = str(account_id)
-    env["TF_VAR_dbt_token"] = api_token
-    env["TF_VAR_dbt_host_url"] = host_url
+# ---------------------------------------------------------------------------
+# Workflow state persistence helpers
+# ---------------------------------------------------------------------------
 
-    token_type = state.target_credentials.token_type
-    env["DBT_CLOUD_TOKEN"] = api_token
-    env["DBT_CLOUD_ACCOUNT_ID"] = str(account_id)
-    env["DBT_CLOUD_HOST_URL"] = host_url
-    if token_type == "service_token":
-        env["DBT_CLOUD_TOKEN_TYPE"] = "service"
-    return env
+def _persist_adopt_workflow_state(
+    state: AppState,
+    *,
+    complete: bool,
+    skipped: bool = False,
+    imported_count: int = 0,
+) -> None:
+    """Persist adopt step outcome to target-intent.json so it survives restarts."""
+    try:
+        mgr = state.get_target_intent_manager()
+        intent = mgr.load()
+        if intent is None:
+            return  # No target intent yet — nothing to persist into
+        intent.set_adopt_state(
+            complete=complete,
+            skipped=skipped,
+            imported_count=imported_count,
+        )
+        mgr.save(intent)
+        logger.info(f"Persisted adopt workflow state: complete={complete}, skipped={skipped}, imported={imported_count}")
+    except Exception as e:
+        logger.warning(f"Failed to persist adopt workflow state: {e}")
+
+
+def _restore_adopt_workflow_state(state: AppState) -> None:
+    """Restore adopt step state from target-intent.json into in-memory DeployState."""
+    try:
+        mgr = state.get_target_intent_manager()
+        intent = mgr.load()
+        if intent is None:
+            return
+        adopt = intent.get_adopt_state()
+        if not adopt:
+            return
+        state.deploy.adopt_step_complete = adopt.get("complete", False)
+        state.deploy.adopt_step_skipped = adopt.get("skipped", False)
+        state.deploy.adopt_step_imported_count = adopt.get("imported_count", 0)
+        if state.deploy.adopt_step_complete:
+            state.deploy.adopt_step_status = "complete"
+            logger.info(
+                f"Restored adopt state from disk: complete={state.deploy.adopt_step_complete}, "
+                f"skipped={state.deploy.adopt_step_skipped}, imported={state.deploy.adopt_step_imported_count}"
+            )
+    except Exception as e:
+        logger.warning(f"Failed to restore adopt workflow state: {e}")
+
+
+def _clear_adopt_workflow_state(state: AppState) -> None:
+    """Clear adopt state from target-intent.json (for re-run)."""
+    try:
+        mgr = state.get_target_intent_manager()
+        intent = mgr.load()
+        if intent is None:
+            return
+        intent.clear_adopt_state()
+        mgr.save(intent)
+        logger.info("Cleared adopt workflow state from disk")
+    except Exception as e:
+        logger.warning(f"Failed to clear adopt workflow state: {e}")
 
 
 def _load_report_items(state: AppState, target: bool = False) -> list:
@@ -175,6 +225,16 @@ def _get_grid_rows_from_state(state: AppState) -> list[dict]:
                      else set(state.map.rejected_suggestions))
     clone_configs = getattr(state.map, "cloned_resources", [])
 
+    # Get protection intent manager for effective protection lookup (matches match.py)
+    protection_intent_manager = state.get_protection_intent_manager()
+
+    # #region agent log
+    import json as _json_dbg_adopt, time as _time_dbg_adopt
+    _dbg_adopt = {"timestamp": int(_time_dbg_adopt.time()*1000), "location": "adopt.py:_get_grid_rows_from_state", "message": "build_grid_data call params", "hypothesisId": "A", "data": {"has_intent_mgr": protection_intent_manager is not None, "protected_resources": sorted(list(state.map.protected_resources))[:20] if state.map.protected_resources else [], "protected_resources_count": len(state.map.protected_resources) if state.map.protected_resources else 0}}
+    with open("/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug.log", "a") as _f_dbg_adopt:
+        _f_dbg_adopt.write(_json_dbg_adopt.dumps(_dbg_adopt) + "\n")
+    # #endregion
+
     grid_data = build_grid_data(
         source_items,
         target_items,
@@ -183,6 +243,7 @@ def _get_grid_rows_from_state(state: AppState) -> list[dict]:
         clone_configs,
         state_result=state_result,
         protected_resources=state.map.protected_resources,
+        protection_intent_manager=protection_intent_manager,
     )
 
     return grid_data
@@ -267,10 +328,6 @@ def _compute_adopt_summary(
     protected_count = sum(1 for r in adopt_rows if r.get("protected") and r.get("action") == "adopt")
     state_rm_cmds = generate_state_rm_commands(grid_rows) if adopt_rows else []
 
-    # #region agent log
-    import json as _json_dbg2; open("/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug.log", "a").write(_json_dbg2.dumps({"id":"compute_summary","timestamp":__import__('time').time(),"location":"adopt.py:_compute_adopt_summary","message":"Summary computed","data":{"adopt_count":adopt_count,"total_rows":len(adopt_rows),"cm_by_key":cm_by_key,"row_details":[{"sk":r.get("source_key",""),"action":r.get("action",""),"drift":r.get("drift_status",""),"tid":r.get("target_id","")} for r in adopt_rows]},"hypothesisId":"B"}) + "\n")
-    # #endregion
-
     return {
         "adopt_count": adopt_count,
         "rm_count": len(state_rm_cmds),
@@ -310,6 +367,11 @@ async def _run_adopt_plan(
     env = _get_terraform_env(state)
     tfstate_file = tf_path / "terraform.tfstate"
     backup_file = tf_path / "terraform.tfstate.adopt-backup"
+
+    # Track whether we set aside protection_moves.tf (used in finally)
+    protection_moves_file = tf_path / "protection_moves.tf"
+    protection_moves_aside = tf_path / "protection_moves.tf.aside"
+    _protection_moves_set_aside = False
 
     try:
         # ── Phase 1: Backup ──────────────────────────────────────────────
@@ -430,6 +492,57 @@ async def _run_adopt_plan(
             elif not deployment_yaml_path.exists():
                 terminal.info(f"  {deployment_yaml_path.name} not found — skipping config injection")
 
+        # Step 3c: Sync protection flags in YAML for all adopted resources.
+        # This ensures the deployment YAML's `protected` flags match the grid:
+        #   - adopted+protected rows → `protected: true` in YAML
+        #   - adopted+unprotected rows → clear stale `protected: true` from YAML
+        # Without this, toggling protection off leaves stale flags causing the
+        # import address (unprotected) to mismatch the Terraform for_each
+        # (which still sees `protected: true` in the YAML config).
+        protected_keys = state.map.protected_resources
+
+        if deployment_yaml_path.exists():
+            try:
+                # 1) Apply protection for adopted+protected resources
+                if protected_keys:
+                    apply_protection_from_set(
+                        yaml_file=str(deployment_yaml_path),
+                        protected_keys=protected_keys,
+                    )
+                    prot_count = sum(
+                        1 for r in rows_to_import if r.get("protected")
+                    )
+                    if prot_count > 0:
+                        terminal.info(
+                            f"  Applied protection flags to {prot_count} resource(s) in YAML"
+                        )
+
+                # 2) Clear stale protection for adopted+unprotected resources.
+                #    Build a set of keys that are adopted but NOT protected —
+                #    these must have `protected` removed/set to false in YAML.
+                unprotected_adopt_keys = set()
+                for r in rows_to_import:
+                    if r.get("action") == "adopt" and not r.get("protected"):
+                        stype = r.get("source_type", "")
+                        skey = r.get("source_key", "")
+                        if skey.startswith("target__"):
+                            skey = skey[len("target__"):]
+                        if stype:
+                            unprotected_adopt_keys.add(f"{stype}:{skey}")
+                        unprotected_adopt_keys.add(skey)
+
+                if unprotected_adopt_keys:
+                    apply_unprotection_from_set(
+                        yaml_file=str(deployment_yaml_path),
+                        unprotected_keys=unprotected_adopt_keys,
+                    )
+                    terminal.info(
+                        f"  Cleared stale protection from {len(unprotected_adopt_keys)} "
+                        f"unprotected adopted resource key(s) in YAML"
+                    )
+            except Exception as exc:
+                terminal.warning(f"  Protection sync warning: {exc}")
+
         terminal.info("")
 
         # ── Phase 4: Write Import Blocks ─────────────────────────────────
@@ -453,6 +566,19 @@ async def _run_adopt_plan(
         for row in rows_to_import:
             terminal.info(f"  • {row.get('source_type', '?')}: {row.get('source_name', row.get('source_key', '?'))} → ID {row.get('target_id', '?')}")
         terminal.info("")
+
+        # ── Pre-Phase 5: Set aside protection_moves.tf ─────────────────
+        # The adopt plan uses -target to scope to only adopted resources.
+        # If protection_moves.tf exists (from the Protection Management
+        # workflow), its `moved` blocks cause Terraform to require all
+        # referenced resources to also be targeted — which breaks the
+        # scoped adopt plan.  Temporarily rename it so Terraform ignores
+        # it, then restore it after plan/apply completes.
+        if protection_moves_file.exists():
+            protection_moves_file.rename(protection_moves_aside)
+            _protection_moves_set_aside = True
+            terminal.info("Temporarily set aside protection_moves.tf (will restore after adopt)")
+            terminal.info("")
 
         # ── Phase 5: Terraform Init ──────────────────────────────────────
         state.deploy.adopt_step_status = "init"
@@ -590,6 +716,10 @@ async def _run_adopt_plan(
             on_failure(error_msg)
 
         return None
+    finally:
+        # Restore protection_moves.tf if it was set aside
+        if _protection_moves_set_aside and protection_moves_aside.exists():
+            protection_moves_aside.rename(protection_moves_file)
 
 
 async def _run_adopt_apply(
@@ -598,12 +728,11 @@ async def _run_adopt_apply(
     save_state: Callable[[], None],
     summary: dict,
     tf_path: Path,
-    on_complete: Callable[[], None],
-    on_failure: Callable[[str], None],
 ) -> None:
     """Apply the saved adoption plan (``adopt.tfplan``).
 
     Phases: apply → verify → cleanup.
+    Raises on failure — caller handles UI updates.
     """
     adopt_rows = summary["adopt_rows"]
 
@@ -644,6 +773,15 @@ async def _run_adopt_apply(
 
         if result.returncode != 0:
             raise RuntimeError(f"terraform apply failed (exit code {result.returncode})")
+
+        # Parse terraform's Apply summary for the actual import count.
+        # Terraform outputs: "Apply complete! Resources: N imported, ..."
+        _actual_imported = 0
+        for _apply_line in result.stdout.split("\n"):
+            _m = re.search(r"(\d+)\s+imported", _apply_line)
+            if _m:
+                _actual_imported = int(_m.group(1))
+                break
 
         terminal.success("✓ Terraform apply completed")
         terminal.info("")
@@ -691,17 +829,23 @@ async def _run_adopt_apply(
 
         terminal.info("")
         terminal.success("━━━ ADOPTION COMPLETE ━━━")
-        terminal.success(f"Successfully imported {len(adopt_rows)} resources into Terraform state.")
+        # Use the actual count from terraform's Apply summary (parsed above).
+        # Falls back to the adopt_count from the summary dict if parsing yielded 0.
+        _import_display = _actual_imported if _actual_imported > 0 else summary.get("adopt_count", len(adopt_rows))
+        terminal.success(f"Successfully imported {_import_display} resources into Terraform state.")
 
-        # Update state
+        # Update in-memory state
         state.deploy.adopt_step_complete = True
         state.deploy.adopt_step_running = False
         state.deploy.adopt_step_status = "complete"
         state.deploy.adopt_step_last_output = terminal.get_text()
         state.deploy.reconcile_imports_generated = True
+        # Store the actual import count so the UI card shows the correct number
+        state.deploy.adopt_step_imported_count = _import_display
         save_state()
 
-        on_complete()
+        # Persist adopt completion to target-intent.json (survives server restart)
+        _persist_adopt_workflow_state(state, complete=True, imported_count=_import_display)
 
     except Exception as e:
         error_msg = str(e)
@@ -720,7 +864,7 @@ async def _run_adopt_apply(
         state.deploy.adopt_step_last_output = terminal.get_text()
         save_state()
 
-        on_failure(error_msg)
+        raise  # Re-raise so the caller can handle UI updates
 
 
 # ---------------------------------------------------------------------------
@@ -736,6 +880,11 @@ def create_adopt_page(
 
     # Resolve terraform directory
     tf_path = _get_terraform_dir(state)
+
+    # Restore adopt step state from disk (survives server restart).
+    # Do this before any UI rendering so the "Already complete" card shows correctly.
+    if not state.deploy.adopt_step_complete:
+        _restore_adopt_workflow_state(state)
 
     # Only load confirmed_mappings from target intent if they haven't been
     # populated by the Match page yet.  The in-memory state.map.confirmed_mappings
@@ -760,7 +909,27 @@ def create_adopt_page(
     # Get grid rows and compute summary
     grid_rows = _get_grid_rows_from_state(state)
     summary = _compute_adopt_summary(grid_rows, state.map.confirmed_mappings)
-    has_adopt_rows = summary["adopt_count"] > 0
+    has_adopt_rows = len(summary["adopt_rows"]) > 0
+
+    # #region agent log
+    import json as _json_dbg
+    _dbg_log_path = "/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug.log"
+    def _dbg_log(msg, data=None, hyp=""):
+        import time
+        _entry = {"timestamp": int(time.time()*1000), "location": "adopt.py:create_adopt_page", "message": msg, "hypothesisId": hyp}
+        if data is not None:
+            _entry["data"] = data
+        with open(_dbg_log_path, "a") as _f:
+            _f.write(_json_dbg.dumps(_entry) + "\n")
+    _dbg_log("protected_resources at page load", {"protected_resources": sorted(state.map.protected_resources), "count": len(state.map.protected_resources)}, "A")
+    _grp_rows = [r for r in grid_rows if r.get("source_type") == "GRP"]
+    _dbg_log("GRP rows from build_grid_data", {"rows": [{k: r.get(k) for k in ("source_key", "source_type", "source_name", "action", "protected", "yaml_protected", "drift_status", "target_id")} for r in _grp_rows]}, "B")
+    _adopt_grp = [r for r in summary["adopt_rows"] if r.get("source_type") == "GRP"]
+    _dbg_log("GRP adopt_rows after _compute_adopt_summary", {"rows": [{k: r.get(k) for k in ("source_key", "source_type", "source_name", "action", "protected", "yaml_protected", "drift_status")} for r in _adopt_grp]}, "C")
+    _cm_grp = [m for m in state.map.confirmed_mappings if "everyone" in m.get("source_key", "").lower() or m.get("resource_type") == "GRP"]
+    _dbg_log("GRP confirmed_mappings", {"mappings": _cm_grp}, "E")
+    _dbg_log("summary counts", {"adopt_count": summary["adopt_count"], "protected_count": summary["protected_count"], "total_rows": len(summary["adopt_rows"])}, "C")
+    # #endregion
 
     # ── Page header ──────────────────────────────────────────────────────
     with ui.column().classes("w-full max-w-5xl mx-auto p-6 gap-4"):
@@ -800,13 +969,14 @@ def create_adopt_page(
 
         # ── Already complete ─────────────────────────────────────────────
         if state.deploy.adopt_step_complete:
+            _imported = state.deploy.adopt_step_imported_count or summary['adopt_count']
             with ui.card().classes("w-full p-6"):
                 with ui.row().classes("items-center gap-3"):
                     ui.icon("check_circle", size="1.5rem").style(f"color: {STATUS_SUCCESS};")
                     ui.label("Adoption Complete").classes("text-lg font-semibold text-green-600")
 
                 ui.label(
-                    f"Successfully imported {summary['adopt_count']} resources into Terraform state."
+                    f"Successfully imported {_imported} resources into Terraform state."
                 ).classes("text-slate-600 dark:text-slate-400 mt-2")
 
                 with ui.row().classes("gap-4 mt-4"):
@@ -818,9 +988,12 @@ def create_adopt_page(
 
                     async def rerun_adoption():
                         state.deploy.adopt_step_complete = False
+                        state.deploy.adopt_step_skipped = False
                         state.deploy.adopt_step_status = ""
                         state.deploy.adopt_step_error = ""
+                        state.deploy.adopt_step_imported_count = 0
                         save_state()
+                        _clear_adopt_workflow_state(state)
                         ui.navigate.reload()
 
                     ui.button(
@@ -840,7 +1013,8 @@ def create_adopt_page(
                 with ui.expansion("Previous Execution Log", icon="terminal").classes("w-full mt-4"):
                     ui.code(state.deploy.adopt_step_last_output, language="text").classes("w-full text-xs")
 
-            return
+            # Show grid with adopted/unadopt status below the complete card
+            # (falls through to grid rendering below instead of returning)
 
         # ── Summary card ─────────────────────────────────────────────────
         with ui.card().classes("w-full p-6"):
@@ -878,6 +1052,7 @@ def create_adopt_page(
 
         # ── Resources AG Grid ─────────────────────────────────────────────
         # Build row data for the grid — only adopt rows with actionable dropdown
+        _is_complete = state.deploy.adopt_step_complete
         adopt_grid_data = []
         for row in summary["adopt_rows"]:
             # Display name: prefer source_name, fall back to source_key,
@@ -886,6 +1061,13 @@ def create_adopt_page(
             _display_name = row.get("source_name") or row.get("source_key", "?")
             if _display_name.startswith("target__"):
                 _display_name = _display_name[len("target__"):]
+            _action = row.get("action", "adopt")
+            # After adoption completes, show "adopted" instead of "adopt"
+            if _is_complete and _action == "adopt":
+                _action = "adopted"
+            # Ignored resources should never show a shield — clear stale
+            # protection that may persist from a previous session.
+            _protected = row.get("protected", False) if _action not in ("ignore",) else False
             adopt_grid_data.append({
                 "source_key": row.get("source_key", ""),
                 "source_type": row.get("source_type", row.get("resource_type", "?")),
@@ -894,10 +1076,10 @@ def create_adopt_page(
                 "target_name": row.get("target_name", ""),
                 "drift_status": row.get("drift_status", ""),
                 "state_address": row.get("state_address", ""),
-                "protected": row.get("protected", False),
+                "protected": _protected,
                 "project_name": row.get("project_name", ""),
                 "project_id": row.get("project_id", ""),
-                "action": row.get("action", "adopt"),  # Respect user choice from Match page
+                "action": _action,
             })
 
         TYPE_LABELS_JS = """{
@@ -983,25 +1165,32 @@ def create_adopt_page(
             {
                 "field": "protected",
                 "headerName": "🛡️",
-                "headerTooltip": "Protected from destroy",
+                "headerTooltip": "Protected from destroy — click to toggle",
                 "width": 55,
                 "maxWidth": 55,
-                "cellStyle": {"textAlign": "center"},
-                ":cellRenderer": """params => params.value ? '<span style="color: #3B82F6; font-size: 16px;">🛡️</span>' : ''""",
+                "cellStyle": {"textAlign": "center", "cursor": "pointer"},
+                ":cellRenderer": """params => params.value ? '<span style="color: #3B82F6; font-size: 16px;" title="Protected — click to unprotect">🛡️</span>' : '<span style="color: #CBD5E1; font-size: 14px;" title="Click to protect">○</span>'""",
             },
             {
                 "field": "action",
                 "headerName": "Action",
-                "width": 120,
+                "width": 130,
                 "editable": True,
                 "cellEditor": "agSelectCellEditor",
-                "cellEditorParams": {"values": ["adopt", "ignore"]},
+                "cellEditorParams": {"values": ["adopted", "unadopt", "ignore"] if _is_complete else ["adopt", "ignore"]},
                 ":valueFormatter": """params => {
-                    const labels = {'adopt': '📥 Adopt', 'ignore': '🚫 Ignore'};
+                    const labels = {
+                        'adopt': '📥 Adopt',
+                        'adopted': '✅ Adopted',
+                        'unadopt': '↩️ Unadopt',
+                        'ignore': '🚫 Ignore',
+                    };
                     return labels[params.value] || params.value;
                 }""",
                 "cellClassRules": {
                     "action-adopt": "x === 'adopt'",
+                    "action-adopted": "x === 'adopted'",
+                    "action-unadopt": "x === 'unadopt'",
                     "action-ignore": "x === 'ignore'",
                 },
             },
@@ -1026,20 +1215,23 @@ def create_adopt_page(
                 "filter": True,
             },
             "rowClassRules": {
-                "row-ignored": "data.action === 'ignore'",
+                "row-ignored": "data.action === 'ignore' || data.action === 'unadopt'",
             },
             "stopEditingWhenCellsLoseFocus": True,
             "singleClickEdit": True,
             "animateRows": False,
         }
 
-        grid_title_label = ui.label(f"Resources to Adopt ({summary['adopt_count']})").classes("text-lg font-semibold")
+        _grid_title = f"Adopted Resources ({summary['adopt_count']})" if _is_complete else f"Resources to Adopt ({summary['adopt_count']})"
+        grid_title_label = ui.label(_grid_title).classes("text-lg font-semibold")
 
         # Add AG Grid styling
         ui.add_head_html("""
         <style>
         .adopt-grid .ag-row.row-ignored { opacity: 0.5; }
         .adopt-grid .action-adopt { color: #8B5CF6; font-weight: 600; }
+        .adopt-grid .action-adopted { color: #22C55E; font-weight: 600; }
+        .adopt-grid .action-unadopt { color: #F59E0B; font-weight: 600; }
         .adopt-grid .action-ignore { color: #94A3B8; font-style: italic; }
         .adopt-grid .drift-sync { color: #22C55E; }
         .adopt-grid .drift-mismatch { color: #F59E0B; font-weight: 600; }
@@ -1096,6 +1288,138 @@ def create_adopt_page(
                 has_state_loaded=state.deploy.reconcile_state_loaded,
             )
 
+        # ── Protection Intent Manager ─────────────────────────────────────
+        # Load ProtectionIntentManager so protection decisions persist to
+        # protection-intent.json and sync with the Match page.
+        protection_intent = state.get_protection_intent_manager()
+        protection_intent.load()
+
+        # Protectable type codes — derived from RESOURCE_TYPE_MAP so adding new
+        # types in protection_manager.py automatically makes them protectable here.
+        from importer.web.utils.protection_manager import RESOURCE_TYPE_MAP
+        _PROTECTABLE_TYPES = set(RESOURCE_TYPE_MAP.keys())
+
+        def _make_adopt_intent_key(source_type: str, source_key: str) -> str:
+            """Build a prefixed intent key like 'PRJ:my_project' for the adopt grid."""
+            bare_key = source_key
+            if bare_key.startswith("target__"):
+                bare_key = bare_key[len("target__"):]
+            if source_type:
+                return f"{source_type}:{bare_key}"
+            return bare_key
+
+        def _update_protection_in_grid(source_key: str, new_protected: bool):
+            """Update protection flag in adopt_grid_data and refresh the grid + counters."""
+            for r in adopt_grid_data:
+                if r.get("source_key") == source_key:
+                    r["protected"] = new_protected
+                    break
+
+            # Recompute counters
+            adopt_count = sum(1 for r in adopt_grid_data if r.get("action") == "adopt")
+            ignored_count = len(adopt_grid_data) - adopt_count
+            protected_adopt = sum(
+                1 for r in adopt_grid_data
+                if r.get("action") == "adopt" and r.get("protected")
+            )
+
+            summary_label.set_text(f"📥 {adopt_count} to adopt, 🚫 {ignored_count} ignored")
+            adopt_count_label.set_text(str(adopt_count))
+            protected_count_label.set_text(str(protected_adopt))
+            grid_title_label.set_text(f"Resources to Adopt ({adopt_count})")
+
+            # Refresh the grid so the shield column re-renders
+            adopt_grid.update()
+
+            # Invalidate stale plan — protection change means different TF addresses
+            if btn_refs.get("plan"):
+                btn_refs["plan"].set_visibility(True)
+                btn_refs["plan"].enable()
+            if btn_refs.get("apply"):
+                btn_refs["apply"].set_visibility(False)
+            if btn_refs.get("view_plan"):
+                btn_refs["view_plan"].set_visibility(False)
+            if btn_refs.get("skip"):
+                btn_refs["skip"].set_visibility(True)
+
+        def _persist_protection(source_key: str, source_type: str, new_protected: bool):
+            """Persist protection decision to intent manager and state."""
+            intent_key = _make_adopt_intent_key(source_type, source_key)
+            protection_intent.set_intent(
+                key=intent_key,
+                protected=new_protected,
+                source="adopt_page_click",
+                reason="Protection toggled on Adopt page",
+                resource_type=source_type or None,
+            )
+            protection_intent.save()
+
+            bare_key = source_key
+            if bare_key.startswith("target__"):
+                bare_key = bare_key[len("target__"):]
+            if new_protected:
+                state.map.protected_resources.add(bare_key)
+            else:
+                state.map.protected_resources.discard(bare_key)
+            save_state()
+
+        def _apply_adopt_and_protect(source_key: str, source_type: str):
+            """Apply both adopt and protect to a row (after dialog Yes)."""
+            # 1) Set action=adopt in grid data
+            for r in adopt_grid_data:
+                if r.get("source_key") == source_key:
+                    r["action"] = "adopt"
+                    r["protected"] = True
+                    break
+
+            # 2) Update confirmed_mappings
+            _found = False
+            for mapping in state.map.confirmed_mappings:
+                mk = mapping.get("source_key", "")
+                if mk == source_key or mk == f"target__{source_key}":
+                    mapping["action"] = "adopt"
+                    _found = True
+                    break
+            if not _found:
+                state.map.confirmed_mappings.append({
+                    "source_key": source_key,
+                    "action": "adopt",
+                })
+
+            # 3) Persist protection
+            _persist_protection(source_key, source_type, True)
+
+            # 4) Update grid + counters
+            _update_protection_in_grid(source_key, True)
+
+        def _show_adopt_to_protect_dialog(source_key: str, source_type: str, display_name: str):
+            """Show the 'Protection requires Adoption' confirmation dialog."""
+            with ui.dialog() as dlg, ui.card().classes("p-6").style("min-width: 400px;"):
+                ui.label("Protection Requires Adoption").classes("text-lg font-semibold mb-2")
+                ui.label(
+                    f'The resource "{display_name}" is currently ignored (not adopted). '
+                    "Protection only applies to resources that are imported into Terraform state."
+                ).classes("text-sm text-slate-600 dark:text-slate-400 mb-4")
+                ui.label(
+                    "Would you like to adopt and protect this resource?"
+                ).classes("text-sm font-medium mb-4")
+
+                with ui.row().classes("gap-4 justify-end"):
+                    def _on_no():
+                        dlg.close()
+
+                    def _on_yes(sk=source_key, st=source_type):
+                        dlg.close()
+                        _apply_adopt_and_protect(sk, st)
+
+                    ui.button("No", on_click=_on_no).props("outline")
+                    ui.button(
+                        "Yes — Adopt & Protect",
+                        on_click=_on_yes,
+                    ).style(f"background-color: {DBT_ORANGE};")
+
+            dlg.open()
+
         # ── Grid event handlers ──────────────────────────────────────────
         def _on_adopt_cell_clicked(e):
             """Handle cell clicks in the adopt grid."""
@@ -1104,9 +1428,48 @@ def create_adopt_page(
 
             if col_id == "details_btn" and row:
                 _show_detail(row)
+                return
+
+            if col_id == "protected" and row:
+                source_key = row.get("source_key", "")
+                source_type = row.get("source_type", "")
+                action = row.get("action", "ignore")
+                currently_protected = row.get("protected", False)
+                display_name = row.get("source_name") or source_key
+
+                # Check if this resource type is protectable
+                if source_type not in _PROTECTABLE_TYPES:
+                    ui.notify(
+                        f"Resource type '{source_type}' does not support protection.",
+                        type="warning",
+                    )
+                    return
+
+                if currently_protected:
+                    # Unprotecting: always allowed directly (no dialog needed)
+                    for r in adopt_grid_data:
+                        if r.get("source_key") == source_key:
+                            r["protected"] = False
+                            break
+                    _persist_protection(source_key, source_type, False)
+                    _update_protection_in_grid(source_key, False)
+                    return
+
+                # Protecting: check if adopted
+                if action == "adopt":
+                    # Already adopted — toggle protection directly
+                    for r in adopt_grid_data:
+                        if r.get("source_key") == source_key:
+                            r["protected"] = True
+                            break
+                    _persist_protection(source_key, source_type, True)
+                    _update_protection_in_grid(source_key, True)
+                else:
+                    # Not adopted — show the adopt-and-protect dialog
+                    _show_adopt_to_protect_dialog(source_key, source_type, display_name)
 
         def _on_adopt_cell_changed(e):
-            """Handle action changes in the adopt grid (adopt ↔ ignore)."""
+            """Handle action changes in the adopt grid (adopt/adopted/unadopt/ignore)."""
             row = e.args.get("data", {})
             if not row:
                 return
@@ -1114,9 +1477,10 @@ def create_adopt_page(
             source_key = row.get("source_key", "")
             new_action = row.get("action", "adopt")
 
-            # #region agent log
-            import json as _json_dbg; open("/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug.log", "a").write(_json_dbg.dumps({"id":"cell_changed","timestamp":__import__('time').time(),"location":"adopt.py:_on_adopt_cell_changed","message":"Cell changed","data":{"source_key":source_key,"new_action":new_action,"cm_keys":[m.get("source_key","") for m in state.map.confirmed_mappings],"cm_actions":[m.get("action","?") for m in state.map.confirmed_mappings]},"hypothesisId":"A"}) + "\n")
-            # #endregion
+            # Normalize: "adopted" in the dropdown means the user wants to keep it as adopt
+            _persist_action = new_action
+            if _persist_action == "adopted":
+                _persist_action = "adopt"
 
             # Update confirmed_mappings in state.
             # Grid rows may use bare keys ("everyone") while confirmed_mappings
@@ -1128,7 +1492,7 @@ def create_adopt_page(
             for mapping in state.map.confirmed_mappings:
                 mk = mapping.get("source_key", "")
                 if mk == source_key or mk == f"target__{source_key}":
-                    mapping["action"] = new_action
+                    mapping["action"] = _persist_action
                     _found = True
                     break
             if not _found and not source_key.startswith("target__"):
@@ -1136,38 +1500,67 @@ def create_adopt_page(
                 bare = source_key.removeprefix("target__")
                 for mapping in state.map.confirmed_mappings:
                     if mapping.get("source_key") == bare:
-                        mapping["action"] = new_action
+                        mapping["action"] = _persist_action
                         _found = True
                         break
             if not _found:
                 # Target-only resource not in confirmed_mappings — add it
                 state.map.confirmed_mappings.append({
                     "source_key": source_key,
-                    "action": new_action,
+                    "action": _persist_action,
                 })
-
-            # #region agent log
-            open("/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug.log", "a").write(_json_dbg.dumps({"id":"cell_changed_after","timestamp":__import__('time').time(),"location":"adopt.py:_on_adopt_cell_changed:after","message":"After update","data":{"found":_found,"cm_actions_after":[m.get("action","?") for m in state.map.confirmed_mappings],"cm_keys":[m.get("source_key","") for m in state.map.confirmed_mappings]},"hypothesisId":"A"}) + "\n")
-            # #endregion
 
             save_state()
 
-            # Update adopt_grid_data in-place to track user choices
+            # ── Persist action change to target-intent.json ──
+            # The Match page re-seeds confirmed_mappings from target-intent.json
+            # on load (source of truth). Without this, changes made here would be
+            # lost when navigating back to the Match page.
+            try:
+                from importer.web.utils.target_intent import MatchMappings
+                _ti_mgr = state.get_target_intent_manager()
+                _prev_intent = _ti_mgr.load()
+                if _prev_intent:
+                    _prev_intent.match_mappings = MatchMappings.from_confirmed_mappings(
+                        state.map.confirmed_mappings
+                    )
+                    state.save_target_intent(_prev_intent)
+            except Exception as _ti_err:
+                import logging as _logging
+                _logging.warning(f"Failed to persist adopt action to target-intent: {_ti_err}")
+
+
+            # Update adopt_grid_data in-place to track user choices.
+            # If switching to ignore or unadopt, also clear protection — non-managed
+            # resources should not show a shield.
+            cleared_protection = False
             for r in adopt_grid_data:
                 if r.get("source_key") == source_key:
                     r["action"] = new_action
+                    if new_action in ("ignore", "unadopt") and r.get("protected"):
+                        r["protected"] = False
+                        _persist_protection(source_key, r.get("source_type", ""), False)
+                        cleared_protection = True
                     break
 
+            if cleared_protection:
+                adopt_grid.update()
+
             # Compute counts from adopt_grid_data (reflects user choices)
-            adopt_count = sum(1 for r in adopt_grid_data if r.get("action") == "adopt")
-            ignored_count = len(adopt_grid_data) - adopt_count
-            protected_adopt = sum(1 for r in adopt_grid_data if r.get("action") == "adopt" and r.get("protected"))
+            _active_actions = ("adopt", "adopted")
+            adopt_count = sum(1 for r in adopt_grid_data if r.get("action") in _active_actions)
+            other_count = len(adopt_grid_data) - adopt_count
+            protected_adopt = sum(1 for r in adopt_grid_data if r.get("action") in _active_actions and r.get("protected"))
 
             # Update ALL summary displays
-            summary_label.set_text(f"📥 {adopt_count} to adopt, 🚫 {ignored_count} ignored")
+            if _is_complete:
+                summary_label.set_text(f"✅ {adopt_count} adopted, 🚫 {other_count} other")
+                grid_title_label.set_text(f"Adopted Resources ({adopt_count})")
+            else:
+                summary_label.set_text(f"📥 {adopt_count} to adopt, 🚫 {other_count} ignored")
+                grid_title_label.set_text(f"Resources to Adopt ({adopt_count})")
             adopt_count_label.set_text(str(adopt_count))
             protected_count_label.set_text(str(protected_adopt))
-            grid_title_label.set_text(f"Resources to Adopt ({adopt_count})")
 
             # Invalidate any stale plan — the user changed their selections,
             # so the previous plan (if any) no longer matches.
@@ -1237,9 +1630,9 @@ def create_adopt_page(
                     btn_refs=btn_refs,
                 )
 
-            def _on_apply_click():
+            async def _on_apply_click():
                 fresh_summary = _build_summary_from_grid()
-                _start_apply(
+                await _start_apply(
                     state, terminal, save_state, fresh_summary, tf_path,
                     btn_refs["plan"], btn_refs["apply"], btn_refs["skip"],
                     btn_refs["restore"], btn_refs["proceed"],
@@ -1385,7 +1778,7 @@ async def _start_plan(
             restore_btn.set_visibility(True)
 
 
-def _start_apply(
+async def _start_apply(
     state: AppState,
     terminal: TerminalOutput,
     save_state: Callable[[], None],
@@ -1397,7 +1790,11 @@ def _start_apply(
     restore_btn,
     proceed_btn,
 ) -> None:
-    """Start the apply phase of adoption (UI callback)."""
+    """Start the apply phase of adoption (UI callback).
+
+    Awaiting (not ensure_future) preserves NiceGUI's slot context so UI
+    updates in on_complete/on_failure work without 'slot stack empty' errors.
+    """
     if state.deploy.adopt_step_running:
         ui.notify("Adoption is already running", type="warning")
         return
@@ -1406,27 +1803,23 @@ def _start_apply(
     apply_btn.disable()
     restore_btn.set_visibility(False)
 
-    def on_complete():
+    try:
+        await _run_adopt_apply(state, terminal, save_state, summary, tf_path)
+
+        # ── Success — UI updates run in correct slot context ──
         apply_btn.set_visibility(False)
         restore_btn.set_visibility(False)
         proceed_btn.set_visibility(True)
-        # Note: ui.notify() cannot be called from background tasks (no slot context)
-        # The terminal output already shows the adoption success message
+        # Reload the page so the grid refreshes with "adopted" status
+        ui.navigate.reload()
 
-    def on_failure(error_msg: str):
+    except Exception:
+        # ── Failure — re-enable buttons for retry ──
         apply_btn.enable()
         apply_btn.set_visibility(True)
         if state.deploy.adopt_step_backup_path:
             restore_btn.set_visibility(True)
-        # Note: ui.notify() cannot be called from background tasks (no slot context)
         # The terminal output already shows the error details
-
-    asyncio.ensure_future(
-        _run_adopt_apply(
-            state, terminal, save_state, summary, tf_path,
-            on_complete, on_failure,
-        )
-    )
 
 
 def _skip_and_proceed(
@@ -1438,6 +1831,7 @@ def _skip_and_proceed(
     state.deploy.adopt_step_complete = True
     state.deploy.adopt_step_skipped = True
     save_state()
+    _persist_adopt_workflow_state(state, complete=True, skipped=True)
     navigate_to_step(WorkflowStep.CONFIGURE)
 
 

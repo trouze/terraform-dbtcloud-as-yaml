@@ -18,6 +18,8 @@ from importer.web.utils.adoption_yaml_updater import (
     apply_unprotection_from_set,
     apply_adoption_overrides,
     merge_yaml_configs,
+    inject_adopted_resource_configs,
+    cleanup_unadopted_yaml_configs,
 )
 
 
@@ -696,8 +698,302 @@ class TestMergeYamlConfigs:
         import copy
         base_copy = copy.deepcopy(base_yaml)
         source_copy = copy.deepcopy(source_yaml)
-        
+
         merge_yaml_configs(base_yaml, source_yaml)
-        
+
         assert base_yaml == base_copy
         assert source_yaml == source_copy
+
+
+# =============================================================================
+# Tests: inject_adopted_resource_configs
+# =============================================================================
+
+class TestInjectAdoptedResourceConfigs:
+    """Tests for inject_adopted_resource_configs function."""
+
+    def test_inject_adopted_group_from_baseline(self, tmp_path: Path):
+        """Given a target baseline with a 'member' group in globals.groups, and an adopt row
+        with source_type='GRP', source_key='member', action='adopt',
+        verify inject adds it to the deployment YAML globals.groups list.
+        """
+        # Arrange: target baseline has "member" group in globals.groups
+        baseline_config = {
+            "version": 2,
+            "globals": {
+                "groups": [
+                    {"key": "member", "name": "Member Group"},
+                ],
+            },
+        }
+        baseline_path = tmp_path / "baseline.yml"
+        with open(baseline_path, "w") as f:
+            yaml.dump(baseline_config, f)
+
+        # Deployment YAML has no groups initially
+        deployment_config = {"version": 2, "globals": {}}
+        deployment_path = tmp_path / "deployment.yml"
+        with open(deployment_path, "w") as f:
+            yaml.dump(deployment_config, f)
+
+        adopt_rows = [
+            {"source_type": "GRP", "source_key": "member", "action": "adopt"},
+        ]
+
+        # Act
+        out_path, count = inject_adopted_resource_configs(
+            str(deployment_path), adopt_rows, str(baseline_path)
+        )
+
+        # Assert
+        assert count == 1
+        with open(out_path, "r") as f:
+            result = yaml.safe_load(f)
+        groups = result.get("globals", {}).get("groups", [])
+        assert len(groups) == 1
+        assert groups[0]["key"] == "member"
+        assert groups[0]["name"] == "Member Group"
+
+    def test_inject_adopted_project_from_baseline(self, tmp_path: Path):
+        """Same for a project entry (source_type='PRJ')."""
+        # Arrange: target baseline has project
+        baseline_config = {
+            "version": 2,
+            "projects": [
+                {"key": "analytics", "name": "Analytics Project"},
+            ],
+        }
+        baseline_path = tmp_path / "baseline.yml"
+        with open(baseline_path, "w") as f:
+            yaml.dump(baseline_config, f)
+
+        deployment_config = {"version": 2, "projects": []}
+        deployment_path = tmp_path / "deployment.yml"
+        with open(deployment_path, "w") as f:
+            yaml.dump(deployment_config, f)
+
+        adopt_rows = [
+            {"source_type": "PRJ", "source_key": "analytics", "action": "adopt"},
+        ]
+
+        # Act
+        out_path, count = inject_adopted_resource_configs(
+            str(deployment_path), adopt_rows, str(baseline_path)
+        )
+
+        # Assert
+        assert count == 1
+        with open(out_path, "r") as f:
+            result = yaml.safe_load(f)
+        projects = result.get("projects", [])
+        assert len(projects) == 1
+        assert projects[0]["key"] == "analytics"
+        assert projects[0]["name"] == "Analytics Project"
+
+    def test_inject_is_idempotent(self, tmp_path: Path):
+        """Running inject twice does not duplicate entries."""
+        baseline_config = {
+            "version": 2,
+            "globals": {
+                "groups": [{"key": "member", "name": "Member"}],
+            },
+        }
+        baseline_path = tmp_path / "baseline.yml"
+        with open(baseline_path, "w") as f:
+            yaml.dump(baseline_config, f)
+
+        deployment_config = {"version": 2, "globals": {}}
+        deployment_path = tmp_path / "deployment.yml"
+        with open(deployment_path, "w") as f:
+            yaml.dump(deployment_config, f)
+
+        adopt_rows = [
+            {"source_type": "GRP", "source_key": "member", "action": "adopt"},
+        ]
+
+        # Act: run inject twice
+        inject_adopted_resource_configs(
+            str(deployment_path), adopt_rows, str(baseline_path)
+        )
+        inject_adopted_resource_configs(
+            str(deployment_path), adopt_rows, str(baseline_path)
+        )
+
+        # Assert: only one entry, no duplicates
+        with open(deployment_path, "r") as f:
+            result = yaml.safe_load(f)
+        groups = result.get("globals", {}).get("groups", [])
+        assert len(groups) == 1
+        assert groups[0]["key"] == "member"
+
+    def test_inject_strips_target_prefix(self, tmp_path: Path):
+        """Row with source_key='target__everyone' correctly looks up 'everyone' in baseline."""
+        baseline_config = {
+            "version": 2,
+            "globals": {
+                "groups": [
+                    {"key": "everyone", "name": "Everyone Group"},
+                ],
+            },
+        }
+        baseline_path = tmp_path / "baseline.yml"
+        with open(baseline_path, "w") as f:
+            yaml.dump(baseline_config, f)
+
+        deployment_config = {"version": 2, "globals": {}}
+        deployment_path = tmp_path / "deployment.yml"
+        with open(deployment_path, "w") as f:
+            yaml.dump(deployment_config, f)
+
+        adopt_rows = [
+            {"source_type": "GRP", "source_key": "target__everyone", "action": "adopt"},
+        ]
+
+        # Act
+        out_path, count = inject_adopted_resource_configs(
+            str(deployment_path), adopt_rows, str(baseline_path)
+        )
+
+        # Assert: inject finds "everyone" in baseline and adds it
+        assert count == 1
+        with open(out_path, "r") as f:
+            result = yaml.safe_load(f)
+        groups = result.get("globals", {}).get("groups", [])
+        assert len(groups) == 1
+        assert groups[0]["key"] == "everyone"
+
+
+# =============================================================================
+# Tests: cleanup_unadopted_yaml_configs
+# =============================================================================
+
+class TestCleanupUnadoptedYamlConfigs:
+    """Tests for cleanup_unadopted_yaml_configs function."""
+
+    def test_cleanup_removes_ignored_target_only_group(self, tmp_path: Path):
+        """Given a YAML with an injected 'member' group and grid rows with
+        source_key='target__member' action='ignore', verify cleanup removes it.
+        """
+        deployment_config = {
+            "version": 2,
+            "globals": {
+                "groups": [
+                    {"key": "member", "name": "Member Group"},
+                ],
+            },
+        }
+        deployment_path = tmp_path / "deployment.yml"
+        with open(deployment_path, "w") as f:
+            yaml.dump(deployment_config, f)
+
+        grid_rows = [
+            {"source_type": "GRP", "source_key": "target__member", "action": "ignore"},
+        ]
+
+        # Act
+        out_path, count = cleanup_unadopted_yaml_configs(
+            str(deployment_path), grid_rows
+        )
+
+        # Assert
+        assert count == 1
+        with open(out_path, "r") as f:
+            result = yaml.safe_load(f)
+        groups = result.get("globals", {}).get("groups", [])
+        assert len(groups) == 0
+
+    def test_cleanup_preserves_adopted_entries(self, tmp_path: Path):
+        """Entries for resources with action=adopt are not removed."""
+        deployment_config = {
+            "version": 2,
+            "globals": {
+                "groups": [
+                    {"key": "member", "name": "Member Group"},
+                ],
+            },
+        }
+        deployment_path = tmp_path / "deployment.yml"
+        with open(deployment_path, "w") as f:
+            yaml.dump(deployment_config, f)
+
+        grid_rows = [
+            {"source_type": "GRP", "source_key": "target__member", "action": "adopt"},
+        ]
+
+        # Act
+        out_path, count = cleanup_unadopted_yaml_configs(
+            str(deployment_path), grid_rows
+        )
+
+        # Assert: nothing removed
+        assert count == 0
+        with open(out_path, "r") as f:
+            result = yaml.safe_load(f)
+        groups = result.get("globals", {}).get("groups", [])
+        assert len(groups) == 1
+        assert groups[0]["key"] == "member"
+
+    def test_cleanup_ignores_non_target_only_resources(self, tmp_path: Path):
+        """Resources without 'target__' prefix in source_key are never cleaned up."""
+        deployment_config = {
+            "version": 2,
+            "globals": {
+                "groups": [
+                    {"key": "member", "name": "Member Group"},
+                ],
+            },
+        }
+        deployment_path = tmp_path / "deployment.yml"
+        with open(deployment_path, "w") as f:
+            yaml.dump(deployment_config, f)
+
+        # Row has source_key="member" (no target__ prefix) with action=ignore
+        grid_rows = [
+            {"source_type": "GRP", "source_key": "member", "action": "ignore"},
+        ]
+
+        # Act
+        out_path, count = cleanup_unadopted_yaml_configs(
+            str(deployment_path), grid_rows
+        )
+
+        # Assert: group not removed (only target-only resources are eligible)
+        assert count == 0
+        with open(out_path, "r") as f:
+            result = yaml.safe_load(f)
+        groups = result.get("globals", {}).get("groups", [])
+        assert len(groups) == 1
+        assert groups[0]["key"] == "member"
+
+    def test_cleanup_returns_count_of_removed(self, tmp_path: Path):
+        """Verify the returned tuple (path, count) is correct."""
+        deployment_config = {
+            "version": 2,
+            "globals": {
+                "groups": [
+                    {"key": "member", "name": "Member"},
+                    {"key": "admin", "name": "Admin"},
+                ],
+            },
+        }
+        deployment_path = tmp_path / "deployment.yml"
+        with open(deployment_path, "w") as f:
+            yaml.dump(deployment_config, f)
+
+        grid_rows = [
+            {"source_type": "GRP", "source_key": "target__member", "action": "ignore"},
+            {"source_type": "GRP", "source_key": "target__admin", "action": "ignore"},
+        ]
+
+        # Act
+        out_path, count = cleanup_unadopted_yaml_configs(
+            str(deployment_path), grid_rows
+        )
+
+        # Assert
+        assert out_path == str(deployment_path)
+        assert count == 2
+        with open(out_path, "r") as f:
+            result = yaml.safe_load(f)
+        groups = result.get("globals", {}).get("groups", [])
+        assert len(groups) == 0

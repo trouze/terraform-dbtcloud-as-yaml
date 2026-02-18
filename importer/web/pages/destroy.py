@@ -12,13 +12,19 @@ import asyncio
 import json
 import re
 import subprocess
+import time
 from pathlib import Path
 from typing import Callable
 
 from nicegui import ui
 
 from importer.web.components.terminal_output import TerminalOutput
-from importer.web.pages.deploy import _get_state_file_path, _get_terraform_env
+from importer.web.pages.deploy import _get_state_file_path
+from importer.web.utils.terraform_helpers import (
+    get_terraform_env as _get_terraform_env,
+    resolve_deployment_paths,
+    run_terraform_command,
+)
 from importer.web.state import AppState, WorkflowStep
 from importer.web.utils.protection_manager import (
     extract_protected_resources,
@@ -34,6 +40,34 @@ from importer.web.utils.ui_logger import log_action, log_state_change
 # dbt brand colors
 DBT_ORANGE = "#FF694A"
 STATUS_ERROR = "#EF4444"  # red-500
+
+# region agent log
+_DEBUG_LOG_PATH = Path("/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug-65e6e9.log")
+
+
+def _agent_debug_log(
+    hypothesis_id: str,
+    location: str,
+    message: str,
+    data: dict,
+    *,
+    run_id: str = "run1",
+) -> None:
+    try:
+        payload = {
+            "sessionId": "65e6e9",
+            "runId": run_id,
+            "hypothesisId": hypothesis_id,
+            "location": location,
+            "message": message,
+            "data": data,
+            "timestamp": int(time.time() * 1000),
+        }
+        with _DEBUG_LOG_PATH.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(payload, default=str) + "\n")
+    except Exception:
+        pass
+# endregion
 
 
 def create_destroy_page(
@@ -896,6 +930,20 @@ def _create_destroy_protection_panel(
     try:
         yaml_config = load_yaml_config(yaml_path)
         all_protected_resources = extract_protected_resources(yaml_config)
+        # region agent log
+        _agent_debug_log(
+            "D1",
+            "destroy.py:_create_destroy_protection_panel",
+            "loaded protected resources from yaml for destroy panel",
+            {
+                "yaml_path": yaml_path,
+                "all_protected_count": len(all_protected_resources),
+                "contains_member": any(r.resource_key == "member" for r in all_protected_resources),
+                "types": sorted({r.resource_type for r in all_protected_resources}),
+                "sample_keys": [r.resource_key for r in all_protected_resources[:10]],
+            },
+        )
+        # endregion
     except Exception:
         return
     
@@ -907,6 +955,18 @@ def _create_destroy_protection_panel(
         r for r in all_protected_resources
         if protection_intent_manager.get_effective_protection(r.resource_key, yaml_protected=True)
     ]
+    # region agent log
+    _agent_debug_log(
+        "D2",
+        "destroy.py:_create_destroy_protection_panel",
+        "filtered protected resources via intent manager",
+        {
+            "filtered_count": len(protected_resources),
+            "contains_member": any(r.resource_key == "member" for r in protected_resources),
+            "sample_keys": [r.resource_key for r in protected_resources[:10]],
+        },
+    )
+    # endregion
     
     if not protected_resources:
         return
@@ -1159,8 +1219,7 @@ def _create_destroy_protection_panel(
                     
                     # Mark intents as applied to YAML
                     protection_intent = state.get_protection_intent_manager()
-                    for key in keys_to_unprotect:
-                        protection_intent.mark_applied_to_yaml(key)
+                    protection_intent.mark_applied_to_yaml(set(keys_to_unprotect))
                     protection_intent.save()
                     
                     ui.notify(f"Updated YAML: removed protection from {len(keys_to_unprotect)} resource(s)", type="info")
@@ -2779,6 +2838,23 @@ async def _run_terraform_destroy_all(
     # Step 2: Filter out protected resources (addresses containing "protected_")
     unprotected_resources = [r for r in all_state_resources if "protected_" not in r]
     protected_resources = [r for r in all_state_resources if "protected_" in r]
+    # region agent log
+    member_addresses = [r for r in protected_resources if '["member"]' in r]
+    _agent_debug_log(
+        "D5",
+        "destroy.py:_run_terraform_destroy_all",
+        "classified terraform state resources for destroy",
+        {
+            "all_state_count": len(all_state_resources),
+            "protected_count": len(protected_resources),
+            "unprotected_count": len(unprotected_resources),
+            "member_protected_addresses": member_addresses,
+            "protected_group_addresses_sample": [
+                r for r in protected_resources if ".dbtcloud_group.protected_groups[" in r
+            ][:10],
+        },
+    )
+    # endregion
     
     # Step 3: Show skip notification if any protected (US-DP-02)
     if protected_resources:
