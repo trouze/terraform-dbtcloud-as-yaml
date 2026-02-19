@@ -135,3 +135,23 @@ Check:
    - Rationale: NiceGUI versions differ on whether `sanitize` is required/accepted.
    - Failure signature: `TypeError: __init__() missing 1 required keyword-only argument: 'sanitize'`.
 
+## AG Grid regression notes (Adopt page, 2026-02-19)
+
+### Hints
+
+1. If card counts are correct but the grid is blank, inspect theme contrast first before assuming row-model failure.
+2. If counts disagree with visible rows, check whether target-only synthetic rows leaked into page-specific grid payloads.
+3. Compare behavior with Destroy page AG Grid defaults when diagnosing Adopt rendering regressions.
+
+### Decisions
+
+1. Standardize Adopt AG Grid to `ag-theme-quartz` (not auto-dark) to avoid hidden headers/rows in mixed theme sessions.
+2. Keep target-only rows out of `adopt_rows`/`adopt_grid_data`; Adopt actions should be scoped to source-backed adopt candidates.
+3. Preserve action fallback from grid rows when confirmed mappings are absent so post-reset screens still render actionable rows.
+
+### Fixes log
+
+1. Enforced target-only row filtering in Adopt summary/data shaping.
+2. Updated Adopt AG Grid theme usage to the stable quartz class.
+3. Added/expanded regression tests around adopt summary row filtering and AG Grid theme contract checks.
+
