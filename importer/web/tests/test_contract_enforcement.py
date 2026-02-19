@@ -141,3 +141,19 @@ class TestSharedDetailDialogReuse:
             "utilities.py should reuse show_match_detail_dialog from entity_table.py "
             "instead of implementing a duplicate detail popup"
         )
+
+
+class TestAdoptAgGridContracts:
+    """Guard Adopt AG Grid defaults against visual regressions."""
+
+    def test_adopt_uses_stable_quartz_theme_class(self) -> None:
+        source = _read_source(PAGES_DIR / "adopt.py")
+        assert "ag-theme-quartz" in source, (
+            "adopt.py must include ag-theme-quartz for readable grid rendering"
+        )
+
+    def test_adopt_does_not_use_auto_dark_theme_class(self) -> None:
+        source = _read_source(PAGES_DIR / "adopt.py")
+        assert "ag-theme-quartz-auto-dark" not in source, (
+            "adopt.py must not use ag-theme-quartz-auto-dark in the main adopt grid"
+        )

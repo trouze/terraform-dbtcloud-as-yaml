@@ -76,6 +76,15 @@
   - `docs/guides/intent-workflow-guardrails.md`
 - Release notes include a short "Verification" section with latency or behavior checks for affected UI paths
 
+### 9. AG Grid standards and regression history
+**Check if:**
+- Any AG Grid rendering/data-shaping fix is documented in:
+  - `docs/guides/intent-workflow-guardrails.md` (hints/decisions/fixes log section)
+  - `prd/00.01-Standards-of-Development.md` (AG Grid rendering standard)
+- Related contract tests were added/updated in:
+  - `importer/web/tests/test_contract_enforcement.py`
+  - `importer/web/tests/test_adopt_summary.py` (when Adopt row-shaping logic changes)
+
 ---
 
 ## Version Numbering Guidelines
@@ -114,9 +123,10 @@ Follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html):
 6. **Update `dev_support/phase5_e2e_testing_guide.md`** header
 7. **Review reference documents** (README, test fixtures)
 8. **Update guardrails/docs** if release includes compatibility or performance hardening
-9. **Run tests** to verify version is correctly reported and key path behavior is stable
-10. **Commit with message**: `chore: release vX.Y.Z`
-11. **Tag release** (if applicable): `git tag vX.Y.Z`
+9. **Update AG Grid standards/regression docs** for any UI table rendering fix
+10. **Run tests** to verify version is correctly reported and key path behavior is stable
+11. **Commit with message**: `chore: release vX.Y.Z`
+12. **Tag release** (if applicable): `git tag vX.Y.Z`
 
 ---
 
@@ -166,10 +176,11 @@ head -30 CHANGELOG.md
 7. ❌ Skipping the Version Tracking section in implementation status
 8. ❌ Shipping compatibility/performance fixes without updating guardrails/docs
 9. ❌ Releasing UI performance fixes without recording verification metrics
+10. ❌ Shipping AG Grid behavior fixes without updating AG Grid standards + contract tests
 
 ---
 
-**Last Updated:** 2026-02-17  
-**Document Version:** 1.1
+**Last Updated:** 2026-02-19  
+**Document Version:** 1.2
 
 

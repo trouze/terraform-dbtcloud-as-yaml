@@ -98,3 +98,18 @@ count reconciliation review:
 - Updated `prd/43.03-Unified-Protect-Adopt-Pipeline.md` status and added
   implementation status notes for centralized pipeline execution and regression
   hardening.
+
+### 2026-02-19
+**AG Grid regression standards + checklist hardening**
+
+- Added a persistent AG Grid guardrail in `.ralph/guardrails.md` to prevent
+  Adopt whiteout/blank-grid regressions (theme + row-shaping contract).
+- Expanded `docs/guides/intent-workflow-guardrails.md` with an AG Grid section
+  capturing hints, decisions, and fixes log from the Adopt incident.
+- Updated `prd/00.01-Standards-of-Development.md` with explicit AG Grid
+  rendering standards and required test gates.
+- Updated `dev_support/VERSION_UPDATE_CHECKLIST.md` so AG Grid fixes require
+  standards/docs updates and regression tests before release.
+- Added meta contract tests in
+  `importer/web/tests/test_contract_enforcement.py` to lock the Adopt theme
+  class behavior (`ag-theme-quartz`, no auto-dark class).

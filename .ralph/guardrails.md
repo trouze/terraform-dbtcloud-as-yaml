@@ -79,3 +79,9 @@
 - **Evidence**: `TypeError: __init__() missing 1 required keyword-only argument: 'sanitize'` in Explore Target ERD (`erd_viewer.py`) and other HTML renderers.
 - **Added after**: 2026-02-18 UI sanitize API regression
 
+### Sign: AG Grid Visible-Data Contract
+- **Trigger**: Any change to Adopt/Destroy AG Grid data shaping, theme selection, or row filtering.
+- **Instruction**: Keep AG Grid on the explicit `ag-theme-quartz` class, avoid `ag-theme-quartz-auto-dark` for Adopt rows, and ensure `adopt_rows` excludes `is_target_only` records so row counts and visible rows stay aligned.
+- **Evidence**: Adopt page showed correct count but blank/white grid because contrast + oversized target-only row payload made headers/rows visually disappear.
+- **Added after**: 2026-02-19 Adopt AG Grid whiteout regression
+
