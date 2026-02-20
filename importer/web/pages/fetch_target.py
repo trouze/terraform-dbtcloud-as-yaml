@@ -692,6 +692,7 @@ def _cancel_fetch(cancel_event: dict, terminal: TerminalOutput) -> None:
     """Cancel an in-progress fetch operation."""
     if cancel_event["event"] is not None:
         cancel_event["event"].set()
+        terminal.set_activity(True, "Cancelling...")
         terminal.warning("Cancellation requested... Please wait.")
         _safe_notify("Cancellation requested", notify_type="warning")
 
@@ -757,6 +758,7 @@ async def _run_fetch(
 
     fetch_in_progress["value"] = True
     fetch_btn.disable()
+    terminal.set_activity(True, "Fetching target...")
     
     # Initialize cancel event and show cancel button
     cancel_event["event"] = threading.Event()
@@ -979,3 +981,4 @@ async def _run_fetch(
         fetch_btn.enable()
         cancel_btn.classes(add="hidden")
         cancel_event["event"] = None
+        terminal.set_activity(False)

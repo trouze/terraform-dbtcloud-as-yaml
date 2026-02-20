@@ -23,6 +23,8 @@ _WS_DEBUG_ENABLED = os.getenv("IMPORTER_WS_DEBUG", "").strip().lower() in {
     "yes",
     "on",
 }
+_DEBUG_SESSION_ID = "0f842e"
+_DEBUG_LOG_PATH = "/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug-0f842e.log"
 
 def _dbg_db419a(hypothesis_id: str, location: str, message: str, data: dict) -> None:
     """Write one NDJSON debug record for websocket investigation."""
@@ -46,6 +48,25 @@ def _dbg_db419a(hypothesis_id: str, location: str, message: str, data: dict) -> 
             f.write(json.dumps(payload, ensure_ascii=True) + "\n")
     except Exception:
         return
+
+
+def _dbg_runtime(hypothesis_id: str, location: str, message: str, data: dict, *, run_id: str = "run1") -> None:
+    # region agent log
+    payload = {
+        "sessionId": _DEBUG_SESSION_ID,
+        "runId": run_id,
+        "hypothesisId": hypothesis_id,
+        "location": location,
+        "message": message,
+        "data": data,
+        "timestamp": int(time.time() * 1000),
+    }
+    try:
+        with open(_DEBUG_LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(json.dumps(payload, ensure_ascii=True) + "\n")
+    except Exception:
+        return
+    # endregion
 
 
 class LogLevel(Enum):
@@ -126,8 +147,21 @@ class TerminalOutput:
         self._dropped_pending_messages = 0
         self._last_ui_success_at = time.monotonic()
         self._last_activity_at = time.monotonic()
+        self._activity_active = False
+        self._activity_base_message = "Working..."
+        self._last_api_response_at: Optional[float] = None
+        self._activity_wait_threshold_seconds = 2.0
+        self._activity_is_waiting = False
+        self._activity_timer: Optional[Any] = None
+        self._activity_context: dict[str, Any] = {}
+        self._last_activity_text = ""
+        self._activity_text_updates = 0
+        self._pending_started_at: Optional[float] = None
         self._dbg_last_pending_bucket = -1
         self._dbg_trim_counter = 0
+        self._flush_count = 0
+        self._scroll_count = 0
+        self._dbg_last_timer_state: Optional[bool] = None
 
     def create(self, height: str = "300px", title: str = "Output") -> None:
         """Create the terminal output UI component.
@@ -173,6 +207,12 @@ class TerminalOutput:
                     
                     # Separator
                     ui.element("div").classes("w-px h-5 bg-slate-600")
+
+                    # Activity indicator for long-running quiet periods
+                    with ui.row().classes("items-center gap-1 hidden") as activity_row:
+                        self._activity_row = activity_row
+                        self._activity_icon = ui.icon("autorenew").classes("text-cyan-400 animate-spin")
+                        self._activity_label = ui.label("Working...").classes("text-xs text-cyan-300")
                     
                     # Log level selector with label
                     ui.label("Log Level:").classes("text-xs text-slate-500")
@@ -223,6 +263,12 @@ class TerminalOutput:
                 self._scroll_area = scroll
                 self._container = ui.column().classes("w-full p-2 gap-0.5 terminal-messages")
 
+            # Footer activity indicator (inside console area, at the bottom)
+            with ui.row().classes("w-full items-center gap-2 px-3 py-1 border-t border-slate-800 hidden") as activity_footer_row:
+                self._activity_footer_row = activity_footer_row
+                self._activity_footer_icon = ui.icon("autorenew").classes("text-cyan-400 animate-spin text-sm")
+                self._activity_footer_label = ui.label("Working...").classes("text-xs text-cyan-300 font-mono")
+
         # Keep websocket traffic bounded by flushing queued messages in batches.
         if self._flush_timer is None:
             self._flush_timer = ui.timer(
@@ -248,10 +294,26 @@ class TerminalOutput:
                 },
             )
             # endregion
+        if self._activity_timer is None:
+            self._activity_timer = ui.timer(1.0, self._update_activity_indicator)
 
     def _set_flush_timer_active(self, active: bool) -> None:
         """Best-effort timer activation toggle across NiceGUI versions."""
         self._flush_timer_active = active
+        if self._dbg_last_timer_state is None or self._dbg_last_timer_state != active:
+            self._dbg_last_timer_state = active
+            # region agent log
+            _dbg_runtime(
+                "B",
+                "terminal_output.py:_set_flush_timer_active",
+                "flush timer state changed",
+                {
+                    "active": active,
+                    "pending_len": len(self._pending_messages),
+                    "needs_rerender": self._needs_rerender,
+                },
+            )
+            # endregion
         if self._flush_timer is None:
             return
         try:
@@ -350,6 +412,8 @@ class TerminalOutput:
                     )
                     # endregion
             self._pending_messages.append(msg)
+            if self._pending_started_at is None:
+                self._pending_started_at = time.monotonic()
             if not self._flush_timer_active:
                 self._set_flush_timer_active(True)
             pending_bucket = len(self._pending_messages) // 100
@@ -374,6 +438,7 @@ class TerminalOutput:
         """Disable UI writes after client/slot invalidation."""
         self._ui_detached = True
         self._pending_messages.clear()
+        self._pending_started_at = None
         self._set_flush_timer_active(False)
         if not self._detach_notice_added:
             self._detach_notice_added = True
@@ -396,6 +461,18 @@ class TerminalOutput:
             {"error": str(error)},
         )
         # endregion
+        # region agent log
+        _dbg_runtime(
+            "A",
+            "terminal_output.py:_mark_ui_detached",
+            "ui detached for terminal stream",
+            {
+                "error": str(error),
+                "pending_len": len(self._pending_messages),
+                "flush_timer_active": self._flush_timer_active,
+            },
+        )
+        # endregion
 
     def _flush_pending_messages(self) -> None:
         """Flush queued messages to UI in bounded batches."""
@@ -413,8 +490,25 @@ class TerminalOutput:
 
         try:
             if self._pending_messages and (
-                time.monotonic() - self._last_ui_success_at
-            ) >= self._stale_client_seconds:
+                self._pending_started_at is not None
+                and (time.monotonic() - self._pending_started_at) >= self._stale_client_seconds
+            ):
+                # region agent log
+                _dbg_runtime(
+                    "A",
+                    "terminal_output.py:_flush_pending_messages",
+                    "continuous pending backlog crossed stale threshold",
+                    {
+                        "pending_len": len(self._pending_messages),
+                        "stale_client_seconds": self._stale_client_seconds,
+                        "pending_backlog_age_seconds": round(
+                            time.monotonic() - self._pending_started_at, 3
+                        )
+                        if self._pending_started_at is not None
+                        else None,
+                    },
+                )
+                # endregion
                 self._mark_ui_detached(RuntimeError("stale client while pending terminal output"))
                 return
 
@@ -453,6 +547,8 @@ class TerminalOutput:
 
             batch = self._pending_messages[: self._max_flush_batch]
             del self._pending_messages[: self._max_flush_batch]
+            if not self._pending_messages:
+                self._pending_started_at = None
             if batch:
                 # region agent log
                 _dbg_db419a(
@@ -469,9 +565,42 @@ class TerminalOutput:
             for msg in batch:
                 self._add_message_to_ui(msg)
             if batch and self.auto_scroll and self._scroll_area is not None:
-                self._scroll_area.scroll_to(percent=1.0)
+                self._scroll_count += 1
+                try:
+                    self._scroll_area.scroll_to(percent=1.0)
+                except RuntimeError as e:
+                    # region agent log
+                    _dbg_runtime(
+                        "E",
+                        "terminal_output.py:_flush_pending_messages",
+                        "scroll_to raised runtime error",
+                        {"error": str(e), "batch_size": len(batch), "pending_after": len(self._pending_messages)},
+                    )
+                    # endregion
+                    raise
             if batch:
                 self._last_ui_success_at = time.monotonic()
+                self._flush_count += 1
+                if self._flush_count <= 3 or self._flush_count % 25 == 0:
+                    # region agent log
+                    _dbg_runtime(
+                        "C",
+                        "terminal_output.py:_flush_pending_messages",
+                        "flush batch applied",
+                        {
+                            "flush_count": self._flush_count,
+                            "batch_size": len(batch),
+                            "pending_after": len(self._pending_messages),
+                            "messages_buffer_len": len(self.messages),
+                            "scroll_count": self._scroll_count,
+                            "dropped_pending_messages": self._dropped_pending_messages,
+                            "activity_active": self._activity_active,
+                            "activity_is_waiting": self._activity_is_waiting,
+                            "activity_context": self._activity_context,
+                            "last_activity_text": self._last_activity_text,
+                        },
+                    )
+                    # endregion
             if not self._pending_messages and not self._needs_rerender:
                 self._set_flush_timer_active(False)
         except RuntimeError as e:
@@ -530,6 +659,109 @@ class TerminalOutput:
         self._current_title = title
         if hasattr(self, '_title_label') and self._title_label is not None:
             self._title_label.set_text(title)
+
+    def set_activity(self, active: bool, message: str = "Working...") -> None:
+        """Toggle terminal activity indicator in the header."""
+        self._activity_active = active
+        self._activity_base_message = message
+        if active and self._last_api_response_at is None:
+            self._last_api_response_at = time.monotonic()
+        self._set_activity_text(message)
+        self._set_activity_visibility(active)
+        # region agent log
+        _dbg_runtime(
+            "G",
+            "terminal_output.py:set_activity",
+            "activity indicator toggled",
+            {"active": active, "message": message},
+        )
+        # endregion
+        if not active:
+            self._last_api_response_at = None
+            self._activity_is_waiting = False
+
+    def mark_api_response(self) -> None:
+        """Record that an API-backed progress callback arrived."""
+        self._last_api_response_at = time.monotonic()
+        if self._activity_active:
+            self._set_activity_text(f"{self._activity_base_message} - API active")
+        if self._activity_is_waiting:
+            self._activity_is_waiting = False
+            # region agent log
+            _dbg_runtime(
+                "H",
+                "terminal_output.py:mark_api_response",
+                "api response observed after waiting",
+                {"activity_base_message": self._activity_base_message},
+            )
+            # endregion
+
+    def update_activity_context(self, **context: Any) -> None:
+        """Update human-readable context for current fetch progress location."""
+        self._activity_context.update({k: v for k, v in context.items() if v is not None})
+
+    def _set_activity_text(self, text: str) -> None:
+        if text != self._last_activity_text:
+            self._last_activity_text = text
+            self._activity_text_updates += 1
+            if self._activity_text_updates <= 5 or self._activity_text_updates % 30 == 0:
+                # region agent log
+                _dbg_runtime(
+                    "J",
+                    "terminal_output.py:_set_activity_text",
+                    "activity text updated",
+                    {
+                        "update_count": self._activity_text_updates,
+                        "text": text,
+                        "activity_is_waiting": self._activity_is_waiting,
+                        "context": self._activity_context,
+                    },
+                )
+                # endregion
+        if hasattr(self, "_activity_label") and self._activity_label is not None:
+            self._activity_label.set_text(text)
+        if hasattr(self, "_activity_footer_label") and self._activity_footer_label is not None:
+            self._activity_footer_label.set_text(text)
+
+    def _set_activity_visibility(self, active: bool) -> None:
+        if hasattr(self, "_activity_row") and self._activity_row is not None:
+            if active:
+                self._activity_row.classes(remove="hidden")
+            else:
+                self._activity_row.classes(add="hidden")
+        if hasattr(self, "_activity_footer_row") and self._activity_footer_row is not None:
+            if active:
+                self._activity_footer_row.classes(remove="hidden")
+            else:
+                self._activity_footer_row.classes(add="hidden")
+
+    def _update_activity_indicator(self) -> None:
+        if not self._activity_active:
+            return
+        now = time.monotonic()
+        if self._last_api_response_at is None:
+            self._last_api_response_at = now
+        elapsed = max(0.0, now - self._last_api_response_at)
+        if elapsed >= self._activity_wait_threshold_seconds:
+            wait_seconds = int(elapsed)
+            self._set_activity_text(
+                f"{self._activity_base_message} - Waiting for API response ({wait_seconds}s)"
+            )
+            if not self._activity_is_waiting:
+                self._activity_is_waiting = True
+                # region agent log
+                _dbg_runtime(
+                    "I",
+                    "terminal_output.py:_update_activity_indicator",
+                    "activity switched to waiting state",
+                    {
+                        "elapsed_seconds": round(elapsed, 3),
+                        "context": self._activity_context,
+                    },
+                )
+                # endregion
+        else:
+            self._set_activity_text(f"{self._activity_base_message} - API active")
 
     def clear(self) -> None:
         """Clear all messages."""
@@ -820,12 +1052,20 @@ class CombinedProgressHandler:
 
     def on_phase(self, phase: str) -> None:
         """Called when entering a major phase."""
+        self.terminal.mark_api_response()
+        self.terminal.update_activity_context(event="phase", phase=phase)
         self._current_phase = phase
         self.terminal.info(f"━━━ {phase.upper()} ━━━")
         self.progress_tree.on_phase(phase)
 
     def on_resource_start(self, resource_type: str, total: Optional[int] = None) -> None:
         """Called when starting to fetch a resource type."""
+        self.terminal.mark_api_response()
+        self.terminal.update_activity_context(
+            event="resource_start",
+            resource_type=resource_type,
+            resource_total=total,
+        )
         if total is not None:
             self.terminal.info(f"Fetching {resource_type} ({total} total)...")
         else:
@@ -834,16 +1074,31 @@ class CombinedProgressHandler:
 
     def on_resource_item(self, resource_type: str, key: str) -> None:
         """Called for each item fetched."""
+        self.terminal.mark_api_response()
+        self.terminal.update_activity_context(event="resource_item", resource_type=resource_type)
         self.terminal.debug(f"  → {resource_type}: {key}")
         self.progress_tree.on_resource_item(resource_type, key)
 
     def on_resource_done(self, resource_type: str, count: int) -> None:
         """Called when finished fetching a resource type."""
+        self.terminal.mark_api_response()
+        self.terminal.update_activity_context(
+            event="resource_done",
+            resource_type=resource_type,
+            resource_count=count,
+        )
         self.terminal.success(f"✓ {resource_type}: {count} items")
         self.progress_tree.on_resource_done(resource_type, count)
 
     def on_project_start(self, project_num: int, total: int, name: str) -> None:
         """Called when starting to fetch a project's resources."""
+        self.terminal.mark_api_response()
+        self.terminal.update_activity_context(
+            event="project_start",
+            project_num=project_num,
+            project_total=total,
+            project_name=name,
+        )
         self._project_count = project_num
         self._total_projects = total
         self.terminal.info(f"Project [{project_num}/{total}]: {name}")
@@ -851,4 +1106,6 @@ class CombinedProgressHandler:
 
     def on_project_done(self, project_num: int) -> None:
         """Called when finished fetching a project's resources."""
+        self.terminal.mark_api_response()
+        self.terminal.update_activity_context(event="project_done", project_num=project_num)
         self.progress_tree.on_project_done(project_num)
