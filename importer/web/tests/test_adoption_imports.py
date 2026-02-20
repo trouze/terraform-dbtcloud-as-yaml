@@ -271,6 +271,26 @@ class TestResourceTypeAddresses:
         # REP with project_id also creates a PREP link import
         assert "dbtcloud_project_repository" in result
 
+    def test_rep_import_id_uses_project_lookup_from_prj_row(self):
+        """REP import IDs use project_id:repository_id when REP row lacks project context."""
+        rows = [
+            # PRJ row seeds lookup map for project ID
+            _make_adopt_row("PRJ", "sse_dm_fin_fido", "sse_dm_fin_fido", 601, action="match"),
+            # REP row reproduces UI case with missing project_name/project_id
+            {
+                "source_type": "REP",
+                "source_key": "dbt_ep_sse_dm_fin_fido",
+                "source_name": "dbt_ep_sse_dm_fin_fido",
+                "target_id": 544,
+                "action": "adopt",
+                "protected": False,
+            },
+        ]
+        result = generate_adopt_imports_from_grid(rows)
+        assert 'dbtcloud_repository.repositories["sse_dm_fin_fido"]' in result
+        assert '  id = "601:544"' in result
+        assert "dbtcloud_project_repository.project_repositories" in result
+
     def test_var_address_format(self, var_adopt_row):
         """VAR resolves to dbtcloud_environment_variable address."""
         result = generate_adopt_imports_from_grid([var_adopt_row])
