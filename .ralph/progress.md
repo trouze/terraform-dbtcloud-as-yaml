@@ -162,3 +162,14 @@ count reconciliation review:
   bounded retry-after handling and invalid Retry-After fallback recovery.
 - Updated fetch-source UI/runtime default thread count to `100` in
   `importer/web/pages/fetch_source.py`.
+
+### 2026-02-20 (continued 4)
+**Adopt import robustness micro-commit**
+
+- Hardened `run_terraform_import()` stream handling in
+  `importer/web/utils/terraform_import.py` by safely closing async stdout streams.
+- Improved repository adopt import ID resolution when REP rows are missing
+  direct project context by deriving project IDs from PRJ rows.
+- Added regression coverage in:
+  - `importer/web/tests/test_adoption_imports.py`
+  - `importer/web/tests/test_terraform_import_cleanup.py`

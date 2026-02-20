@@ -1,7 +1,18 @@
 """Terraform import utilities for importing existing resources into state."""
 
 import asyncio
+from contextlib import asynccontextmanager
 import json
+try:
+    from contextlib import aclosing
+except ImportError:
+    @asynccontextmanager
+    async def aclosing(thing):  # type: ignore[no-untyped-def]
+        try:
+            yield thing
+        finally:
+            await thing.aclose()
+
 import re
 import time
 from dataclasses import dataclass, field
@@ -251,11 +262,14 @@ async def run_terraform_import(
             stderr=asyncio.subprocess.STDOUT,
         )
         
-        async for line in process.stdout:
-            decoded = line.decode()
-            output_lines.append(decoded)
-            if on_output:
-                on_output(decoded)
+        stdout_stream = process.stdout
+        if stdout_stream is not None:
+            async with aclosing(stdout_stream) as stream:
+                async for line in stream:
+                    decoded = line.decode()
+                    output_lines.append(decoded)
+                    if on_output:
+                        on_output(decoded)
         
         await process.wait()
         
@@ -619,16 +633,36 @@ def generate_adopt_imports_from_grid(
     """
     from importer.web.utils.drift_detector import DriftType
     
+    def _normalize_project_key(value: str) -> str:
+        key = (value or "").strip().lstrip("↳").strip()
+        if not key:
+            return ""
+        if key.startswith("target__"):
+            key = key[len("target__"):]
+        if key.startswith("PRJ:"):
+            key = key.split(":", 1)[1]
+        if key.startswith("dbt_ep_"):
+            key = key[len("dbt_ep_"):]
+        return key
+
     # Build a lookup map of project_name -> target_id from PRJ rows
     # This allows us to find project_id for REP rows even if not passed through
     project_id_by_name: dict[str, str] = {}
     for row in grid_rows:
         if row.get("source_type") == "PRJ":
-            pname = row.get("source_name") or row.get("source_key")
             # Target ID for a project IS its dbt Cloud project_id
             pid = row.get("target_id") or row.get("source_id")
-            if pname and pid:
-                project_id_by_name[pname] = str(pid)
+            if not pid:
+                continue
+            for raw_name in (
+                row.get("project_name"),
+                row.get("source_name"),
+                row.get("source_key"),
+                row.get("target_name"),
+            ):
+                norm = _normalize_project_key(str(raw_name or ""))
+                if norm:
+                    project_id_by_name[norm] = str(pid)
     
     # Convert grid rows to drift result format
     drift_results = []
@@ -652,7 +686,59 @@ def generate_adopt_imports_from_grid(
         project_name = row.get("project_name", "")
         project_id = row.get("project_id")
         if not project_id and project_name:
-            project_id = project_id_by_name.get(project_name)
+            project_id = project_id_by_name.get(_normalize_project_key(str(project_name)))
+        if element_code == "REP" and not project_id:
+            rep_lookup_keys = (
+                row.get("project_name"),
+                row.get("source_name"),
+                row.get("source_key"),
+                row.get("target_name"),
+            )
+            for candidate in rep_lookup_keys:
+                norm = _normalize_project_key(str(candidate or ""))
+                if not norm:
+                    continue
+                candidate_project_id = project_id_by_name.get(norm)
+                if candidate_project_id:
+                    project_id = candidate_project_id
+                    if not project_name:
+                        project_name = norm
+                    break
+            # region agent log
+            try:
+                from pathlib import Path
+                import json
+                import time
+
+                with Path("/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug-db419a.log").open(
+                    "a", encoding="utf-8"
+                ) as _dbg_f:
+                    _dbg_f.write(
+                        json.dumps(
+                            {
+                                "sessionId": "db419a",
+                                "runId": "pre-fix",
+                                "hypothesisId": "H64",
+                                "location": "terraform_import.py:generate_adopt_imports_from_grid:rep_project_resolution",
+                                "message": "resolved REP project context for composite import IDs",
+                                "data": {
+                                    "source_key": row.get("source_key", ""),
+                                    "source_name": row.get("source_name", ""),
+                                    "project_name_input": row.get("project_name", ""),
+                                    "project_name_resolved": project_name,
+                                    "project_id_resolved": str(project_id or ""),
+                                    "lookup_candidates": [
+                                        _normalize_project_key(str(x or "")) for x in rep_lookup_keys
+                                    ],
+                                },
+                                "timestamp": int(time.time() * 1000),
+                            }
+                        )
+                        + "\n"
+                    )
+            except Exception:
+                pass
+            # endregion
         
         # Compute protected address when the row is marked protected
         is_protected = row.get("protected", False)
@@ -721,6 +807,71 @@ def generate_adopt_imports_from_grid(
                         "project_id": project_id,
                     },
                 })
+                # region agent log
+                try:
+                    from pathlib import Path
+                    import json
+                    import time
+
+                    with Path("/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug-db419a.log").open(
+                        "a", encoding="utf-8"
+                    ) as _dbg_f:
+                        _dbg_f.write(
+                            json.dumps(
+                                {
+                                    "sessionId": "db419a",
+                                    "runId": "pre-fix",
+                                    "hypothesisId": "H65",
+                                    "location": "terraform_import.py:generate_adopt_imports_from_grid:prep_link_append",
+                                    "message": "appended PREP import for REP adoption",
+                                    "data": {
+                                        "source_key": row.get("source_key", ""),
+                                        "project_name": project_name,
+                                        "project_id": str(project_id),
+                                        "target_id": str(target_id),
+                                        "link_target_id": link_target_id,
+                                        "protected": bool(is_protected),
+                                    },
+                                    "timestamp": int(time.time() * 1000),
+                                }
+                            )
+                            + "\n"
+                        )
+                except Exception:
+                    pass
+                # endregion
+            else:
+                # region agent log
+                try:
+                    from pathlib import Path
+                    import json
+                    import time
+
+                    with Path("/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug-db419a.log").open(
+                        "a", encoding="utf-8"
+                    ) as _dbg_f:
+                        _dbg_f.write(
+                            json.dumps(
+                                {
+                                    "sessionId": "db419a",
+                                    "runId": "pre-fix",
+                                    "hypothesisId": "H65",
+                                    "location": "terraform_import.py:generate_adopt_imports_from_grid:prep_link_append",
+                                    "message": "skipped PREP import for REP adoption due to missing project context",
+                                    "data": {
+                                        "source_key": row.get("source_key", ""),
+                                        "project_name": project_name,
+                                        "project_id": str(project_id or ""),
+                                        "target_id": str(target_id),
+                                    },
+                                    "timestamp": int(time.time() * 1000),
+                                }
+                            )
+                            + "\n"
+                        )
+                except Exception:
+                    pass
+                # endregion
     
     if not drift_results:
         return "# No resources selected for adoption\n"
