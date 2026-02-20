@@ -113,3 +113,42 @@ count reconciliation review:
 - Added meta contract tests in
   `importer/web/tests/test_contract_enforcement.py` to lock the Adopt theme
   class behavior (`ag-theme-quartz`, no auto-dark class).
+
+### 2026-02-20
+**Match structural fix plan — pagination + in-place refresh baseline**
+
+- Added Match query helper `apply_match_query()` with default page size `200`
+  and page metadata in `importer/web/components/match_grid.py`.
+- Added toolbar pagination controls (`100/200/300`, prev/next, page summary)
+  and wired Match page type-filter + pagination to in-place refresh updates.
+- Replaced several mutation-driven Match reloads with `_reload_with_debug(...)`
+  paths that now attempt in-place AG Grid row updates first.
+- Added `importer/web/tests/test_match_pagination_lifecycle.py` covering
+  default page sizing, type filtering, and page clamping behavior.
+- Validation:
+  - `python3 -m pytest importer/web/tests/test_match_grid.py importer/web/tests/test_match_pagination_lifecycle.py -q` (30 passed)
+  - `python3 -m pytest importer/web/tests/test_terminal_output_performance.py -q` (7 passed)
+  - Browser smoke via browser-use subagent on `/match` + `/scope` navigation (no runtime/websocket errors observed in this prerequisite-only state).
+
+### 2026-02-20 (continued)
+**Match structural fix plan — remaining items completed**
+
+- Removed remaining mutation/review panel page reloads in `importer/web/pages/match.py` by routing actions through `_reload_with_debug(...)` in-place refresh paths; retained only explicit/manual hard-reload fallback behavior.
+- Added low-overhead env-gated websocket/update metrics:
+  - Match page counters for in-place refresh count, hard-reload count, rows rendered, detached suppression count.
+  - App route transition/render timing diagnostics in `importer/web/app.py` for `navigate_to_step`, `/fetch_target`, and `/match`.
+- Hardened Fetch Target detached lifecycle-safe emits by shifting remaining async/sensitive notifications to `_safe_notify(...)`.
+- Completed transition soak validation (browser automation) for repeated `/match ↔ /fetch_target` navigation cycles; no websocket timeout/reconnect loop signatures surfaced in console.
+- Post-soak debug-log scan shows detached-notify suppression events handled via `_safe_notify(...)` (expected), with no reconnect-loop indicators.
+- Validation:
+  - `python3 -m pytest importer/web/tests/test_match_grid.py importer/web/tests/test_match_pagination_lifecycle.py importer/web/tests/test_terminal_output_performance.py -q` (37 passed)
+
+### 2026-02-20 (continued 2)
+**Localhost websocket recovery plan — terminal/runtime tranche completed**
+
+- Completed terminal hot-path hardening in `importer/web/components/terminal_output.py`:
+  env-gated debug logging, bounded line payloads, bounded pending queue with
+  throttle notices, timer idle deactivation, and stale-client shutdown guards.
+- Added regression coverage in `importer/web/tests/test_terminal_output_performance.py`
+  for pending-queue overflow throttling and long-line truncation behavior.
+- Marked `.cursor/plans/localhost-websocket-recovery_f7ac3216.plan.md` todos as completed based on implemented streaming/timer/runtime and browser validation work.
