@@ -193,3 +193,9 @@ count reconciliation review:
   globals/project scoping during adopt/protection generation.
 - Validation:
   - `python3 -m pytest importer/web/tests/test_generate_pipeline.py importer/web/tests/test_target_intent.py importer/web/tests/test_target_intent_integration.py -q` (85 passed)
+
+### 2026-02-20 (continued 7)
+**State defaults consistency micro-commit**
+
+- Updated fetch thread defaults in `importer/web/state.py` to `100` for both
+  source and target fetch state, matching fetch-page runtime/UI defaults.
