@@ -264,10 +264,16 @@ class TerminalOutput:
                 self._container = ui.column().classes("w-full p-2 gap-0.5 terminal-messages")
 
             # Footer activity indicator (inside console area, at the bottom)
-            with ui.row().classes("w-full items-center gap-2 px-3 py-1 border-t border-slate-800 hidden") as activity_footer_row:
+            with ui.row().classes(
+                "w-full h-6 min-h-6 max-h-6 items-center gap-2 px-3 border-t border-slate-800 overflow-hidden"
+            ) as activity_footer_row:
                 self._activity_footer_row = activity_footer_row
-                self._activity_footer_icon = ui.icon("autorenew").classes("text-cyan-400 animate-spin text-sm")
-                self._activity_footer_label = ui.label("Working...").classes("text-xs text-cyan-300 font-mono")
+                self._activity_footer_icon = ui.icon("autorenew").classes(
+                    "text-cyan-400 animate-spin text-sm flex-shrink-0 invisible"
+                )
+                self._activity_footer_label = ui.label("Working...").classes(
+                    "text-xs text-slate-600 font-mono whitespace-nowrap overflow-hidden text-ellipsis flex-1 min-w-0"
+                )
 
         # Keep websocket traffic bounded by flushing queued messages in batches.
         if self._flush_timer is None:
@@ -664,16 +670,17 @@ class TerminalOutput:
         """Toggle terminal activity indicator in the header."""
         self._activity_active = active
         self._activity_base_message = message
+        display_message = message if active else "Idle"
         if active and self._last_api_response_at is None:
             self._last_api_response_at = time.monotonic()
-        self._set_activity_text(message)
+        self._set_activity_text(display_message)
         self._set_activity_visibility(active)
         # region agent log
         _dbg_runtime(
             "G",
             "terminal_output.py:set_activity",
             "activity indicator toggled",
-            {"active": active, "message": message},
+            {"active": active, "message": display_message},
         )
         # endregion
         if not active:
@@ -729,11 +736,18 @@ class TerminalOutput:
                 self._activity_row.classes(remove="hidden")
             else:
                 self._activity_row.classes(add="hidden")
-        if hasattr(self, "_activity_footer_row") and self._activity_footer_row is not None:
+        if hasattr(self, "_activity_footer_icon") and self._activity_footer_icon is not None:
             if active:
-                self._activity_footer_row.classes(remove="hidden")
+                self._activity_footer_icon.classes(remove="invisible")
             else:
-                self._activity_footer_row.classes(add="hidden")
+                self._activity_footer_icon.classes(add="invisible")
+        if hasattr(self, "_activity_footer_label") and self._activity_footer_label is not None:
+            if active:
+                self._activity_footer_label.classes(remove="text-slate-600")
+                self._activity_footer_label.classes(add="text-cyan-300")
+            else:
+                self._activity_footer_label.classes(remove="text-cyan-300")
+                self._activity_footer_label.classes(add="text-slate-600")
 
     def _update_activity_indicator(self) -> None:
         if not self._activity_active:
@@ -742,11 +756,13 @@ class TerminalOutput:
         if self._last_api_response_at is None:
             self._last_api_response_at = now
         elapsed = max(0.0, now - self._last_api_response_at)
+        context_hint = self._format_activity_context()
         if elapsed >= self._activity_wait_threshold_seconds:
             wait_seconds = int(elapsed)
-            self._set_activity_text(
-                f"{self._activity_base_message} - Waiting for API response ({wait_seconds}s)"
-            )
+            wait_text = f"{self._activity_base_message} - Waiting for API response ({wait_seconds}s)"
+            if context_hint:
+                wait_text = f"{wait_text} - {context_hint}"
+            self._set_activity_text(wait_text)
             if not self._activity_is_waiting:
                 self._activity_is_waiting = True
                 # region agent log
@@ -761,7 +777,25 @@ class TerminalOutput:
                 )
                 # endregion
         else:
-            self._set_activity_text(f"{self._activity_base_message} - API active")
+            active_text = f"{self._activity_base_message} - API active"
+            if context_hint:
+                active_text = f"{active_text} - {context_hint}"
+            self._set_activity_text(active_text)
+
+    def _format_activity_context(self) -> str:
+        phase = self._activity_context.get("phase")
+        resource_type = self._activity_context.get("resource_type")
+        project_num = self._activity_context.get("project_num")
+        project_total = self._activity_context.get("project_total")
+        if phase and resource_type and project_num and project_total:
+            return f"{phase}/{resource_type} p{project_num}/{project_total}"
+        if phase and resource_type:
+            return f"{phase}/{resource_type}"
+        if resource_type:
+            return str(resource_type)
+        if phase:
+            return str(phase)
+        return ""
 
     def clear(self) -> None:
         """Clear all messages."""
