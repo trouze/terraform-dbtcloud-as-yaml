@@ -460,6 +460,7 @@ def test_preserve_source_ids_option(full_snapshot_dict):
     assert result["account"]["id"] == 12345
     assert result["globals"]["connections"][0]["id"] == 100
     assert result["globals"]["repositories"][0]["id"] == 200
+    assert result["projects"][0]["id"] == 300
 
 
 if __name__ == "__main__":

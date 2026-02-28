@@ -513,7 +513,7 @@ class MapState:
     )
     normalization_options: dict = field(
         default_factory=lambda: {
-            "strip_source_ids": True,
+            "strip_source_ids": False,
             "secret_handling": "redact",
             "name_collision_strategy": "suffix",
         }

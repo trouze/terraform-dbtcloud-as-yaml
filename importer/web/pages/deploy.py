@@ -83,6 +83,98 @@ def _dbg_db419a(hypothesis_id: str, location: str, message: str, data: dict) -> 
         return
 
 
+def _backfill_project_ids_from_source_report(yaml_file: str, source_report_items_file: Optional[str]) -> dict:
+    """Best-effort fill missing project ids in YAML from source report items.
+
+    Deploy "Generate Files" can run against an existing YAML that was produced with
+    strip_source_ids=true. This backfills project ids using source PRJ report rows so
+    resource_metadata source_id/source_project_id can be emitted.
+    """
+    metrics = {
+        "project_count": 0,
+        "missing_before": 0,
+        "filled_count": 0,
+        "fallback_filled_count": 0,
+        "missing_after": 0,
+        "updated": False,
+    }
+    try:
+        import yaml as yaml_lib
+
+        yaml_path = Path(yaml_file)
+        if not yaml_path.exists():
+            return metrics
+        yaml_data = yaml_lib.safe_load(yaml_path.read_text(encoding="utf-8")) or {}
+        projects = yaml_data.get("projects", []) if isinstance(yaml_data, dict) else []
+        if not isinstance(projects, list) or not projects:
+            return metrics
+        metrics["project_count"] = len(projects)
+        missing_projects = [
+            p for p in projects if isinstance(p, dict) and p.get("id") is None
+        ]
+        metrics["missing_before"] = len(missing_projects)
+        if not missing_projects:
+            return metrics
+        if not source_report_items_file or not Path(source_report_items_file).exists():
+            metrics["missing_after"] = metrics["missing_before"]
+            return metrics
+
+        report_items = json.loads(Path(source_report_items_file).read_text(encoding="utf-8"))
+        ids_by_key: dict[str, list[int]] = {}
+        for item in report_items if isinstance(report_items, list) else []:
+            if not isinstance(item, dict):
+                continue
+            if str(item.get("element_type_code") or "") != "PRJ":
+                continue
+            key = str(item.get("project_key") or item.get("key") or "")
+            dbt_id = item.get("dbt_id")
+            if not key or dbt_id is None:
+                continue
+            try:
+                ids_by_key.setdefault(key, []).append(int(dbt_id))
+            except Exception:
+                continue
+
+        # Consume ids by project key in YAML order to mirror collision suffix behavior.
+        for project in projects:
+            if not isinstance(project, dict) or project.get("id") is not None:
+                continue
+            pkey = str(project.get("key") or "")
+            candidates = ids_by_key.get(pkey, [])
+            used_fallback = False
+            if not candidates:
+                # Handle collision-suffixed keys (e.g., analytics_2, analytics_3)
+                # by falling back to the unsuffixed source key.
+                m = re.match(r"^(.*)_\d+$", pkey)
+                if m:
+                    base_key = m.group(1)
+                    candidates = ids_by_key.get(base_key, [])
+                    used_fallback = bool(candidates)
+            if candidates:
+                project["id"] = candidates.pop(0)
+                metrics["filled_count"] += 1
+                if used_fallback:
+                    metrics["fallback_filled_count"] += 1
+
+        metrics["missing_after"] = len(
+            [p for p in projects if isinstance(p, dict) and p.get("id") is None]
+        )
+        if metrics["filled_count"] > 0:
+            yaml_path.write_text(
+                yaml_lib.dump(
+                    yaml_data,
+                    default_flow_style=False,
+                    sort_keys=False,
+                    allow_unicode=True,
+                ),
+                encoding="utf-8",
+            )
+            metrics["updated"] = True
+        return metrics
+    except Exception:
+        return metrics
+
+
 def create_deploy_page(
     state: AppState,
     on_step_change: Callable[[WorkflowStep], None],
@@ -2081,6 +2173,25 @@ async def _run_generate(
         terminal.info("")
         
         log_generate_step("converter_start", {"yaml_file": yaml_file, "output_path": str(output_path)})
+
+        # Backfill missing project IDs from source report items so metadata mapping can
+        # populate PRJ.source_id and EXTATTR.source_project_id even on deploy-only runs.
+        backfill_metrics = await asyncio.to_thread(
+            _backfill_project_ids_from_source_report,
+            yaml_file,
+            state.fetch.last_report_items_file,
+        )
+        if backfill_metrics.get("updated"):
+            terminal.info(
+                "Backfilled project IDs from source report items: "
+                f"{backfill_metrics.get('filled_count', 0)} filled"
+            )
+        elif backfill_metrics.get("missing_before", 0) > 0:
+            terminal.warning(
+                "Project IDs are still missing after backfill attempt: "
+                f"{backfill_metrics.get('missing_after', backfill_metrics.get('missing_before', 0))} missing"
+            )
+        log_generate_step("project_id_backfill", backfill_metrics)
         
         converter = YamlToTerraformConverter()
         await asyncio.to_thread(

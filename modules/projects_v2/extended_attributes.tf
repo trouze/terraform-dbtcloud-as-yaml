@@ -5,6 +5,11 @@
 #############################################
 
 locals {
+  source_project_ids_by_key = {
+    for project in var.projects :
+    project.key => try(project.id, null)
+  }
+
   # Flatten extended attributes from all projects with project_id
   all_extended_attributes = flatten([
     for project in var.projects : [
@@ -58,6 +63,13 @@ resource "dbtcloud_extended_attributes" "extended_attrs" {
   project_id          = each.value.project_id
   state               = lookup(each.value.ext_data, "state", 1)
   extended_attributes = jsonencode(lookup(each.value.ext_data, "extended_attributes", {}))
+  resource_metadata = {
+    source_project_id = lookup(local.source_project_ids_by_key, each.value.project_key, null)
+    source_id         = try(each.value.ext_data.id, null)
+    source_identity   = "EXTATTR:${each.value.project_key}:${each.value.ext_key}"
+    source_key        = each.value.ext_key
+    source_project_key = each.value.project_key
+  }
 }
 
 #############################################
@@ -72,6 +84,13 @@ resource "dbtcloud_extended_attributes" "protected_extended_attrs" {
   project_id          = each.value.project_id
   state               = lookup(each.value.ext_data, "state", 1)
   extended_attributes = jsonencode(lookup(each.value.ext_data, "extended_attributes", {}))
+  resource_metadata = {
+    source_project_id = lookup(local.source_project_ids_by_key, each.value.project_key, null)
+    source_id         = try(each.value.ext_data.id, null)
+    source_identity   = "EXTATTR:${each.value.project_key}:${each.value.ext_key}"
+    source_key        = each.value.ext_key
+    source_project_key = each.value.project_key
+  }
 
   lifecycle {
     prevent_destroy = true

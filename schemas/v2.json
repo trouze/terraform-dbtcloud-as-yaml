@@ -577,6 +577,11 @@
         "notifications": {
           "type": "array",
           "items": { "$ref": "#/$defs/notificationTarget" }
+        },
+        "id": {
+          "type": ["integer", "null"],
+          "description": "Optional source project ID for migration metadata.",
+          "minimum": 1
         }
       },
       "required": ["name", "repository", "environments"],

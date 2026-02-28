@@ -915,6 +915,9 @@ def _normalize_projects(
             "key": normalized_key,
             "name": project.name,
         }
+
+        if not config.should_strip_source_ids() and project.id:
+            project_data["id"] = project.id
         
         # Resolve repository reference - ALWAYS include for Terraform type consistency
         if project.repository_key:

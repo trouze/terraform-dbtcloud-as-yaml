@@ -963,7 +963,7 @@ def _create_action_panel(
                     ui.label("Strip Source IDs").classes("text-sm font-medium")
                     ui.label("Remove dbt Cloud IDs from output YAML").classes("text-xs text-slate-500")
                 ui.switch(
-                    value=state.map.normalization_options.get("strip_source_ids", True),
+                    value=state.map.normalization_options.get("strip_source_ids", False),
                     on_change=lambda e: (
                         state.map.normalization_options.update({"strip_source_ids": e.value}),
                         save_state()
@@ -1588,7 +1588,7 @@ def _do_normalize(
         "scope": {"mode": "all_projects"},
         "resource_filters": {},
         "normalization_options": {
-            "strip_source_ids": True,
+            "strip_source_ids": False,
             "secret_handling": "redact",
         },
     }
