@@ -768,6 +768,69 @@ class TestBuildGridDataStateLoadedFlag:
 class TestMatchGridRegressionCases:
     """Regression tests for match-grid reconciliation edge cases."""
 
+    def test_rep_prefers_state_metadata_source_id_over_source_identity(self):
+        """REP rows should resolve by metadata source_id when identity/key drifted."""
+        source_items = [
+            {
+                "key": "apx_databricks",
+                "name": "apx_databricks",
+                "element_type_code": "REP",
+                "dbt_id": 21,
+                # Deliberately mismatched with state resource_index so project lookup won't help.
+                "project_name": "analytics_exp_ra_prd_display",
+                "project_key": "analytics_exp_ra_prd",
+            }
+        ]
+        target_items = [
+            {
+                "key": "repo_target",
+                "name": "jaffle-shop",
+                "element_type_code": "REP",
+                "dbt_id": 70437463660476,
+                "project_name": "analytics_exp_ra_prd",
+            }
+        ]
+        state_result = SimpleNamespace(
+            resources=[
+                SimpleNamespace(
+                    element_code="REP",
+                    dbt_id=70437463660476,
+                    name=None,
+                    tf_name="repositories",
+                    project_id=70437463664679,
+                    resource_index="analytics_exp_ra_prd",
+                    attributes={
+                        "resource_metadata": {
+                            "value": {
+                                "source_id": 21,
+                                # Drifted identity/key in state metadata should not block matching.
+                                "source_identity": "REP:analytics_exp_ra_prd",
+                                "source_key": "analytics_exp_ra_prd",
+                                "source_project_key": "analytics_exp_ra_prd",
+                            }
+                        }
+                    },
+                    address='module.dbt_cloud.module.projects_v2[0].dbtcloud_repository.repositories["analytics_exp_ra_prd"]',
+                )
+            ]
+        )
+
+        rows = build_grid_data(
+            source_items=source_items,
+            target_items=target_items,
+            confirmed_mappings=[],
+            rejected_keys=set(),
+            state_result=state_result,
+            state_loaded=True,
+        )
+
+        assert len(rows) >= 1
+        row = rows[0]
+        assert row["source_type"] == "REP"
+        assert row["target_id"] == "70437463660476"
+        assert row["confidence"] == "metadata_state_match"
+        assert row["drift_status"] == "in_sync"
+
     def test_connection_state_none_id_does_not_report_id_mismatch(self):
         """CON state entries with null/None IDs should not produce id_mismatch."""
         source_items = [

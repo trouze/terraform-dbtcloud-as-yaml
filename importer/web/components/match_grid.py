@@ -97,7 +97,7 @@ def _dbg_db419a(hypothesis_id: str, location: str, message: str, data: dict) -> 
 def _dbg_25ac29(hypothesis_id: str, location: str, message: str, data: dict) -> None:
     payload = {
         "sessionId": "25ac29",
-        "runId": "match-post-fix",
+        "runId": "pre-fix",
         "hypothesisId": hypothesis_id,
         "location": location,
         "message": message,
@@ -397,6 +397,51 @@ def build_grid_data(
     # Distinguish "state loaded but empty" from "state not loaded".
     has_loaded_state = state_loaded or state_result is not None
 
+    # region agent log
+    _dbg_25ac29(
+        "H19",
+        "match_grid.py:build_grid_data:entry_counts",
+        "build_grid_data invoked with source/target type counts",
+        {
+            "source_items_count": len(source_items),
+            "target_items_count": len(target_items),
+            "source_by_type": {
+                t: len([i for i in source_items if i.get("element_type_code") == t])
+                for t in sorted({i.get("element_type_code", "") for i in source_items})
+            },
+            "target_by_type": {
+                t: len([i for i in target_items if i.get("element_type_code") == t])
+                for t in sorted({i.get("element_type_code", "") for i in target_items})
+            },
+        },
+    )
+    # endregion
+
+    source_key_counts: dict[str, int] = {}
+    for item in source_items:
+        source_key = str(item.get("key") or item.get("element_mapping_id") or "").strip()
+        if source_key:
+            source_key_counts[source_key] = source_key_counts.get(source_key, 0) + 1
+    duplicate_source_keys = sorted(
+        [key for key, count in source_key_counts.items() if count > 1],
+        key=lambda key: source_key_counts[key],
+        reverse=True,
+    )
+    # region agent log
+    _dbg_25ac29(
+        "H32",
+        "match_grid.py:build_grid_data:source_key_collisions",
+        "computed source key collision summary for all resource rows",
+        {
+            "unique_source_keys": len(source_key_counts),
+            "duplicate_source_keys_count": len(duplicate_source_keys),
+            "duplicate_source_keys_sample": [
+                {"source_key": key, "count": source_key_counts[key]} for key in duplicate_source_keys[:10]
+            ],
+        },
+    )
+    # endregion
+
     # Initialize protected_resources set if None
     protected_resources = protected_resources or set()
     removal_keys = removal_keys or set()
@@ -415,7 +460,10 @@ def build_grid_data(
     state_by_source_identity: dict[tuple[str, str], dict] = {}
     state_by_source_id: dict[tuple[str, int], dict] = {}
     state_by_source_id_project_key: dict[tuple[str, int, str], dict] = {}
+    metadata_identity_type_mismatch_count = 0
+    metadata_identity_type_mismatch_samples: list[dict] = []
     if state_result and state_result.resources:
+        state_only_rep_debug_logs = 0
         for res in state_result.resources:
             # Normalize dbt_id to int to ensure consistent lookups
             dbt_id_normalized = res.dbt_id
@@ -451,6 +499,19 @@ def build_grid_data(
                 state_by_index[(res.element_code, str(res.resource_index))] = state_info
             metadata_value = _extract_resource_metadata_value(getattr(res, "attributes", {}))
             source_identity = metadata_value.get("source_identity")
+            if isinstance(source_identity, str) and ":" in source_identity:
+                identity_type = source_identity.split(":", 1)[0].strip().upper()
+                if identity_type and identity_type != str(res.element_code).upper():
+                    metadata_identity_type_mismatch_count += 1
+                    if len(metadata_identity_type_mismatch_samples) < 20:
+                        metadata_identity_type_mismatch_samples.append(
+                            {
+                                "state_element_code": res.element_code,
+                                "source_identity": source_identity,
+                                "address": res.address,
+                                "resource_index": getattr(res, "resource_index", None),
+                            }
+                        )
             if isinstance(source_identity, str) and source_identity.strip():
                 identity_key = (res.element_code, source_identity.strip())
                 existing = state_by_source_identity.get(identity_key)
@@ -478,6 +539,36 @@ def build_grid_data(
             # Index by dbt_id - this is the PRIMARY lookup for drift detection
             if dbt_id_normalized is not None:
                 state_by_id[(res.element_code, dbt_id_normalized)] = state_info
+    crd_state_rows = (
+        [res for res in state_result.resources if res.element_code == "CRD"]
+        if state_result and state_result.resources
+        else []
+    )
+    # region agent log
+    _dbg_25ac29(
+        "H3",
+        "match_grid.py:build_grid_data",
+        "built state indexes with CRD coverage",
+        {
+            "has_loaded_state": has_loaded_state,
+            "state_resources": len(state_result.resources) if state_result else 0,
+            "crd_state_resources": len(crd_state_rows),
+            "crd_by_name_keys": len([k for k in state_by_name.keys() if k and k[0] == "CRD"]),
+            "crd_by_id_keys": len([k for k in state_by_id.keys() if k and k[0] == "CRD"]),
+            "metadata_identity_type_mismatch_count": metadata_identity_type_mismatch_count,
+            "metadata_identity_type_mismatch_samples": metadata_identity_type_mismatch_samples,
+            "crd_sample": [
+                {
+                    "name": r.name,
+                    "dbt_id": r.dbt_id,
+                    "resource_index": r.resource_index,
+                    "address": r.address,
+                }
+                for r in crd_state_rows[:5]
+            ],
+        },
+    )
+    # endregion
     
     # Build additional lookup for repositories by project_name (resource_index)
     # For for_each resources, the key comes from the resource_index field
@@ -523,9 +614,14 @@ def build_grid_data(
     # This allows matching repos that point to same Git repo but have different names
     target_repo_by_remote_url: dict[str, dict] = {}
     target_repo_by_github_repo: dict[str, dict] = {}
-    # For credentials (CRD), build lookup by (project_name, environment_name) 
-    # since credentials are 1:1 with environments and name matching doesn't work well
-    target_crd_by_env: dict[tuple[str, str], dict] = {}
+    # For credentials (CRD), build lookup by stable keys first, then display names.
+    # Keep ALL candidates for a given env (not first-only) because some payloads
+    # include duplicate CRD rows (e.g. unknown + typed), and first row may be stale.
+    target_crd_by_env_key: dict[tuple[str, str], list[dict]] = {}
+    target_crd_by_env: dict[tuple[str, str], list[dict]] = {}
+    # Debug-only ENV indexes to validate CRD->ENV fallback hypotheses.
+    target_env_by_proj_env_key: dict[tuple[str, str], list[dict]] = {}
+    target_env_by_proj_env_name: dict[tuple[str, str], list[dict]] = {}
     
     for item in target_items:
         element_type = item.get("element_type_code", "")
@@ -542,20 +638,7 @@ def build_grid_data(
         if key not in target_by_type_name:
             target_by_type_name[key] = item
         elif element_type == "ENV":
-            # region agent log
-            _dbg_25ac29(
-                "H10",
-                "match_grid.py:build_grid_data:target_lookup_collision",
-                "project-scoped ENV lookup key collision",
-                {
-                    "lookup_key": str(key),
-                    "existing_target_id": target_by_type_name[key].get("dbt_id"),
-                    "existing_project_name": target_by_type_name[key].get("project_name", ""),
-                    "discarded_target_id": item.get("dbt_id"),
-                    "discarded_project_name": item.get("project_name", ""),
-                },
-            )
-            # endregion
+            pass
         
         dbt_id = item.get("dbt_id")
         if dbt_id:
@@ -590,15 +673,56 @@ def build_grid_data(
             github_repo = item.get("github_repo") or item.get("metadata", {}).get("github_repo")
             if github_repo:
                 target_repo_by_github_repo[github_repo] = item
-        
-        # For credentials, index by (project_name, environment_name)
-        if element_type == "CRD":
+        # For credentials, index by (project_name, environment_name).
+        # Skip CRDs with null IDs -- they are user-specific dev credentials
+        # not manageable in Terraform and would create ghost matches.
+        if element_type == "CRD" and dbt_id is not None:
+            proj_key = item.get("project_key", "")
+            env_key = item.get("environment_key", "")
+            if proj_key and env_key:
+                target_crd_by_env_key.setdefault((proj_key, env_key), []).append(item)
             proj_name = item.get("project_name", "")
             env_name = item.get("environment_name", "")
             if proj_name and env_name:
                 crd_key = (proj_name, env_name)
-                if crd_key not in target_crd_by_env:
-                    target_crd_by_env[crd_key] = item
+                target_crd_by_env.setdefault(crd_key, []).append(item)
+        if element_type == "ENV":
+            proj_key = item.get("project_key", "")
+            env_key = item.get("environment_key", "")
+            if proj_key and env_key:
+                target_env_by_proj_env_key.setdefault((proj_key, env_key), []).append(item)
+            proj_name = item.get("project_name", "")
+            env_name = item.get("environment_name", "") or item.get("name", "")
+            if proj_name and env_name:
+                target_env_by_proj_env_name.setdefault((proj_name, env_name), []).append(item)
+    # region agent log
+    _dbg_25ac29(
+        "H61",
+        "match_grid.py:build_grid_data:crd_env_index_summary",
+        "built CRD/ENV lookup indexes for credential matching diagnostics",
+        {
+            "target_crd_by_env_key_count": len(target_crd_by_env_key),
+            "target_crd_by_env_name_count": len(target_crd_by_env),
+            "target_env_by_env_key_count": len(target_env_by_proj_env_key),
+            "target_env_by_env_name_count": len(target_env_by_proj_env_name),
+            "target_crd_env_key_sample": [str(k) for k in list(target_crd_by_env_key.keys())[:10]],
+            "target_env_key_sample": [str(k) for k in list(target_env_by_proj_env_key.keys())[:10]],
+        },
+    )
+    # endregion
+    # region agent log
+    _dbg_25ac29(
+        "H11",
+        "match_grid.py:build_grid_data:rep_target_indexes",
+        "built REP target indexes",
+        {
+            "target_items_count": len(target_items),
+            "target_rep_remote_url_count": len(target_repo_by_remote_url),
+            "target_rep_github_repo_count": len(target_repo_by_github_repo),
+            "target_rep_remote_url_sample": list(target_repo_by_remote_url.keys())[:10],
+        },
+    )
+    # endregion
     
     # Build confirmed mapping lookup (preserve all entries for collision resolution)
     confirmed_by_source_key: dict[str, list[dict]] = {}
@@ -652,6 +776,9 @@ def build_grid_data(
             )
     
     rows = []
+    crd_debug_row_logs = 0
+    rep_debug_row_logs = 0
+    crd_metadata_debug_logs = 0
     for source in source_items:
         # Use key if available, otherwise fall back to element_mapping_id
         # (Environment variables often have key=null)
@@ -675,6 +802,28 @@ def build_grid_data(
         
         # Skip if no key (should rarely happen now with element_mapping_id fallback)
         if not source_key:
+            continue
+        
+        # Skip items explicitly excluded from conversion (e.g. dev CRDs with no credential ID)
+        if source.get("include_in_conversion") is False:
+            continue
+
+        # CRD records without a credential ID cannot be managed in Terraform.
+        # The dbt Cloud API returns null IDs for user-specific development credentials.
+        if source_type == "CRD" and source_id is None:
+            # region agent log
+            _dbg_25ac29(
+                "H33",
+                "match_grid.py:build_grid_data:crd_null_id_skip",
+                "Skipping CRD with null credential ID (not manageable in Terraform)",
+                {
+                    "source_key": source_key,
+                    "source_name": source_name,
+                    "project_name": project_name,
+                    "environment_name": source.get("environment_name"),
+                },
+            )
+            # endregion
             continue
         
         # Skip repositories that were already added under their parent project
@@ -770,22 +919,6 @@ def build_grid_data(
             )
             if source_type == "CON":
                 raw_state_resource = state_by_name.get((source_type, source_name))
-                # region agent log
-                _dbg_25ac29(
-                    "H14",
-                    "match_grid.py:build_grid_data:confirmed_con_drift",
-                    "computed drift for confirmed CON row",
-                    {
-                        "source_key": source_key,
-                        "source_name": source_name,
-                        "target_id": target_id_int,
-                        "state_id": state_id,
-                        "drift_status": drift_status,
-                        "raw_state_dbt_id": (raw_state_resource or {}).get("dbt_id"),
-                        "raw_state_dbt_id_type": type((raw_state_resource or {}).get("dbt_id")).__name__ if raw_state_resource else "missing",
-                    },
-                )
-                # endregion
             if source_type == "ENV" and drift_status == DRIFT_ID_MISMATCH and state_id is not None:
                 env_candidates = [
                     item
@@ -805,20 +938,6 @@ def build_grid_data(
                         project_name=project_name,
                         state_repo_by_project=state_repo_by_project,
                     )
-                    # region agent log
-                    _dbg_25ac29(
-                        "H13",
-                        "match_grid.py:build_grid_data:confirmed_env_self_heal",
-                        "auto-corrected stale confirmed ENV target_id from unique state-matching candidate",
-                        {
-                            "source_key": source_key,
-                            "source_name": source_name,
-                            "project_name": project_name,
-                            "corrected_target_id": target_id_int,
-                            "corrected_target_name": target_name,
-                        },
-                    )
-                    # endregion
             if source_type == "ENV" and drift_status == DRIFT_ID_MISMATCH:
                 candidate_targets = [
                     {
@@ -835,25 +954,6 @@ def build_grid_data(
                     if target_id_int is not None
                     else None
                 )
-                # region agent log
-                _dbg_25ac29(
-                    "H11_H12_H13",
-                    "match_grid.py:build_grid_data:confirmed_env_id_mismatch",
-                    "confirmed ENV row drifted to id_mismatch",
-                    {
-                        "source_key": source_key,
-                        "source_name": source_name,
-                        "project_name": project_name,
-                        "confirmed_target_id": target_id_int,
-                        "state_id": state_id,
-                        "state_address": state_address,
-                        "state_hit_for_confirmed_target": state_for_target_id is not None,
-                        "state_hit_address": (state_for_target_id or {}).get("address", ""),
-                        "candidate_target_count_same_name": len(candidate_targets),
-                        "candidate_targets_same_name": candidate_targets[:12],
-                    },
-                )
-                # endregion
             
             # Determine action: use stored action, or default to "match"
             # Adoption requires explicit user opt-in (bulk "Adopt All" or per-row dropdown)
@@ -1009,35 +1109,202 @@ def build_grid_data(
         ):
             source_identity = None
         source_id_for_metadata = _normalize_state_dbt_id(source_id)
-        metadata_state_resource = (
-            state_by_source_identity.get((source_type, source_identity))
-            if source_identity
-            else None
-        )
-        if not metadata_state_resource and source_id_for_metadata is not None:
+        metadata_state_resource = None
+        source_id_project_key_lookup_hit = False
+        source_id_lookup_hit = False
+        source_identity_lookup_hit = False
+        # Prefer source_id metadata lookup first. Source keys can change (especially REP),
+        # while source_id is the strongest cross-account identity when present.
+        if source_id_for_metadata is not None:
             if isinstance(source_project_key, str) and source_project_key.strip():
                 metadata_state_resource = state_by_source_id_project_key.get(
                     (source_type, source_id_for_metadata, source_project_key.strip())
                 )
+                source_id_project_key_lookup_hit = bool(metadata_state_resource)
             if not metadata_state_resource:
                 metadata_state_resource = state_by_source_id.get(
                     (source_type, source_id_for_metadata)
                 )
+                source_id_lookup_hit = bool(metadata_state_resource)
+        if not metadata_state_resource and source_identity:
+            metadata_state_resource = state_by_source_identity.get((source_type, source_identity))
+            source_identity_lookup_hit = bool(metadata_state_resource)
+        if source_type == "CRD" and crd_metadata_debug_logs < 20:
+            # region agent log
+            _dbg_25ac29(
+                "H21",
+                "match_grid.py:build_grid_data:crd_metadata_lookup",
+                "evaluated CRD metadata-based state lookup",
+                {
+                    "source_key": source_key,
+                    "source_name": source_name,
+                    "project_name": project_name,
+                    "source_id": source_id,
+                    "source_id_for_metadata": source_id_for_metadata,
+                    "source_project_key": source_project_key,
+                    "source_identity": source_identity,
+                    "source_id_project_key_lookup_hit": source_id_project_key_lookup_hit,
+                    "source_id_lookup_hit": source_id_lookup_hit,
+                    "source_identity_lookup_hit": source_identity_lookup_hit,
+                    "metadata_state_resource_hit": bool(metadata_state_resource),
+                    "metadata_state_resource_element_code": (metadata_state_resource or {}).get("element_code"),
+                    "metadata_state_resource_address": (metadata_state_resource or {}).get("address"),
+                },
+            )
+            # endregion
+            crd_metadata_debug_logs += 1
         _prj_state_resource = None
         _prj_state_dbt_id = None
         _prj_state_typed_hit = False
         _prj_state_untyped_hit = False
+        _rep_state_project_hit = False
+        _rep_state_dbt_id = None
+        _rep_state_id_target_hit = False
+        _rep_url = source.get("remote_url") or (source.get("metadata") or {}).get("remote_url")
+        _rep_url_target_hit = False
         match_confidence = "exact_match" if target else "none"
-        # Special handling for CRD (credentials) - match by parent environment instead of name
-        # since credential names are generic like "Credential (snowflake)" and often don't match exactly
-        if source_type == "CRD" and not target:
+        # Special handling for CRD (credentials): ALWAYS prefer environment-scoped match.
+        # Credential names are generic ("Credential (snowflake/databricks)") and can collide
+        # within the same project, so name-based lookup can pick the wrong sibling environment.
+        if source_type == "CRD":
+            source_proj_key = source.get("project_key", "")
+            source_env_key = source.get("environment_key", "")
             source_proj_name = source.get("project_name", "")
             source_env_name = source.get("environment_name", "")
-            if source_proj_name and source_env_name:
-                crd_lookup = (source_proj_name, source_env_name)
-                target = target_crd_by_env.get(crd_lookup)
-                if target:
-                    match_confidence = "env_match"  # Matched by environment
+            env_candidates: list[dict] = []
+            lookup_mode = "none"
+            env_row_candidates_key = target_env_by_proj_env_key.get((source_proj_key, source_env_key), [])
+            env_row_candidates_name = target_env_by_proj_env_name.get((source_proj_name, source_env_name), [])
+            if source_proj_key and source_env_key:
+                env_candidates = target_crd_by_env_key.get((source_proj_key, source_env_key), [])
+                lookup_mode = "project_env_key"
+            if not env_candidates and source_proj_name and source_env_name:
+                env_candidates = target_crd_by_env.get((source_proj_name, source_env_name), [])
+                lookup_mode = "project_env_name"
+            if env_candidates:
+                env_target = None
+                normalized_source_name_for_crd = _normalize_name_for_lookup(source_name)
+                name_matched_candidates = [
+                    c for c in env_candidates
+                    if _normalize_name_for_lookup(c.get("name", "")) == normalized_source_name_for_crd
+                ]
+                # Prefer exact name match first, and prefer candidates with concrete dbt_id.
+                preferred_pool = name_matched_candidates or env_candidates
+                with_id_candidates = [c for c in preferred_pool if c.get("dbt_id") is not None]
+                env_target = (with_id_candidates or preferred_pool)[0]
+                if env_target:
+                    target = env_target
+                    match_confidence = "env_match"  # Matched by environment (preferred over name)
+                    # region agent log
+                    _dbg_25ac29(
+                        "H29",
+                        "match_grid.py:build_grid_data:crd_selection_priority",
+                        "CRD environment-scoped target selection took precedence over name lookup",
+                        {
+                            "source_key": source_key,
+                            "source_project_name": source_proj_name,
+                            "source_environment_name": source_env_name,
+                            "source_project_key": source_proj_key,
+                            "source_environment_key": source_env_key,
+                            "lookup_mode": lookup_mode,
+                            "name_lookup_hit": bool(target_by_type_name.get(lookup_key)),
+                            "env_lookup_hit": bool(env_candidates),
+                            "env_candidate_count": len(env_candidates),
+                            "env_candidate_names": [c.get("name", "") for c in env_candidates[:5]],
+                            "env_candidate_ids": [c.get("dbt_id") for c in env_candidates[:5]],
+                            "selected_target_id": env_target.get("dbt_id"),
+                            "selected_target_name": env_target.get("name"),
+                        },
+                    )
+                    # endregion
+            # Fallback: some target payloads intentionally omit CRD rows, while ENVs
+            # are still present and carry the credential linkage we need for matching.
+            if not target:
+                env_fallback_candidates = env_row_candidates_key or env_row_candidates_name
+                if env_fallback_candidates:
+                    env_target = next(
+                        (c for c in env_fallback_candidates if c.get("dbt_id") is not None),
+                        env_fallback_candidates[0],
+                    )
+                    target = env_target
+                    match_confidence = "env_parent_match"
+                    # region agent log
+                    _dbg_25ac29(
+                        "H63",
+                        "match_grid.py:build_grid_data:crd_env_parent_fallback",
+                        "selected ENV target as fallback for CRD when no target CRD candidates exist",
+                        {
+                            "source_key": source_key,
+                            "source_id": source_id,
+                            "source_project_key": source_proj_key,
+                            "source_environment_key": source_env_key,
+                            "source_project_name": source_proj_name,
+                            "source_environment_name": source_env_name,
+                            "env_fallback_candidate_count": len(env_fallback_candidates),
+                            "selected_env_target_id": env_target.get("dbt_id"),
+                            "selected_env_target_name": env_target.get("name", ""),
+                        },
+                    )
+                    # endregion
+            # region agent log
+            _dbg_25ac29(
+                "H62",
+                "match_grid.py:build_grid_data:crd_env_lookup_diagnostics",
+                "evaluated CRD env lookup candidates for CRD and ENV targets",
+                {
+                    "source_key": source_key,
+                    "source_id": source_id,
+                    "source_project_key": source_proj_key,
+                    "source_environment_key": source_env_key,
+                    "source_project_name": source_proj_name,
+                    "source_environment_name": source_env_name,
+                    "crd_candidate_count": len(env_candidates),
+                    "env_row_candidate_count_by_key": len(env_row_candidates_key),
+                    "env_row_candidate_count_by_name": len(env_row_candidates_name),
+                    "crd_lookup_mode": lookup_mode,
+                    "selected_target_type": (target or {}).get("element_type_code"),
+                    "selected_target_id": (target or {}).get("dbt_id"),
+                },
+            )
+            # endregion
+        if source_type == "CRD" and crd_debug_row_logs < 10:
+            # region agent log
+            _dbg_25ac29(
+                "H4",
+                "match_grid.py:build_grid_data:crd_target_selection",
+                "CRD source row target selection inputs",
+                {
+                    "source_key": source_key,
+                    "source_name": source_name,
+                    "project_name": project_name,
+                    "environment_name": source.get("environment_name", ""),
+                    "source_id": source_id,
+                    "lookup_key": str(lookup_key),
+                    "name_lookup_hit": bool(target_by_type_name.get(lookup_key)),
+                    "env_lookup_hit": bool(
+                        target_crd_by_env_key.get(
+                            (source.get("project_key", ""), source.get("environment_key", ""))
+                        )
+                        or target_crd_by_env.get(
+                            (source.get("project_name", ""), source.get("environment_name", ""))
+                        )
+                    ),
+                    "env_candidate_count": len(
+                        target_crd_by_env_key.get(
+                            (source.get("project_key", ""), source.get("environment_key", ""))
+                        )
+                        or target_crd_by_env.get(
+                            (source.get("project_name", ""), source.get("environment_name", ""))
+                        )
+                        or []
+                    ),
+                    "selected_target_id": (target or {}).get("dbt_id"),
+                    "selected_target_name": (target or {}).get("name", ""),
+                    "selected_confidence": match_confidence,
+                },
+            )
+            # endregion
+            crd_debug_row_logs += 1
 
         # Prefer Terraform state metadata identity over name-based target match.
         if metadata_state_resource and metadata_state_resource.get("dbt_id") is not None:
@@ -1078,39 +1345,10 @@ def build_grid_data(
                         if _res.element_code == "EXTATTR" and _res.resource_index == expected_extattr_state_index:
                             state_index_match = _res
                             break
-                # region agent log
-                _dbg_25ac29(
-                    "H15",
-                    "match_grid.py:build_grid_data:extattr_state_lookup_entry",
-                    "entered EXTATTR state-aware auto-match",
-                    {
-                        "source_key": source_key,
-                        "source_name": source_name,
-                        "project_name": project_name,
-                        "project_key": source_project_key or "",
-                        "expected_state_index": expected_extattr_state_index or "",
-                        "state_index_match_found": state_index_match is not None,
-                        "state_index_match_id": (state_index_match.dbt_id if state_index_match else None),
-                        "state_index_match_address": (state_index_match.address if state_index_match else ""),
-                    },
-                )
-                # endregion
                 if expected_extattr_state_index:
                     state_resource = state_by_index.get((source_type, expected_extattr_state_index))
                     if state_resource:
-                        # region agent log
-                        _dbg_25ac29(
-                            "H15",
-                            "match_grid.py:build_grid_data:extattr_state_lookup_hit",
-                            "resolved EXTATTR state resource by resource_index key",
-                            {
-                                "source_key": source_key,
-                                "expected_state_index": expected_extattr_state_index,
-                                "state_dbt_id": state_resource.get("dbt_id"),
-                                "state_address": state_resource.get("address", ""),
-                            },
-                        )
-                        # endregion
+                        pass
             # region agent log
             if source_type == "PRJ":
                 _dbg_db419a(
@@ -1128,6 +1366,7 @@ def build_grid_data(
             # For repositories, check by project_name first (handles project-linked repos)
             if source_type == "REP" and project_name:
                 state_resource = state_repo_by_project.get(project_name)
+                _rep_state_project_hit = bool(state_resource)
             # Fall back to name-based lookup for other types or if not found
             # Use normalized name to strip display prefixes
             # For NAME_KEYED_TYPES, use project-scoped key first
@@ -1140,6 +1379,8 @@ def build_grid_data(
             # If we have a state resource with a valid ID, look up in targets
             if state_resource and state_resource.get("dbt_id"):
                 state_dbt_id = state_resource.get("dbt_id")
+                if source_type == "REP":
+                    _rep_state_dbt_id = state_dbt_id
                 _prj_state_resource = state_resource
                 # Normalize to int for lookup (handles potential type mismatch from state storage)
                 if isinstance(state_dbt_id, str):
@@ -1179,9 +1420,50 @@ def build_grid_data(
                 if target_from_state and target_from_state.get("element_type_code") == source_type:
                     target = target_from_state
                     match_confidence = "state_id_match"  # Found via Terraform state ID lookup
+                    if source_type == "REP":
+                        _rep_state_id_target_hit = True
+        if source_type == "REP" and _rep_url:
+            _rep_url_target_hit = bool(target_repo_by_remote_url.get(_rep_url))
+        if source_type == "REP" and rep_debug_row_logs < 25:
+            # region agent log
+            _dbg_25ac29(
+                "H12",
+                "match_grid.py:build_grid_data:rep_match_eval",
+                "evaluated REP row matching chain",
+                {
+                    "source_key": source_key,
+                    "source_name": source_name,
+                    "project_name": project_name,
+                    "lookup_key": str(lookup_key),
+                    "initial_name_hit": bool(target_by_type_name.get(lookup_key)),
+                    "state_project_hit": _rep_state_project_hit,
+                    "state_dbt_id": _rep_state_dbt_id,
+                    "state_id_target_hit": _rep_state_id_target_hit,
+                    "source_remote_url": _rep_url,
+                    "remote_url_target_hit": _rep_url_target_hit,
+                    "source_id_for_metadata": source_id_for_metadata,
+                    "source_id_project_key_lookup_hit": source_id_project_key_lookup_hit,
+                    "source_id_lookup_hit": source_id_lookup_hit,
+                    "source_identity": source_identity,
+                    "source_identity_lookup_hit": source_identity_lookup_hit,
+                    "final_has_target": bool(target),
+                    "final_confidence": match_confidence,
+                },
+            )
+            # endregion
+            rep_debug_row_logs += 1
         
         if target:
             target_id_int = target.get("dbt_id")
+            drift_lookup_source_type = source_type
+            drift_lookup_source_name = source_name
+            drift_lookup_project_name = project_name
+            if (
+                source_type == "CRD"
+                and target.get("element_type_code") == "ENV"
+            ):
+                drift_lookup_source_type = "ENV"
+                drift_lookup_source_name = source.get("environment_name") or target.get("name", "")
             
             # For REP resources, get source remote_url for attribute-level drift detection
             _src_remote_url = None
@@ -1190,12 +1472,32 @@ def build_grid_data(
 
             # Compute drift status - compare matched target against TF state
             state_id, drift_status, state_address = _compute_drift_status(
-                source_type, source_name, target_id_int, state_by_name, has_loaded_state,
+                drift_lookup_source_type, drift_lookup_source_name, target_id_int, state_by_name, has_loaded_state,
                 state_by_id=state_by_id,
-                project_name=project_name,
+                project_name=drift_lookup_project_name,
                 state_repo_by_project=state_repo_by_project,
                 source_remote_url=_src_remote_url,
             )
+            if source_type == "CRD" and crd_debug_row_logs <= 10:
+                # region agent log
+                _dbg_25ac29(
+                    "H5",
+                    "match_grid.py:build_grid_data:crd_drift_status",
+                    "CRD drift computed for selected target",
+                    {
+                        "source_key": source_key,
+                        "source_name": source_name,
+                        "target_id": target_id_int,
+                        "target_name": target.get("name", ""),
+                        "match_confidence": match_confidence,
+                        "drift_lookup_source_type": drift_lookup_source_type,
+                        "drift_lookup_source_name": drift_lookup_source_name,
+                        "state_id": state_id,
+                        "state_address": state_address,
+                        "drift_status": drift_status,
+                    },
+                )
+                # endregion
             
             # Default to "match" — adoption requires explicit user opt-in.
             # EXCEPTION: when state is loaded and drift shows the matched target
@@ -1608,19 +1910,7 @@ def build_grid_data(
                 continue
 
             if res.element_code == "EXTATTR":
-                # region agent log
-                _dbg_25ac29(
-                    "H16",
-                    "match_grid.py:build_grid_data:extattr_state_only_append",
-                    "appending EXTATTR state-only row",
-                    {
-                        "state_address": res.address,
-                        "state_resource_index": res.resource_index or "",
-                        "state_id": dbt_id,
-                        "state_name": res.name or "",
-                    },
-                )
-                # endregion
+                pass
 
             # Look up the matching target to get a proper name
             target_item = target_by_id.get(dbt_id)
@@ -1631,6 +1921,27 @@ def build_grid_data(
                 target_project = target_item.get("project_name", "")
             else:
                 target_name = res.name or res.tf_name or ""
+            if res.element_code == "REP" and state_only_rep_debug_logs < 25:
+                metadata_value = _extract_resource_metadata_value(getattr(res, "attributes", {}))
+                # region agent log
+                _dbg_25ac29(
+                    "H13",
+                    "match_grid.py:build_grid_data:state_only_rep_name_resolution",
+                    "resolved state-only REP display and target linkage",
+                    {
+                        "state_address": res.address,
+                        "state_dbt_id": dbt_id,
+                        "state_name": res.name,
+                        "state_tf_name": res.tf_name,
+                        "target_item_hit": bool(target_item),
+                        "resolved_target_name": target_name,
+                        "resolved_target_project": target_project,
+                        "metadata_source_id": metadata_value.get("source_id"),
+                        "metadata_source_name": metadata_value.get("source_name"),
+                    },
+                )
+                # endregion
+                state_only_rep_debug_logs += 1
 
             project_name = target_project or res.resource_index or ""
 
@@ -1835,8 +2146,23 @@ def build_grid_data(
                 drift = row.get("drift_status", "")
                 if proj and env_name and drift:
                     env_drift_by_key[(proj, env_name)] = drift
+        # region agent log
+        _dbg_25ac29(
+            "H6",
+            "match_grid.py:build_grid_data:crd_env_inheritance",
+            "built ENV drift lookup for CRD inheritance",
+            {
+                "env_entries": len(env_drift_by_key),
+                "env_sample": [
+                    {"project": k[0], "env_name": k[1], "drift": v}
+                    for k, v in list(env_drift_by_key.items())[:20]
+                ],
+            },
+        )
+        # endregion
         
         # Now update CRD rows to inherit parent ENV drift status
+        crd_inherit_debug_count = 0
         for row in rows:
             if row.get("source_type") == "CRD":
                 proj = row.get("project_name", "")
@@ -1845,19 +2171,90 @@ def build_grid_data(
                 # Since CRD is matched by (proj, env) key, we can extract env_name from source data
                 crd_drift = row.get("drift_status", "")
                 
-                # Only inherit if CRD has no meaningful drift status
+                # Only inherit if CRD has no meaningful drift status and has a concrete
+                # matched target ID. Without target_id, inheriting "in_sync" from parent ENV
+                # is misleading and hides unresolved credential matching.
                 if crd_drift in (DRIFT_NO_STATE, None, ""):
+                    crd_target_id = row.get("target_id", "")
+                    has_concrete_target_id = bool(str(crd_target_id or "").strip())
                     # Try to find matching source item to get environment_name
                     crd_source_key = row.get("source_key", "")
+                    matched_source = None
                     for source in source_items:
-                        if source.get("key") == crd_source_key:
+                        source_key_candidate = source.get("key") or source.get("element_mapping_id", "")
+                        if source_key_candidate == crd_source_key:
+                            matched_source = source
                             env_name = source.get("environment_name", "")
-                            if proj and env_name:
+                            if proj and env_name and has_concrete_target_id:
                                 parent_drift = env_drift_by_key.get((proj, env_name))
                                 if parent_drift == DRIFT_IN_SYNC:
                                     row["drift_status"] = DRIFT_IN_SYNC
                             break
+                    if crd_inherit_debug_count < 20:
+                        # region agent log
+                        _dbg_25ac29(
+                            "H7",
+                            "match_grid.py:build_grid_data:crd_env_inheritance",
+                            "evaluated CRD drift inheritance from ENV",
+                            {
+                                "source_key": crd_source_key,
+                                "project_name": proj,
+                                "row_target_name": row.get("target_name", ""),
+                                "row_target_id": row.get("target_id", ""),
+                                "has_concrete_target_id": has_concrete_target_id,
+                                "initial_crd_drift": crd_drift,
+                                "source_found": matched_source is not None,
+                                "source_env_name": (matched_source or {}).get("environment_name", ""),
+                                "parent_drift": (
+                                    env_drift_by_key.get(
+                                        (
+                                            proj,
+                                            (matched_source or {}).get("environment_name", ""),
+                                        )
+                                    )
+                                    if matched_source
+                                    else None
+                                ),
+                                "final_crd_drift": row.get("drift_status", ""),
+                            },
+                        )
+                        # endregion
+                        crd_inherit_debug_count += 1
+                    if crd_inherit_debug_count < 20:
+                        # region agent log
+                        _dbg_25ac29(
+                            "H30",
+                            "match_grid.py:build_grid_data:crd_env_inheritance_guard",
+                            "evaluated CRD inheritance guard on target_id presence",
+                            {
+                                "source_key": crd_source_key,
+                                "project_name": proj,
+                                "row_target_id": row.get("target_id", ""),
+                                "has_concrete_target_id": has_concrete_target_id,
+                                "initial_crd_drift": crd_drift,
+                                "final_crd_drift": row.get("drift_status", ""),
+                            },
+                        )
+                        # endregion
     
+    # region agent log
+    _dbg_25ac29(
+        "H20",
+        "match_grid.py:build_grid_data:final_counts",
+        "build_grid_data produced final row counts",
+        {
+            "rows_count": len(rows),
+            "rows_by_type": {
+                t: len([r for r in rows if r.get("source_type") == t])
+                for t in sorted({r.get("source_type", "") for r in rows})
+            },
+            "crd_rows_count": len([r for r in rows if r.get("source_type") == "CRD"]),
+            "state_only_crd_rows_count": len(
+                [r for r in rows if r.get("source_type") == "CRD" and r.get("is_state_only")]
+            ),
+        },
+    )
+    # endregion
     return rows
 
 

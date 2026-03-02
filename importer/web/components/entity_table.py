@@ -35,6 +35,27 @@ def _is_sensitive_field(field_name: str) -> bool:
 NAME_KEYED_TYPES = {"VAR", "JEVO"}
 
 
+def _dbg_25ac29(hypothesis_id: str, location: str, message: str, data: dict) -> None:
+    payload = {
+        "sessionId": "25ac29",
+        "runId": "post-fix",
+        "hypothesisId": hypothesis_id,
+        "location": location,
+        "message": message,
+        "data": data,
+        "timestamp": int(datetime.now().timestamp() * 1000),
+    }
+    try:
+        with open(
+            "/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug-25ac29.log",
+            "a",
+            encoding="utf-8",
+        ) as f:
+            f.write(json.dumps(payload, ensure_ascii=True) + "\n")
+    except Exception:
+        return
+
+
 def _normalize_tf_key(key: str) -> str:
     """Normalize a key for Terraform comparison.
     
@@ -1346,6 +1367,31 @@ def show_match_detail_dialog(
     target_id = grid_row.get("target_id")
     action = grid_row.get("action", "")
     
+    # region agent log
+    if type_code == "CRD":
+        _dbg_25ac29(
+            "H35",
+            "entity_table.py:show_match_detail_dialog:crd_data_resolution",
+            "CRD match detail dialog data resolution",
+            {
+                "source_name": source_data.get("name", ""),
+                "source_dbt_id": source_data.get("dbt_id"),
+                "target_data_present": target_data is not None,
+                "target_data_name": (target_data or {}).get("name", ""),
+                "target_data_dbt_id": (target_data or {}).get("dbt_id"),
+                "full_target_present": full_target is not None,
+                "full_target_name": (full_target or {}).get("name", ""),
+                "state_resource_present": state_resource is not None,
+                "state_resource_element_code": (state_resource or {}).get("element_code"),
+                "state_resource_address": (state_resource or {}).get("address"),
+                "drift_status": drift_status,
+                "grid_target_id": target_id,
+                "grid_state_id": state_id,
+                "app_state_present": app_state is not None,
+            },
+        )
+    # endregion
+    
     # Wider dialog for comparison view
     with ui.dialog() as dialog, ui.card().classes("w-full").style("max-width: 95vw; width: 1400px; height: 85vh;"):
         # Header with drift status
@@ -1715,7 +1761,11 @@ def _render_match_debug_tab(
     source_type = grid_row.get("source_type", source_data.get("element_type_code", ""))
     project_name = grid_row.get("project_name", source_data.get("project_name", ""))
     target_id = grid_row.get("target_id", "")
-    target_name = target_data.get("name", "") if target_data else ""
+    target_name = (
+        target_data.get("name", "")
+        if target_data
+        else str(grid_row.get("target_name", "") or "")
+    )
     state_id = grid_row.get("state_id")
     drift_status = grid_row.get("drift_status", "no_state")
     confidence = grid_row.get("confidence", "none")
@@ -2316,11 +2366,43 @@ def _build_llm_diagnostic(
     Returns structured text optimized for AI analysis.
     """
     lines = []
+    # Fall back to row-level target fields when detail lookup misses.
+    target_id = target_id or str(grid_row.get("target_id", "") or "")
+    target_name = target_name or str(grid_row.get("target_name", "") or "")
+    crd_env_parent_inherited = source_type == "CRD" and confidence == "env_parent_match"
     
     # Check key matching using helper that accounts for project prefixes
     keys_match, match_type = _keys_match_with_project_prefix(
         source_key, state_resource_index, project_name, source_type
     )
+    # CRD rows inherit drift from parent ENV; they usually have no direct TF state row/index.
+    # Avoid reporting "no_state" in key analysis when drift has already resolved as in_sync.
+    if source_type == "CRD" and drift_status == "in_sync" and (
+        crd_env_parent_inherited or not state_resource_index
+    ):
+        keys_match = True
+        match_type = "crd_env_inherited"
+    # region agent log
+    if source_type == "CRD":
+        _dbg_25ac29(
+            "H8",
+            "entity_table.py:_build_llm_diagnostic",
+            "computed CRD diagnostic key matching context",
+            {
+                "source_key": source_key,
+                "source_name": source_name,
+                "project_name": project_name,
+                "drift_status": drift_status,
+                "state_resource_index": state_resource_index,
+                "state_id": state_id,
+                "target_id": target_id,
+                "target_name": target_name,
+                "confidence": confidence,
+                "keys_match": keys_match,
+                "match_type": match_type,
+            },
+        )
+    # endregion
     
     # Header
     lines.append("# Match Debug Diagnostic Report")
@@ -2428,12 +2510,22 @@ def _build_llm_diagnostic(
     lines.append(f"- **Source Name**: {source_name}")
     lines.append(f"- **Source Key**: `{source_key}`")
     lines.append(f"- **Source ID** (from source account): {source_id or 'None'}")
+    if source_data and not source_id:
+        cred_note = source_data.get("credential_id_note")
+        if cred_note:
+            lines.append(f"  - ℹ️ {cred_note}")
     lines.append(f"- **Project Name**: {project_name or 'None'}")
     lines.append("")
     
     # Target information
+    if target_id:
+        target_id_display = str(target_id)
+    elif target_name:
+        target_id_display = "None (ID not exposed in report data)"
+    else:
+        target_id_display = "None (no match)"
     lines.append("## Target (dbt Cloud Account)")
-    lines.append(f"- **Matched Target ID**: {target_id or 'None (no match)'}")
+    lines.append(f"- **Matched Target ID**: {target_id_display}")
     lines.append(f"- **Matched Target Name**: {target_name or 'None'}")
     lines.append(f"- **Match Confidence**: {confidence}")
     lines.append("")
@@ -2442,8 +2534,14 @@ def _build_llm_diagnostic(
     lines.append("## Terraform State")
     lines.append(f"- **State Loaded**: {has_state_loaded}")
     lines.append(f"- **State ID**: {state_id or 'None'}")
-    lines.append(f"- **State Address**: `{state_address or 'None'}`")
-    lines.append(f"- **State resource_index (for_each key)**: `{state_resource_index or 'None'}`")
+    state_address_label = "Parent ENV State Address" if crd_env_parent_inherited else "State Address"
+    state_index_label = (
+        "Parent ENV resource_index (for_each key)"
+        if crd_env_parent_inherited
+        else "State resource_index (for_each key)"
+    )
+    lines.append(f"- **{state_address_label}**: `{state_address or 'None'}`")
+    lines.append(f"- **{state_index_label}**: `{state_resource_index or 'None'}`")
     lines.append(f"- **Protected**: {is_protected}")
     lines.append(f"- **Drift Status**: {drift_status}")
     lines.append("")
@@ -2479,6 +2577,11 @@ def _build_llm_diagnostic(
             "This resource is not tracked in Terraform state. It will be created as new."
         ),
     }
+    if source_type == "CRD" and match_type == "crd_env_inherited" and drift_status == "in_sync":
+        drift_explanations["in_sync"] = (
+            "✅ No Drift Detected",
+            "CRD status is inherited from its parent environment, which is in sync. Terraform will not make changes to this credential."
+        )
     
     drift_title, drift_explanation = drift_explanations.get(
         drift_status,
@@ -2603,6 +2706,12 @@ def _build_llm_diagnostic(
         lines.append(f"- ✅ Matched by name: `{source_name}`")
         lines.append(f"- ℹ️ Key comparison does not apply to {source_type} resources")
         lines.append("- Name-keyed resources (VAR, JEVO) use composite keys like project_id:name internally")
+    elif match_type == "crd_env_inherited":
+        lines.append("**CRD state is inherited from parent environment** - key comparison is not applicable.")
+        lines.append("- ✅ Drift came from parent ENV match (`in_sync`)")
+        lines.append("- ℹ️ CRD resources are embedded under environment management, not separate TF state rows")
+        lines.append("- ✅ State address/key shown above refer to the matched parent ENV")
+        lines.append(f"- ✅ Matched via: {('environment matching' if confidence == 'env_match' else confidence)}")
     elif match_type == "no_state":
         confidence = grid_row.get("confidence", "unknown")
         confidence_display = {
@@ -2671,10 +2780,24 @@ def _build_llm_diagnostic(
         lines.append(f"   - Normalized for lookup: `{normalized_name}`")
     else:
         lines.append(f"1. **Name lookup**: `target_by_type_name[(\"{source_type}\", \"{source_name}\")]`")
+    if source_type == "CRD" and project_name:
+        source_env_name = (source_data or {}).get("environment_name", "")
+        if source_env_name:
+            if crd_env_parent_inherited:
+                lines.append(
+                    f"2. **Parent environment fallback**: `target_env_by_proj_env_name[(\"{project_name}\", \"{source_env_name}\")]`"
+                )
+            else:
+                lines.append(
+                    f"2. **Credential by environment**: `target_crd_by_env[(\"{project_name}\", \"{source_env_name}\")]`"
+                )
     if state_id:
-        lines.append(f"2. **State ID lookup**: `target_by_id[{state_id}]` for type {source_type}")
+        next_idx = 3 if source_type == "CRD" else 2
+        state_lookup_type = "ENV" if crd_env_parent_inherited else source_type
+        lines.append(f"{next_idx}. **State ID lookup**: `target_by_id[{state_id}]` for type {state_lookup_type}")
     if source_type == "REP" and project_name:
-        lines.append(f"3. **Repo by project**: `state_repo_by_project[\"{project_name}\"]`")
+        next_idx = 4 if (source_type == "CRD" and state_id) else (3 if source_type == "CRD" else 3)
+        lines.append(f"{next_idx}. **Repo by project**: `state_repo_by_project[\"{project_name}\"]`")
     lines.append("")
     
     # Current action
@@ -2689,8 +2812,14 @@ def _build_llm_diagnostic(
     if source_type == "REP":
         lines.append("2. Is the repository linked to the correct project in the target account?")
         lines.append("3. Was the resource imported using the project name as the key?")
+    elif source_type == "CRD" and crd_env_parent_inherited:
+        lines.append("2. Is the matched parent ENV in the same project/environment as the source credential?")
+        lines.append("3. Does the source credential intentionally inherit drift/status from that ENV?")
     lines.append("4. Is the state-aware auto-matching code being reached?")
-    lines.append("5. Is `state_repo_by_project` being populated correctly?")
+    if source_type == "REP":
+        lines.append("5. Is `state_repo_by_project` being populated correctly?")
+    else:
+        lines.append("5. Are confidence and drift status consistent with the selected match path?")
     lines.append("")
     
     # Raw data for context

@@ -168,7 +168,11 @@ def _create_global_connections_section(state: AppState) -> None:
             ).classes("text-sm text-slate-500 ml-2")
 
         # Use the existing connection config component
-        create_connection_config_section(yaml_path=yaml_path)
+        target_env_path = resolve_project_env_path(state.project_path, "target")
+        create_connection_config_section(
+            yaml_path=yaml_path,
+            env_path=target_env_path,
+        )
 
 
 def _create_no_environments_info(
@@ -355,7 +359,6 @@ def _initialize_env_configs(
 
         # Skip if already initialized
         if env_id in state.env_credentials.env_configs:
-            # Update metadata fields even if already initialized
             config = state.env_credentials.env_configs[env_id]
             new_env_type = env.get("env_type", "")
             new_deployment_type = env.get("deployment_type", "")
@@ -375,6 +378,23 @@ def _initialize_env_configs(
                 config.custom_branch = new_custom_branch
                 config.source_values = new_source_values
                 state_changed = True
+
+            # Auto-upgrade: existing unsaved deployment envs that have no creds → dummy mode
+            is_deployment = new_env_type != "development"
+            if (
+                is_deployment
+                and not config.is_saved
+                and not config.use_dummy_credentials
+                and not config.credential_values
+                and config.credential_type
+            ):
+                config.use_dummy_credentials = True
+                config.credential_values = build_dummy_credentials_from_source(
+                    credential_type=config.credential_type,
+                    source_values=new_source_values or config.source_values,
+                )
+                state_changed = True
+
             continue
 
         # Determine credential type
@@ -389,6 +409,21 @@ def _initialize_env_configs(
             else False
         )
 
+        env_type = env.get("env_type", "")
+        source_values = env.get("source_values", {})
+        is_deployment = env_type != "development"
+
+        # Auto-default deployment envs to dummy mode when no .env config exists
+        if not existing_config and is_deployment and credential_type:
+            use_dummy = True
+            existing_config = build_dummy_credentials_from_source(
+                credential_type=credential_type,
+                source_values=source_values,
+            )
+            is_saved = False
+        else:
+            is_saved = bool(existing_config)
+
         # Create config
         config = EnvironmentCredentialConfig(
             env_id=env_id,
@@ -397,14 +432,14 @@ def _initialize_env_configs(
             project_name=env["project_name"],
             connection_type=connection_type,
             credential_type=credential_type,
-            env_type=env.get("env_type", ""),
+            env_type=env_type,
             deployment_type=env.get("deployment_type", ""),
             dbt_version=env.get("dbt_version", ""),
             custom_branch=env.get("custom_branch", ""),
             credential_values=existing_config,
-            source_values=env.get("source_values", {}),
+            source_values=source_values,
             use_dummy_credentials=use_dummy,
-            is_saved=bool(existing_config),
+            is_saved=is_saved,
         )
 
         state.env_credentials.set_config(config)
@@ -505,6 +540,8 @@ def _create_project_environment_table(
                     status_html = f'<span style="color: {STATUS_ORANGE};">● Dummy</span>'
                 else:
                     status_html = f'<span style="color: {STATUS_GREEN};">● Saved</span>'
+            elif config and config.use_dummy_credentials and not config.is_saved:
+                status_html = f'<span style="color: {STATUS_ORANGE};">◐ Auto-dummy (unsaved)</span>'
             else:
                 status_html = f'<span style="color: {STATUS_GRAY};">○ Not set</span>'
 
@@ -1321,7 +1358,10 @@ def _save_all_configs(
 
         # Get values to save
         if config.use_dummy_credentials:
-            values_to_save = get_dummy_credentials(config.credential_type)
+            values_to_save = build_dummy_credentials_from_source(
+                credential_type=config.credential_type,
+                source_values=config.source_values,
+            )
         else:
             values_to_save = config.credential_values.copy() if config.credential_values else {}
 

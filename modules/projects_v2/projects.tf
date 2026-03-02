@@ -154,56 +154,7 @@ locals {
     if local.effective_repository_protected[key] != true && local.resolve_repository[key] != null
   }
 
-  debug_repository_resolution_entries = [
-    for key, repo in local.resolve_repository : {
-      project_key              = key
-      remote_url               = try(repo.remote_url, null)
-      effective_remote_url     = try(local.effective_repository_remote_url[key], null)
-      fallback_applied         = try(local.effective_repository_remote_url[key], null) != trimspace(try(repo.remote_url, ""))
-      is_ssh_style             = can(regex("^(git@|ssh:)", trimspace(try(repo.remote_url, ""))))
-      configured_strategy      = try(repo.git_clone_strategy, null)
-      effective_strategy       = try(local.effective_git_clone_strategy[key], null)
-      has_github_installation  = try(local.effective_github_installation_id[key], null) != null
-      has_gitlab_project_id    = try(repo.gitlab_project_id, null) != null
-      has_azure_repository_id  = try(repo.azure_active_directory_repository_id, null) != null
-      fallback_candidate_ssh   = "git@github.com:dbt-labs/jaffle-shop.git"
-      fallback_candidate_https = "https://github.com/dbt-labs/jaffle-shop.git"
-    }
-    if repo != null
-  ]
 }
-
-#region agent log
-resource "null_resource" "debug_repository_resolution" {
-  count = length(local.debug_repository_resolution_entries) > 0 ? 1 : 0
-
-  triggers = {
-    entries_json = jsonencode(local.debug_repository_resolution_entries)
-  }
-
-  provisioner "local-exec" {
-    command = <<-EOT
-python3 - <<'PY'
-import json
-import time
-
-payload = {
-    "sessionId": "25ac29",
-    "runId": "repo-post-fix-3",
-    "hypothesisId": "H6_H7_H8_H9",
-    "location": "modules/projects_v2/projects.tf",
-    "message": "repository resolution snapshot",
-    "data": {"entries": json.loads(r'''${self.triggers.entries_json}''')},
-    "timestamp": int(time.time() * 1000),
-}
-
-with open("/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug-25ac29.log", "a", encoding="utf-8") as f:
-    f.write(json.dumps(payload, separators=(",", ":")) + "\\n")
-PY
-EOT
-  }
-}
-#endregion
 
 #############################################
 # Unprotected Projects - standard lifecycle
@@ -254,10 +205,6 @@ resource "dbtcloud_project" "protected_projects" {
 resource "dbtcloud_repository" "repositories" {
   for_each = local.unprotected_repositories_map
 
-  depends_on = [
-    null_resource.debug_repository_resolution,
-  ]
-
   # Reference the correct project resource based on PROJECT protection status
   # (repo protection is independent - repo can be unprotected while project is protected)
   project_id = (
@@ -274,6 +221,15 @@ resource "dbtcloud_repository" "repositories" {
 
   # GitHub native integration
   github_installation_id = local.effective_github_installation_id[each.key]
+
+  resource_metadata = {
+    source_project_id  = try(each.value.id, null)
+    source_id          = try(local.resolve_repository[each.key].id, null)
+    source_identity    = "REP:${each.key}"
+    source_key         = each.key
+    source_project_key = each.key
+    source_name        = try(local.resolve_repository[each.key].name, each.key)
+  }
 
   # GitLab native integration
   gitlab_project_id = try(
@@ -323,10 +279,6 @@ resource "dbtcloud_repository" "repositories" {
 resource "dbtcloud_repository" "protected_repositories" {
   for_each = local.protected_repositories_map
 
-  depends_on = [
-    null_resource.debug_repository_resolution,
-  ]
-
   # Reference the correct project resource based on PROJECT protection status
   # (repo protection is independent - repo can be protected while project is unprotected)
   project_id = (
@@ -343,6 +295,15 @@ resource "dbtcloud_repository" "protected_repositories" {
 
   # GitHub native integration
   github_installation_id = local.effective_github_installation_id[each.key]
+
+  resource_metadata = {
+    source_project_id  = try(each.value.id, null)
+    source_id          = try(local.resolve_repository[each.key].id, null)
+    source_identity    = "REP:${each.key}"
+    source_key         = each.key
+    source_project_key = each.key
+    source_name        = try(local.resolve_repository[each.key].name, each.key)
+  }
 
   # GitLab native integration
   gitlab_project_id = try(
@@ -404,6 +365,15 @@ resource "dbtcloud_project_repository" "project_repositories" {
     dbtcloud_project.projects[each.key].id
   )
   repository_id = dbtcloud_repository.repositories[each.key].repository_id
+
+  resource_metadata = {
+    source_project_id  = try(each.value.id, null)
+    source_id          = try(local.resolve_repository[each.key].id, null)
+    source_identity    = "PREP:${each.key}"
+    source_key         = each.key
+    source_project_key = each.key
+    source_name        = each.key
+  }
 }
 
 # Link protected repositories to projects
@@ -417,6 +387,15 @@ resource "dbtcloud_project_repository" "protected_project_repositories" {
     dbtcloud_project.projects[each.key].id
   )
   repository_id = dbtcloud_repository.protected_repositories[each.key].repository_id
+
+  resource_metadata = {
+    source_project_id  = try(each.value.id, null)
+    source_id          = try(local.resolve_repository[each.key].id, null)
+    source_identity    = "PREP:${each.key}"
+    source_key         = each.key
+    source_project_key = each.key
+    source_name        = each.key
+  }
 
   lifecycle {
     prevent_destroy = true

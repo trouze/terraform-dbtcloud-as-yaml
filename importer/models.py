@@ -212,5 +212,6 @@ class AccountSnapshot(ImporterBaseModel):
     account_name: Optional[str] = None
     globals: Globals = Field(default_factory=Globals)
     projects: List[Project] = Field(default_factory=list)
+    fetch_warnings: List[Dict[str, Any]] = Field(default_factory=list)
 
 

@@ -16,6 +16,27 @@ from typing import Optional, Union
 logger = logging.getLogger(__name__)
 
 
+def _dbg_25ac29(hypothesis_id: str, location: str, message: str, data: dict) -> None:
+    payload = {
+        "sessionId": "25ac29",
+        "runId": "pre-fix",
+        "hypothesisId": hypothesis_id,
+        "location": location,
+        "message": message,
+        "data": data,
+        "timestamp": int(__import__("time").time() * 1000),
+    }
+    try:
+        with open(
+            "/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug-25ac29.log",
+            "a",
+            encoding="utf-8",
+        ) as f:
+            f.write(json.dumps(payload, ensure_ascii=True) + "\n")
+    except Exception:
+        return
+
+
 # Map Terraform resource types to internal element codes
 TF_TYPE_TO_CODE = {
     "dbtcloud_project": "PRJ",
@@ -259,6 +280,24 @@ def parse_state_json(state_json: dict) -> StateReadResult:
             nested_address = nested.get("address", "")
             _parse_module_resources(nested, nested_address, result)
     
+    crd_resources = [r for r in result.resources if r.element_code == "CRD"]
+    # region agent log
+    _dbg_25ac29(
+        "H1",
+        "terraform_state_reader.py:parse_state_json",
+        "parsed terraform state with CRD summary",
+        {
+            "total_resources": len(result.resources),
+            "crd_resources": len(crd_resources),
+            "crd_with_dbt_id": sum(1 for r in crd_resources if r.dbt_id is not None),
+            "crd_with_name": sum(1 for r in crd_resources if bool((r.name or "").strip())),
+            "crd_with_resource_index": sum(
+                1 for r in crd_resources if bool((r.resource_index or "").strip())
+            ),
+            "crd_address_sample": [r.address for r in crd_resources[:5]],
+        },
+    )
+    # endregion
     logger.info(f"Parsed {len(result.resources)} resources from Terraform state")
     return result
 
@@ -358,6 +397,23 @@ def _parse_module_resources(
             attributes=values,
             resource_index=str(resource_index) if resource_index is not None else None,
         )
+        if element_code == "CRD":
+            # region agent log
+            _dbg_25ac29(
+                "H2",
+                "terraform_state_reader.py:_parse_module_resources",
+                "parsed CRD resource from state",
+                {
+                    "address": address,
+                    "tf_type": tf_type,
+                    "tf_name": tf_name,
+                    "dbt_id": dbt_id,
+                    "name": name,
+                    "resource_index": str(resource_index) if resource_index is not None else None,
+                    "project_id": project_id,
+                },
+            )
+            # endregion
         
         result.resources.append(state_resource)
         result.resources_by_address[address] = state_resource

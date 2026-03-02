@@ -70,6 +70,26 @@ def _dbg_db419a(hypothesis_id: str, location: str, message: str, data: dict) -> 
 
 def _safe_notify(message: str, *, notify_type: str = "info", timeout: Optional[float] = None) -> bool:
     """Attempt UI notification; tolerate detached/deleted NiceGUI slot."""
+    # Avoid known NiceGUI deleted-client warning path before calling ui.notify.
+    client = getattr(getattr(ui, "context", None), "client", None)
+    if client is not None:
+        client_deleted = bool(getattr(client, "_deleted", False))
+        client_connected = bool(getattr(client, "has_socket_connection", True))
+        if client_deleted or not client_connected:
+            # region agent log
+            _dbg_db419a(
+                "H31",
+                "fetch_target.py:_safe_notify:client_guard",
+                "skipped notify because NiceGUI client is deleted or disconnected",
+                {
+                    "message": message,
+                    "type": notify_type,
+                    "client_deleted": client_deleted,
+                    "client_connected": client_connected,
+                },
+            )
+            # endregion
+            return False
     try:
         if timeout is None:
             ui.notify(message, type=notify_type)
@@ -697,6 +717,18 @@ def _cancel_fetch(cancel_event: dict, terminal: TerminalOutput) -> None:
         _safe_notify("Cancellation requested", notify_type="warning")
 
 
+def _extract_credential_fetch_warnings(snapshot: object) -> list[dict]:
+    """Return credential-detail warning entries from fetch snapshot."""
+    raw = getattr(snapshot, "fetch_warnings", []) or []
+    if not isinstance(raw, list):
+        return []
+    return [
+        w for w in raw
+        if isinstance(w, dict)
+        and str(w.get("warning_type", "")).startswith("credential_detail_")
+    ]
+
+
 async def _run_fetch(
     state: AppState,
     terminal: TerminalOutput,
@@ -838,6 +870,7 @@ async def _run_fetch(
 
         terminal.info("")
         terminal.success("Target fetch complete!")
+        credential_fetch_warnings = _extract_credential_fetch_warnings(snapshot)
 
         # Generate filenames
         json_filename = run_tracker.get_filename(
@@ -936,11 +969,37 @@ async def _run_fetch(
         terminal.info(f"  Connections: {fetch_state.resource_counts.get('connections', 0)}")
         terminal.info(f"  Repositories: {fetch_state.resource_counts.get('repositories', 0)}")
         terminal.info(f"  Total time: {fetch_duration:.1f}s")
+        if credential_fetch_warnings:
+            terminal.warning(
+                f"  Credential detail warnings: {len(credential_fetch_warnings)} (using fallback metadata)"
+            )
+            for warning in credential_fetch_warnings[:5]:
+                terminal.warning(
+                    "    - project=%s credential=%s env=%s (%s)"
+                    % (
+                        warning.get("project_id"),
+                        warning.get("credential_id"),
+                        warning.get("environment_name") or warning.get("environment_id") or "unknown",
+                        warning.get("warning_type"),
+                    )
+                )
+            if len(credential_fetch_warnings) > 5:
+                terminal.warning(
+                    f"    ... plus {len(credential_fetch_warnings) - 5} more entries in fetch_warnings."
+                )
 
         # Mark progress tree as complete
         progress_tree.complete()
         
-        _safe_notify("Target fetch completed successfully!", notify_type="positive")
+        if credential_fetch_warnings:
+            _safe_notify(
+                f"Target fetch completed with {len(credential_fetch_warnings)} credential warning(s). "
+                "Some credentials may appear as Create New until corrected.",
+                notify_type="warning",
+                timeout=12000,
+            )
+        else:
+            _safe_notify("Target fetch completed successfully!", notify_type="positive")
 
         # Dynamically show the results section instead of reloading
         # This preserves the terminal logs and progress tree state

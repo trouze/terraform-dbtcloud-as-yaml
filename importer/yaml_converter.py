@@ -10,6 +10,8 @@ variables for credentials (not stored in files).
 """
 
 import shutil
+import json
+import ast
 from pathlib import Path
 from typing import Dict, Optional, Any
 
@@ -31,6 +33,76 @@ SENSITIVE_CONNECTION_FIELDS = {
     # BigQuery External OAuth (WIF)
     "application_id",
     "application_secret",
+}
+
+# Non-sensitive fields from connection env config should override YAML provider_config.
+# Keep sensitive credential material in TF vars only.
+NON_SENSITIVE_CONNECTION_OVERRIDE_FIELDS = {
+    # BigQuery
+    "gcp_project_id",
+    "project_id",
+    "location",
+    "timeout_seconds",
+    "priority",
+    "auth_provider_x509_cert_url",
+    "auth_uri",
+    "client_email",
+    "client_id",
+    "client_x509_cert_url",
+    "token_uri",
+    "deployment_env_auth_type",
+    "use_latest_adapter",
+    "maximum_bytes_billed",
+    "retries",
+    "execution_project",
+    "impersonate_service_account",
+    "job_creation_timeout_seconds",
+    "job_execution_timeout_seconds",
+    "job_retry_deadline_seconds",
+    "dataproc_region",
+    "dataproc_cluster_name",
+    "gcs_bucket",
+    "scopes",
+    # Snowflake / Databricks / Redshift / Postgres common provider config values
+    "account",
+    "database",
+    "warehouse",
+    "role",
+    "allow_sso",
+    "client_session_keep_alive",
+    "host",
+    "http_path",
+    "catalog",
+    "hostname",
+    "port",
+    "dbname",
+    "ssh_tunnel_enabled",
+    "ssh_tunnel_hostname",
+    "ssh_tunnel_port",
+    "ssh_tunnel_username",
+}
+
+# Fields that should be coerced from string env values.
+_CONNECTION_BOOL_FIELDS = {
+    "allow_sso",
+    "client_session_keep_alive",
+    "ssh_tunnel_enabled",
+    "use_latest_adapter",
+}
+_CONNECTION_INT_FIELDS = {
+    "port",
+    "ssh_tunnel_port",
+    "timeout_seconds",
+    "maximum_bytes_billed",
+    "retries",
+    "connect_timeout",
+    "connect_retries",
+    "login_timeout",
+    "query_timeout",
+    "request_timeout",
+    "job_creation_timeout_seconds",
+    "job_execution_timeout_seconds",
+    "job_retry_deadline_seconds",
 }
 
 # Environment credential fields by credential type
@@ -93,6 +165,7 @@ class YamlToTerraformConverter:
         self,
         yaml_file: str,
         output_dir: str,
+        env_path: Optional[str] = None,
         target_host_url: Optional[str] = None,
         target_account_id: Optional[int] = None,
         target_token: Optional[str] = None,
@@ -131,11 +204,20 @@ class YamlToTerraformConverter:
 
         # Load connection credentials from .env if not provided
         if connection_credentials is None:
-            connection_credentials = self._load_connection_credentials_from_env(connection_keys)
+            connection_credentials = self._load_connection_credentials_from_env(
+                connection_keys,
+                env_path=env_path,
+            )
 
         # Load environment credentials from .env if not provided
         if environment_credentials is None:
-            environment_credentials = self._load_environment_credentials_from_env(yaml_path)
+            environment_credentials = self._load_environment_credentials_from_env(
+                yaml_path,
+                env_path=env_path,
+            )
+
+        # Apply non-sensitive connection overrides from env onto YAML provider_config.
+        self._apply_connection_provider_overrides_from_env(yaml_dest, env_path=env_path)
 
         # Calculate relative path from output dir to repo root
         # This follows the same pattern as test/e2e_test which uses "../.."
@@ -290,6 +372,7 @@ class YamlToTerraformConverter:
     def _load_connection_credentials_from_env(
         self,
         connection_keys: list,
+        env_path: Optional[str] = None,
     ) -> Dict[str, Dict[str, Any]]:
         """Load connection credentials from .env file.
 
@@ -302,7 +385,7 @@ class YamlToTerraformConverter:
         try:
             from importer.web.env_manager import load_connection_configs
             
-            all_configs = load_connection_configs()
+            all_configs = load_connection_configs(env_path=env_path)
             result = {}
             
             for key in connection_keys:
@@ -328,6 +411,7 @@ class YamlToTerraformConverter:
     def _load_environment_credentials_from_env(
         self,
         yaml_path: Path,
+        env_path: Optional[str] = None,
     ) -> Dict[str, Dict[str, Any]]:
         """Load environment credentials from .env file.
         
@@ -344,7 +428,7 @@ class YamlToTerraformConverter:
             from importer.web.env_manager import load_env_credential_configs
             
             # Load all environment credential configs from .env
-            env_creds = load_env_credential_configs()
+            env_creds = load_env_credential_configs(env_path=env_path)
             if not env_creds:
                 return {}
             
@@ -729,3 +813,116 @@ output "repository_ids" {{
             existing = gitignore_path.read_text()
             if "secrets.auto.tfvars" not in existing:
                 gitignore_path.write_text(existing + "\n" + gitignore_content)
+
+    def _apply_connection_provider_overrides_from_env(
+        self,
+        yaml_file: Path,
+        *,
+        env_path: Optional[str] = None,
+    ) -> None:
+        """Apply non-sensitive env overrides to YAML globals.connections provider_config."""
+        try:
+            from importer.web.env_manager import load_connection_configs
+
+            env_configs = load_connection_configs(env_path=env_path)
+            if not env_configs:
+                return
+
+            with open(yaml_file, "r", encoding="utf-8") as f:
+                data = yaml.safe_load(f) or {}
+
+            globals_block = data.get("globals", {}) if isinstance(data, dict) else {}
+            connections = globals_block.get("connections", []) if isinstance(globals_block, dict) else []
+            if not isinstance(connections, list):
+                return
+
+            overrides_applied: Dict[str, Dict[str, Any]] = {}
+
+            for conn in connections:
+                if not isinstance(conn, dict):
+                    continue
+                key = conn.get("key")
+                if not key:
+                    continue
+                normalized_key = str(key).lower().replace("-", "_")
+                env_cfg = env_configs.get(normalized_key)
+                if not env_cfg:
+                    continue
+
+                provider_config = conn.get("provider_config")
+                if not isinstance(provider_config, dict):
+                    provider_config = {}
+                    conn["provider_config"] = provider_config
+
+                applied_fields: Dict[str, Any] = {}
+                for field, value in env_cfg.items():
+                    if field not in NON_SENSITIVE_CONNECTION_OVERRIDE_FIELDS:
+                        continue
+                    if value is None or value == "":
+                        continue
+                    normalized_value = self._normalize_connection_override_value(field, value)
+                    provider_config[field] = normalized_value
+                    applied_fields[field] = normalized_value
+
+                if applied_fields:
+                    overrides_applied[str(key)] = applied_fields
+
+            if overrides_applied:
+                with open(yaml_file, "w", encoding="utf-8") as f:
+                    yaml.dump(data, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
+        except Exception:
+            return
+
+    def _normalize_connection_override_value(self, field: str, value: Any) -> Any:
+        """Normalize env-string overrides to Terraform-compatible types/values."""
+        if isinstance(value, str):
+            raw = value.strip()
+        else:
+            raw = value
+
+        # Normalize BigQuery priority to provider-accepted lowercase enum.
+        if field == "priority" and isinstance(raw, str):
+            lowered = raw.lower()
+            if lowered in {"interactive", "batch"}:
+                return lowered
+            return raw
+
+        # Normalize BigQuery scopes from persisted string/list into list[str].
+        if field == "scopes":
+            if isinstance(raw, list):
+                return [str(v) for v in raw if str(v).strip()]
+            if isinstance(raw, str):
+                if not raw:
+                    return []
+                parsed: Any = None
+                # Try JSON first, then Python literal list format.
+                try:
+                    parsed = json.loads(raw)
+                except Exception:
+                    try:
+                        parsed = ast.literal_eval(raw)
+                    except Exception:
+                        parsed = None
+                if isinstance(parsed, list):
+                    return [str(v) for v in parsed if str(v).strip()]
+                # Fallback: comma-separated string.
+                if "," in raw:
+                    return [part.strip() for part in raw.split(",") if part.strip()]
+                return [raw]
+
+        # Normalize bool-like strings.
+        if field in _CONNECTION_BOOL_FIELDS and isinstance(raw, str):
+            lowered = raw.lower()
+            if lowered in {"true", "1", "yes", "on"}:
+                return True
+            if lowered in {"false", "0", "no", "off"}:
+                return False
+
+        # Normalize int-like strings.
+        if field in _CONNECTION_INT_FIELDS and isinstance(raw, str):
+            try:
+                return int(raw)
+            except Exception:
+                return value
+
+        return value

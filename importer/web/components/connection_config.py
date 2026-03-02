@@ -1,6 +1,5 @@
 """Connection provider configuration component for the Target page."""
 
-import json
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Any
 
@@ -316,6 +315,38 @@ def get_schema_for_connection_type(conn_type: str) -> Optional[Dict]:
     return None
 
 
+def _build_provider_config(conn_details: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Build effective provider config for form prefill.
+
+    Prefers normalized `provider_config`, but backfills missing fields from
+    raw `details.config` when present (older/stale normalized YAML may only
+    contain some fields there).
+    """
+    if not conn_details:
+        return {}
+
+    provider_config = dict(conn_details.get("provider_config", {}) or {})
+    details = conn_details.get("details", {}) or {}
+    details_config = details.get("config", {}) if isinstance(details, dict) else {}
+
+    if isinstance(details_config, dict):
+        fallback = dict(details_config)
+        # API uses project_id while Terraform/provider config expects gcp_project_id.
+        if fallback.get("project_id") and not fallback.get("gcp_project_id"):
+            fallback["gcp_project_id"] = fallback["project_id"]
+
+        for field, value in fallback.items():
+            if field in provider_config:
+                continue
+            if value is None:
+                continue
+            if isinstance(value, str) and not value.strip():
+                continue
+            provider_config[field] = value
+
+    return provider_config
+
+
 def load_connections_from_yaml(yaml_path: str) -> List[Dict[str, Any]]:
     """Load connections from a normalized YAML file.
     
@@ -335,6 +366,7 @@ def load_connections_from_yaml(yaml_path: str) -> List[Dict[str, Any]]:
 
 def create_connection_config_section(
     yaml_path: Optional[str],
+    env_path: Optional[str] = None,
     on_config_change: Optional[Callable[[], None]] = None,
 ) -> None:
     """Create the connection configuration section.
@@ -356,7 +388,7 @@ def create_connection_config_section(
         return
     
     # Load existing configs from .env
-    existing_configs = load_connection_configs()
+    existing_configs = load_connection_configs(env_path=env_path)
     
     # Store form data
     connection_forms: Dict[str, Dict[str, Any]] = {}
@@ -371,7 +403,11 @@ def create_connection_config_section(
             ui.button(
                 "Save All to .env",
                 icon="save",
-                on_click=lambda: _save_all_configs(connections, connection_forms),
+                on_click=lambda: _save_all_configs(
+                    connections,
+                    connection_forms,
+                    env_path=env_path,
+                ),
             ).props("outline size=sm")
         
         ui.label(
@@ -403,6 +439,7 @@ def create_connection_config_section(
                 conn_type=conn_type,
                 existing_config=existing,
                 form_data=connection_forms[conn_key],
+                env_path=env_path,
                 conn_details=conn,  # Pass full connection data for view button
                 on_config_change=on_config_change,
             )
@@ -442,6 +479,7 @@ def _create_connection_form(
     conn_type: str,
     existing_config: Dict[str, Any],
     form_data: Dict[str, Any],
+    env_path: Optional[str] = None,
     conn_details: Optional[Dict[str, Any]] = None,
     on_config_change: Optional[Callable[[], None]] = None,
 ) -> None:
@@ -460,7 +498,7 @@ def _create_connection_form(
     
     # Merge provider_config from API (if available) with existing .env config
     # .env values take precedence over API-fetched values
-    provider_config = conn_details.get("provider_config", {}) if conn_details else {}
+    provider_config = _build_provider_config(conn_details)
     merged_config = {**provider_config, **existing_config}  # .env overrides provider_config
     
     has_config = bool(merged_config)
@@ -469,6 +507,16 @@ def _create_connection_form(
     
     # Track conditional field containers for visibility updates
     conditional_containers: Dict[str, ui.element] = {}
+
+    # Auto-seed project target env on first fetch/prefill when nothing exists yet.
+    if has_api_config and not has_env_config:
+        _persist_connection_config(
+            conn_key=conn_key,
+            form_data=merged_config,
+            env_path=env_path,
+            notify=False,
+            reason="auto_seed_from_api",
+        )
     
     def update_conditional_visibility(changed_field: str, new_value: Any):
         """Update visibility of conditional fields when a dependency changes."""
@@ -565,6 +613,13 @@ def _create_connection_form(
                         from_api=from_api,
                         select_options=field_select_options,
                         on_change_callback=update_conditional_visibility,
+                        on_persist_callback=lambda: _persist_connection_config(
+                            conn_key=conn_key,
+                            form_data=form_data,
+                            env_path=env_path,
+                            notify=False,
+                            reason="auto_edit",
+                        ),
                     )
         
         # OAuth documentation URLs for supported providers
@@ -620,6 +675,13 @@ def _create_connection_form(
                             from_api=from_api,
                             select_options=field_select_options,
                             on_change_callback=update_conditional_visibility,
+                            on_persist_callback=lambda: _persist_connection_config(
+                                conn_key=conn_key,
+                                form_data=form_data,
+                                env_path=env_path,
+                                notify=False,
+                                reason="auto_edit",
+                            ),
                         )
             
             # Show OAuth section for ALL connections that support OAuth
@@ -681,6 +743,13 @@ def _create_connection_form(
                                     from_api=from_api,
                                     select_options=field_select_options,
                                     on_change_callback=update_conditional_visibility,
+                                    on_persist_callback=lambda: _persist_connection_config(
+                                        conn_key=conn_key,
+                                        form_data=form_data,
+                                        env_path=env_path,
+                                        notify=False,
+                                        reason="auto_edit",
+                                    ),
                                 )
                         else:
                             _create_form_field(
@@ -694,6 +763,13 @@ def _create_connection_form(
                                 from_api=from_api,
                                 select_options=field_select_options,
                                 on_change_callback=update_conditional_visibility,
+                                on_persist_callback=lambda: _persist_connection_config(
+                                    conn_key=conn_key,
+                                    form_data=form_data,
+                                    env_path=env_path,
+                                    notify=False,
+                                    reason="auto_edit",
+                                ),
                             )
             
             # Render any remaining conditional fields (e.g., SSH tunnel fields, service account fields)
@@ -727,6 +803,13 @@ def _create_connection_form(
                                 from_api=from_api,
                                 select_options=field_select_options,
                                 on_change_callback=update_conditional_visibility,
+                                on_persist_callback=lambda: _persist_connection_config(
+                                    conn_key=conn_key,
+                                    form_data=form_data,
+                                    env_path=env_path,
+                                    notify=False,
+                                    reason="auto_edit",
+                                ),
                             )
         
         # Save button for this connection
@@ -734,7 +817,11 @@ def _create_connection_form(
             ui.button(
                 "Save to .env",
                 icon="save",
-                on_click=lambda ck=conn_key, fd=form_data: _save_single_config(ck, fd),
+                        on_click=lambda ck=conn_key, fd=form_data: _save_single_config(
+                            ck,
+                            fd,
+                            env_path=env_path,
+                        ),
             ).props("outline size=sm")
 
 
@@ -749,6 +836,7 @@ def _create_form_field(
     from_api: bool = False,
     select_options: Optional[List[str]] = None,
     on_change_callback: Optional[Callable[[str, Any], None]] = None,
+    on_persist_callback: Optional[Callable[[], None]] = None,
 ) -> None:
     """Create a single form field.
     
@@ -794,6 +882,8 @@ def _create_form_field(
         _update_form_data(form_data, f, value)
         if on_change_callback:
             on_change_callback(f, value)
+        if on_persist_callback:
+            on_persist_callback()
     
     with ui.row().classes("w-full items-start gap-3"):
         if is_boolean:
@@ -876,6 +966,54 @@ def _update_form_data(form_data: Dict[str, Any], field: str, value: Any) -> None
     form_data[field] = value
 
 
+def _is_masked_secret_value(value: Any) -> bool:
+    """Return True when value looks like a masked secret placeholder."""
+    if not isinstance(value, str):
+        return False
+    stripped = value.strip()
+    return bool(stripped) and set(stripped) == {"*"}
+
+
+def _build_persistable_config(form_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Filter form values to a config safe to persist."""
+    config: Dict[str, Any] = {}
+    for key, value in form_data.items():
+        if value is None or value == "":
+            continue
+        # Do not persist API-masked placeholders like "********".
+        if _is_masked_secret_value(value):
+            continue
+        config[key] = value
+    return config
+
+
+def _persist_connection_config(
+    conn_key: str,
+    form_data: Dict[str, Any],
+    env_path: Optional[str],
+    *,
+    notify: bool,
+    reason: str,
+) -> bool:
+    """Persist a connection config to env and optionally notify."""
+    config = _build_persistable_config(form_data)
+
+    if not config:
+        if notify:
+            ui.notify(f"No configuration to save for {conn_key}", type="warning")
+        return False
+
+    try:
+        path = save_connection_config(conn_key, config, env_path=env_path)
+        if notify:
+            ui.notify(f"Saved {conn_key} config to {path}", type="positive")
+        return True
+    except Exception as e:
+        if notify:
+            ui.notify(f"Failed to save config: {e}", type="negative")
+        return False
+
+
 def _show_connection_detail_dialog(
     conn_details: Optional[Dict[str, Any]],
     conn_name: str,
@@ -955,30 +1093,30 @@ def _show_connection_detail_dialog(
     dialog.open()
 
 
-def _save_single_config(conn_key: str, form_data: Dict[str, Any]) -> None:
+def _save_single_config(
+    conn_key: str,
+    form_data: Dict[str, Any],
+    env_path: Optional[str] = None,
+) -> None:
     """Save a single connection configuration to .env.
     
     Args:
         conn_key: Connection key
         form_data: Form data to save
     """
-    # Filter out empty values
-    config = {k: v for k, v in form_data.items() if v is not None and v != ""}
-    
-    if not config:
-        ui.notify(f"No configuration to save for {conn_key}", type="warning")
-        return
-    
-    try:
-        path = save_connection_config(conn_key, config)
-        ui.notify(f"Saved {conn_key} config to {path}", type="positive")
-    except Exception as e:
-        ui.notify(f"Failed to save config: {e}", type="negative")
+    _persist_connection_config(
+        conn_key=conn_key,
+        form_data=form_data,
+        env_path=env_path,
+        notify=True,
+        reason="manual_single_save",
+    )
 
 
 def _save_all_configs(
     connections: List[Dict[str, Any]],
     connection_forms: Dict[str, Dict[str, Any]],
+    env_path: Optional[str] = None,
 ) -> None:
     """Save all connection configurations to .env.
     
@@ -994,18 +1132,17 @@ def _save_all_configs(
             continue
         
         form_data = connection_forms[conn_key]
-        # Filter out empty values
-        config = {k: v for k, v in form_data.items() if v is not None and v != ""}
-        
-        if config:
-            try:
-                save_connection_config(conn_key, config)
-                saved_count += 1
-            except Exception as e:
-                ui.notify(f"Failed to save {conn_key}: {e}", type="negative")
+        if _persist_connection_config(
+            conn_key=conn_key,
+            form_data=form_data,
+            env_path=env_path,
+            notify=False,
+            reason="manual_bulk_save",
+        ):
+            saved_count += 1
     
     if saved_count > 0:
-        env_path = get_env_file_path()
-        ui.notify(f"Saved {saved_count} connection config(s) to {env_path}", type="positive")
+        resolved_env_path = get_env_file_path(env_path)
+        ui.notify(f"Saved {saved_count} connection config(s) to {resolved_env_path}", type="positive")
     else:
         ui.notify("No configurations to save", type="warning")

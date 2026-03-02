@@ -1,6 +1,7 @@
 """Explore Target step page - browse target account entities, view reports, export data."""
 
 import json
+import time
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -11,6 +12,35 @@ from importer.web.state import AppState, WorkflowStep
 
 # Target accent color
 DBT_TEAL = "#047377"
+
+
+def _dbg_25ac29(hypothesis_id: str, location: str, message: str, data: dict) -> None:
+    payload = {
+        "sessionId": "25ac29",
+        "runId": "pre-fix",
+        "hypothesisId": hypothesis_id,
+        "location": location,
+        "message": message,
+        "data": data,
+        "timestamp": int(time.time() * 1000),
+    }
+    try:
+        with open(
+            "/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug-25ac29.log",
+            "a",
+            encoding="utf-8",
+        ) as f:
+            f.write(json.dumps(payload, ensure_ascii=True) + "\n")
+    except Exception:
+        return
+
+
+def _type_counts(items: list[dict]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for item in items:
+        t = str(item.get("element_type_code", "UNK"))
+        counts[t] = counts.get(t, 0) + 1
+    return counts
 
 
 def create_explore_target_page(
@@ -133,7 +163,20 @@ def _load_report_items(state: AppState) -> list:
             try:
                 payload = json.loads(json_path.read_text(encoding="utf-8"))
                 if payload and payload.get("projects"):
-                    return apply_element_ids(payload)
+                    derived = apply_element_ids(payload)
+                    # region agent log
+                    _dbg_25ac29(
+                        "H72",
+                        "explore_target.py:_load_report_items:from_fetch_json",
+                        "derived target report items from fetch JSON via apply_element_ids",
+                        {
+                            "path": str(json_path),
+                            "total_items": len(derived),
+                            "type_counts": _type_counts(derived),
+                        },
+                    )
+                    # endregion
+                    return derived
             except (json.JSONDecodeError, TypeError):
                 pass
     # Fallback: load pre-written report_items file
@@ -141,7 +184,20 @@ def _load_report_items(state: AppState) -> list:
         report_items_path = Path(state.target_fetch.last_report_items_file)
         if report_items_path.exists():
             try:
-                return json.loads(report_items_path.read_text(encoding="utf-8"))
+                loaded = json.loads(report_items_path.read_text(encoding="utf-8"))
+                # region agent log
+                _dbg_25ac29(
+                    "H72",
+                    "explore_target.py:_load_report_items:from_report_items_file",
+                    "loaded target report items from report_items file",
+                    {
+                        "path": str(report_items_path),
+                        "total_items": len(loaded),
+                        "type_counts": _type_counts(loaded),
+                    },
+                )
+                # endregion
+                return loaded
             except json.JSONDecodeError:
                 pass
     # Fallback: try to find report_items file based on the summary file path

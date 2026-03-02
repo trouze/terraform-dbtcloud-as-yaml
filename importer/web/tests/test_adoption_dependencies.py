@@ -60,9 +60,9 @@ class TestGetParentChain:
         assert chain == []
 
     def test_con_parent_chain(self):
-        """CON → [ENV, PRJ] (connection used by environments)."""
+        """CON → [] (connections are account-level, not children of ENV)."""
         chain = get_parent_chain("CON")
-        assert chain == ["ENV", "PRJ"]
+        assert chain == []
 
     def test_unknown_type_returns_empty(self):
         """Unknown type returns empty chain."""
@@ -93,7 +93,7 @@ class TestAllChildTypeParentChains:
             ("EXTATTR", ["PRJ"]),
             ("PRJ", []),
             ("REP", []),
-            ("CON", ["ENV", "PRJ"]),
+            ("CON", []),
             ("TOK", []),
             ("GRP", []),
             ("NOT", []),

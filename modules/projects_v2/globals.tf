@@ -17,6 +17,39 @@
 #############################################
 
 locals {
+  bigquery_dummy_private_key_id = "0000000000000000000000000000000000000000"
+  bigquery_dummy_private_key = trimspace(<<EOT
+    -----BEGIN PRIVATE KEY-----
+    MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDxqaA1avXCIpS5
+    IyAY/LafgEQEhV+Jnc5j05rZDP+BG3ZIwdAlUSLogDKMOwjAGYSI3IMG/FvYIixe
+    kLiz3ZbDF/RdwkEH6DM8Ysysa75pRkGOyBXhDZFHghVc/FlBAob2iCkNOjKy8Eik
+    +AUfUozgT4fDGbrMSKwTZnFKqmViC1ZrXeXzZx5y40sbybHj4jLjkmGD9BMRnOAi
+    GamhP4Sdkrgj92S6ffpQJy2VY3wEJ3CcH+mAarlb/XzFZAQW1mteCtlHHbpxWIuN
+    /wDrpa71T/fb/1CSKQ+AOY+83ZTwQhHmQXt1wUMdupBdXZpu12wl4WcxMmrWUBf2
+    Q7mJ/tQTAgMBAAECggEBAJ9QqVqt8eiTLaLD4lQ2vhp2z+B/INWzoC21gb8Xz5WI
+    yjj69MK1M6M9aJWEEae66uHjJcpEMjRRixiopeuF6O8i6qmo94BD9wsXQ0FkInp6
+    o5uCktH0RNN0karkfd7a0KjUaOPcezH2MJ35GD9nB5KVO7ZGTxx/yFldztBfd0jj
+    Un30WA5ic1rJ3RU+TlVlXUgTWlYJai0aPiRVT6ucE6FLKN8A8H2DK09xt5EQsI9j
+    HoLSqX22UL2jA+VJhCABaFlGR9veALP16iaXn6+YudoEi98jBJTMwQSdStjEanKP
+    gi6OzGriaihHOEKnFBP2CaF1sZfqfSZl+5hLIWRbvqECgYEA/yXsfp2ilEx8ghtf
+    NmDs7UBEOEw0krOolIFwHnfrdL+bIg8oxXqmQCNbLLrhzJbv5T/OTn7xFI8s5SzV
+    u8n0YIaun3U+ZYrUyBERNa0tkf9F23BT+Jh3nGFOxltyhdexjOIgZPaH0rXX0XAl
+    KZ5dtYIFjpX1oLU0JOSCrAN/SBECgYEA8ngtBTh4aGR6nJ1xwVefZ8VG4eMtty8s
+    CeO6NhZZ8Drhz12TfDj9PC1S9mQPPEx7Xwc/w0J2370bwzW25D5ecM+C8k6lnEm3
+    o3D5HAcGNyuBqk1l3a93N664izZqzAc+zNp1B+kxPoXlE8DNiH3LQMo/GXjpfHlL
+    MohwNG14HeMCgYBB/lYgHbeqceoWYOwMjZ9aci/y+8rxUuS8nIoaZ1wQU2rVsWQT
+    R/juR/bSJ/g1Saj8+7bp2K2Uar/q+uDBdKfvu4Y5GkMsUm9c3AU+g+9wfr1b177w
+    Ysc1PHn6ljaV5cc3sFk+pAFXf881jbMfA6YrR1kWmzTv/05gaHZf9XubcQKBgQCH
+    +uG0tdDBKuiggKPVPGDHf5mbAR8YRro56Z76yloyIbOV6fLWjddnMjv+tmrc9D+U
+    MaqOxO2J2LKDLdKd+mRYe+gCIB08oxL79FWgZEgWFK4pZjKkuszvS2tvl1sZhU6w
+    8CsF/r+BQvIPu+cIjxO4CDSPAoJfLl7/vgi/Pk1I5QKBgAOS78ZwisHI99n+/r95
+    Etq02/kN6LbHbwYC6m1sMMPFqPflqUQle5TDjKMwPmLsqGwoT4dQwleb7PJ2Kcro
+    qoe2dXUBlFwdh2JfhrIWS+kaWbJap1PS3jb1NBb/wdpXyCAGql+Q8J/ywhnzAe/c
+    SD6TfLyibA7EwovT9hwyr9Ql
+    -----END PRIVATE KEY-----
+EOT
+  )
+
   # ---- Groups ----
   all_groups_map = {
     for group in try(var.globals.groups, []) :
@@ -79,6 +112,13 @@ resource "dbtcloud_global_connection" "connections" {
 
   name = each.value.name
 
+  resource_metadata = {
+    source_id       = try(each.value.id, null)
+    source_identity = "CON:${each.key}"
+    source_key      = each.key
+    source_name     = each.value.name
+  }
+
   # PrivateLink endpoint reference (if specified)
   private_link_endpoint_id = try(
     lookup(local.privatelink_endpoints_map, each.value.private_link_endpoint_key, null) != null ?
@@ -126,8 +166,8 @@ resource "dbtcloud_global_connection" "connections" {
     # Auth type selector (defaults to service-account-json)
     deployment_env_auth_type = try(each.value.provider_config.deployment_env_auth_type, null)
     # Service Account JSON authentication fields
-    private_key_id              = try(var.connection_credentials[each.key].private_key_id, try(each.value.provider_config.private_key_id, try(each.value.details.private_key_id, null)))
-    private_key                 = try(var.connection_credentials[each.key].private_key, try(each.value.provider_config.private_key, try(each.value.details.private_key, null)))
+    private_key_id              = coalesce(nonsensitive(try(var.connection_credentials[each.key].private_key_id, null)), try(each.value.provider_config.private_key_id, try(each.value.details.private_key_id, null)), local.bigquery_dummy_private_key_id)
+    private_key                 = coalesce(try(var.connection_credentials[each.key].private_key, try(each.value.provider_config.private_key, try(each.value.details.private_key, null))), local.bigquery_dummy_private_key)
     client_email                = try(each.value.provider_config.client_email, try(each.value.details.client_email, null))
     client_id                   = try(each.value.provider_config.client_id, try(each.value.details.client_id, null))
     auth_uri                    = try(each.value.provider_config.auth_uri, try(each.value.details.auth_uri, null))
@@ -267,6 +307,13 @@ resource "dbtcloud_global_connection" "protected_connections" {
 
   name = each.value.name
 
+  resource_metadata = {
+    source_id       = try(each.value.id, null)
+    source_identity = "CON:${each.key}"
+    source_key      = each.key
+    source_name     = each.value.name
+  }
+
   private_link_endpoint_id = try(
     lookup(local.privatelink_endpoints_map, each.value.private_link_endpoint_key, null) != null ?
     data.dbtcloud_privatelink_endpoints.all.endpoints[
@@ -279,38 +326,38 @@ resource "dbtcloud_global_connection" "protected_connections" {
   )
 
   databricks = try(each.value.type, "") == "databricks" ? {
-    host      = try(each.value.provider_config.host, try(each.value.details.host, "test-host.cloud.databricks.com"))
-    http_path = try(each.value.provider_config.http_path, try(each.value.details.http_path, "/sql/1.0/warehouses/test"))
-    catalog   = try(each.value.provider_config.catalog, try(each.value.details.catalog, null))
+    host          = try(each.value.provider_config.host, try(each.value.details.host, "test-host.cloud.databricks.com"))
+    http_path     = try(each.value.provider_config.http_path, try(each.value.details.http_path, "/sql/1.0/warehouses/test"))
+    catalog       = try(each.value.provider_config.catalog, try(each.value.details.catalog, null))
     client_id     = try(var.connection_credentials[each.key].client_id, try(each.value.provider_config.client_id, null))
     client_secret = try(var.connection_credentials[each.key].client_secret, try(each.value.provider_config.client_secret, null))
   } : null
 
   snowflake = try(each.value.type, "") == "snowflake" ? {
-    account   = try(each.value.provider_config.account, try(each.value.details.account, "test-account"))
-    database  = try(each.value.provider_config.database, try(each.value.details.database, "TEST_DB"))
-    warehouse = try(each.value.provider_config.warehouse, try(each.value.details.warehouse, "TEST_WH"))
+    account                   = try(each.value.provider_config.account, try(each.value.details.account, "test-account"))
+    database                  = try(each.value.provider_config.database, try(each.value.details.database, "TEST_DB"))
+    warehouse                 = try(each.value.provider_config.warehouse, try(each.value.details.warehouse, "TEST_WH"))
     role                      = try(each.value.provider_config.role, try(each.value.details.role, null))
     client_session_keep_alive = try(each.value.provider_config.client_session_keep_alive, try(each.value.details.client_session_keep_alive, false))
     allow_sso                 = try(each.value.provider_config.allow_sso, try(each.value.details.allow_sso, false))
-    oauth_client_id     = try(var.connection_credentials[each.key].oauth_client_id, try(each.value.provider_config.oauth_client_id, null))
-    oauth_client_secret = try(var.connection_credentials[each.key].oauth_client_secret, try(each.value.provider_config.oauth_client_secret, null))
+    oauth_client_id           = try(var.connection_credentials[each.key].oauth_client_id, try(each.value.provider_config.oauth_client_id, null))
+    oauth_client_secret       = try(var.connection_credentials[each.key].oauth_client_secret, try(each.value.provider_config.oauth_client_secret, null))
   } : null
 
   bigquery = try(each.value.type, "") == "bigquery" ? {
-    gcp_project_id              = try(each.value.provider_config.gcp_project_id, try(each.value.details.gcp_project_id, "test-project"))
-    deployment_env_auth_type    = try(each.value.provider_config.deployment_env_auth_type, null)
-    private_key_id              = try(var.connection_credentials[each.key].private_key_id, try(each.value.provider_config.private_key_id, try(each.value.details.private_key_id, null)))
-    private_key                 = try(var.connection_credentials[each.key].private_key, try(each.value.provider_config.private_key, try(each.value.details.private_key, null)))
-    client_email                = try(each.value.provider_config.client_email, try(each.value.details.client_email, null))
-    client_id                   = try(each.value.provider_config.client_id, try(each.value.details.client_id, null))
-    auth_uri                    = try(each.value.provider_config.auth_uri, try(each.value.details.auth_uri, null))
-    token_uri                   = try(each.value.provider_config.token_uri, try(each.value.details.token_uri, null))
-    auth_provider_x509_cert_url = try(each.value.provider_config.auth_provider_x509_cert_url, try(each.value.details.auth_provider_x509_cert_url, null))
-    client_x509_cert_url        = try(each.value.provider_config.client_x509_cert_url, try(each.value.details.client_x509_cert_url, null))
-    application_id     = try(var.connection_credentials[each.key].application_id, try(each.value.provider_config.application_id, null))
-    application_secret = try(var.connection_credentials[each.key].application_secret, try(each.value.provider_config.application_secret, null))
-    scopes             = try(each.value.provider_config.scopes, null)
+    gcp_project_id                = try(each.value.provider_config.gcp_project_id, try(each.value.details.gcp_project_id, "test-project"))
+    deployment_env_auth_type      = try(each.value.provider_config.deployment_env_auth_type, null)
+    private_key_id                = coalesce(nonsensitive(try(var.connection_credentials[each.key].private_key_id, null)), try(each.value.provider_config.private_key_id, try(each.value.details.private_key_id, null)), local.bigquery_dummy_private_key_id)
+    private_key                   = coalesce(try(var.connection_credentials[each.key].private_key, try(each.value.provider_config.private_key, try(each.value.details.private_key, null))), local.bigquery_dummy_private_key)
+    client_email                  = try(each.value.provider_config.client_email, try(each.value.details.client_email, null))
+    client_id                     = try(each.value.provider_config.client_id, try(each.value.details.client_id, null))
+    auth_uri                      = try(each.value.provider_config.auth_uri, try(each.value.details.auth_uri, null))
+    token_uri                     = try(each.value.provider_config.token_uri, try(each.value.details.token_uri, null))
+    auth_provider_x509_cert_url   = try(each.value.provider_config.auth_provider_x509_cert_url, try(each.value.details.auth_provider_x509_cert_url, null))
+    client_x509_cert_url          = try(each.value.provider_config.client_x509_cert_url, try(each.value.details.client_x509_cert_url, null))
+    application_id                = try(var.connection_credentials[each.key].application_id, try(each.value.provider_config.application_id, null))
+    application_secret            = try(var.connection_credentials[each.key].application_secret, try(each.value.provider_config.application_secret, null))
+    scopes                        = try(each.value.provider_config.scopes, null)
     timeout_seconds               = try(each.value.provider_config.timeout_seconds, try(each.value.details.timeout_seconds, null))
     location                      = try(each.value.provider_config.location, try(each.value.details.location, null))
     maximum_bytes_billed          = try(each.value.provider_config.maximum_bytes_billed, try(each.value.details.maximum_bytes_billed, null))
@@ -319,12 +366,12 @@ resource "dbtcloud_global_connection" "protected_connections" {
     job_creation_timeout_seconds  = try(each.value.provider_config.job_creation_timeout_seconds, null)
     job_execution_timeout_seconds = try(each.value.provider_config.job_execution_timeout_seconds, null)
     job_retry_deadline_seconds    = try(each.value.provider_config.job_retry_deadline_seconds, null)
-    execution_project           = try(each.value.provider_config.execution_project, try(each.value.details.execution_project, null))
-    impersonate_service_account = try(each.value.provider_config.impersonate_service_account, null)
-    dataproc_region       = try(each.value.provider_config.dataproc_region, try(each.value.details.dataproc_region, null))
-    dataproc_cluster_name = try(each.value.provider_config.dataproc_cluster_name, try(each.value.details.dataproc_cluster_name, null))
-    gcs_bucket            = try(each.value.provider_config.gcs_bucket, try(each.value.details.gcs_bucket, null))
-    use_latest_adapter = try(each.value.provider_config.use_latest_adapter, null)
+    execution_project             = try(each.value.provider_config.execution_project, try(each.value.details.execution_project, null))
+    impersonate_service_account   = try(each.value.provider_config.impersonate_service_account, null)
+    dataproc_region               = try(each.value.provider_config.dataproc_region, try(each.value.details.dataproc_region, null))
+    dataproc_cluster_name         = try(each.value.provider_config.dataproc_cluster_name, try(each.value.details.dataproc_cluster_name, null))
+    gcs_bucket                    = try(each.value.provider_config.gcs_bucket, try(each.value.details.gcs_bucket, null))
+    use_latest_adapter            = try(each.value.provider_config.use_latest_adapter, null)
   } : null
 
   postgres = try(each.value.type, "") == "postgres" ? {
@@ -422,6 +469,13 @@ resource "dbtcloud_service_token" "service_tokens" {
   name  = each.value.name
   state = try(each.value.state, 1)
 
+  resource_metadata = {
+    source_id       = try(each.value.id, null)
+    source_identity = "TOK:${each.key}"
+    source_key      = each.key
+    source_name     = each.value.name
+  }
+
   dynamic "service_token_permissions" {
     for_each = var.skip_global_project_permissions ? [] : try(each.value.service_token_permissions, [])
     content {
@@ -432,9 +486,9 @@ resource "dbtcloud_service_token" "service_tokens" {
       project_id = (
         try(service_token_permissions.value.project_key, null) != null
         ? coalesce(
-            try(dbtcloud_project.projects[service_token_permissions.value.project_key].id, null),
-            try(dbtcloud_project.protected_projects[service_token_permissions.value.project_key].id, null)
-          )
+          try(dbtcloud_project.projects[service_token_permissions.value.project_key].id, null),
+          try(dbtcloud_project.protected_projects[service_token_permissions.value.project_key].id, null)
+        )
         : try(service_token_permissions.value.project_id, null)
       )
       writable_environment_categories = try(
@@ -468,6 +522,13 @@ resource "dbtcloud_service_token" "protected_service_tokens" {
   name  = each.value.name
   state = try(each.value.state, 1)
 
+  resource_metadata = {
+    source_id       = try(each.value.id, null)
+    source_identity = "TOK:${each.key}"
+    source_key      = each.key
+    source_name     = each.value.name
+  }
+
   dynamic "service_token_permissions" {
     for_each = var.skip_global_project_permissions ? [] : try(each.value.service_token_permissions, [])
     content {
@@ -476,9 +537,9 @@ resource "dbtcloud_service_token" "protected_service_tokens" {
       project_id = (
         try(service_token_permissions.value.project_key, null) != null
         ? coalesce(
-            try(dbtcloud_project.projects[service_token_permissions.value.project_key].id, null),
-            try(dbtcloud_project.protected_projects[service_token_permissions.value.project_key].id, null)
-          )
+          try(dbtcloud_project.projects[service_token_permissions.value.project_key].id, null),
+          try(dbtcloud_project.protected_projects[service_token_permissions.value.project_key].id, null)
+        )
         : try(service_token_permissions.value.project_id, null)
       )
       writable_environment_categories = try(
@@ -514,6 +575,13 @@ resource "dbtcloud_group" "groups" {
   name               = each.value.name
   assign_by_default  = try(each.value.assign_by_default, false)
   sso_mapping_groups = try(each.value.sso_mapping_groups, [])
+
+  resource_metadata = {
+    source_id       = try(each.value.id, null)
+    source_identity = "GRP:${each.key}"
+    source_key      = each.key
+    source_name     = each.value.name
+  }
 
   dynamic "group_permissions" {
     for_each = var.skip_global_project_permissions ? [] : try(each.value.group_permissions, [])
@@ -553,6 +621,13 @@ resource "dbtcloud_group" "protected_groups" {
   name               = each.value.name
   assign_by_default  = try(each.value.assign_by_default, false)
   sso_mapping_groups = try(each.value.sso_mapping_groups, [])
+
+  resource_metadata = {
+    source_id       = try(each.value.id, null)
+    source_identity = "GRP:${each.key}"
+    source_key      = each.key
+    source_name     = each.value.name
+  }
 
   dynamic "group_permissions" {
     for_each = var.skip_global_project_permissions ? [] : try(each.value.group_permissions, [])

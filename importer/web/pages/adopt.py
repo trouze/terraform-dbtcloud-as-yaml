@@ -444,9 +444,10 @@ def _compute_adopt_summary(
                         if candidate_project_id:
                             r["project_id"] = candidate_project_id
                             break
+            elif cm_action is None:
+                rows_without_confirmed_action += 1
+                r["action"] = r.get("action", "ignore")
             else:
-                if cm_action is None:
-                    rows_without_confirmed_action += 1
                 r["action"] = "ignore"
             adopt_rows.append(r)
 

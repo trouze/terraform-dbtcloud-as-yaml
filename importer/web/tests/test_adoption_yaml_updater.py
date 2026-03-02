@@ -8,6 +8,8 @@ These tests cover critical YAML modification functions:
 Reference: Protection Test Coverage Analysis Plan
 """
 
+import logging
+
 import pytest
 import yaml
 from pathlib import Path
@@ -430,6 +432,36 @@ class TestApplyAdoptionOverrides:
         # Note: Legacy format may or may not update depending on source_key matching
         # The important thing is it doesn't crash
         assert result is not None
+
+    def test_skips_missing_resource_type_without_warning(self, simple_yaml: Path, caplog: pytest.LogCaptureFixture):
+        """When target snapshot lacks a resource type, skip rows without warning spam."""
+        adopt_data = [
+            {
+                "source_key": "ext_attrs_1",
+                "source_type": "EXTATTR",
+                "target_id": "70437463656156",
+            }
+        ]
+        target_report_items = [
+            {
+                "element_type_code": "REP",
+                "dbt_id": 123,
+                "remote_url": "https://target.example/repo",
+            }
+        ]
+
+        with open(simple_yaml, "r") as f:
+            original = yaml.safe_load(f)
+
+        with caplog.at_level(logging.INFO):
+            apply_adoption_overrides(str(simple_yaml), adopt_data, target_report_items)
+
+        with open(simple_yaml, "r") as f:
+            result = yaml.safe_load(f)
+
+        assert result == original
+        assert "Target data not found for EXTATTR ID 70437463656156" not in caplog.text
+        assert "Skipping adoption overrides for EXTATTR: type absent from target report snapshot" in caplog.text
 
 
 # =============================================================================

@@ -37,6 +37,7 @@ from importer.web.utils.protection_manager import (
     detect_protection_changes,
     write_moved_blocks_file,
 )
+from importer.web.env_manager import resolve_project_env_path
 
 
 # dbt brand colors
@@ -159,6 +160,200 @@ def _backfill_project_ids_from_source_report(yaml_file: str, source_report_items
         metrics["missing_after"] = len(
             [p for p in projects if isinstance(p, dict) and p.get("id") is None]
         )
+        if metrics["filled_count"] > 0:
+            yaml_path.write_text(
+                yaml_lib.dump(
+                    yaml_data,
+                    default_flow_style=False,
+                    sort_keys=False,
+                    allow_unicode=True,
+                ),
+                encoding="utf-8",
+            )
+            metrics["updated"] = True
+        return metrics
+    except Exception:
+        return metrics
+
+
+def _backfill_environment_ids_from_source_report(yaml_file: str, source_report_items_file: Optional[str]) -> dict:
+    """Best-effort fill missing environment ids in YAML from source report items.
+
+    This mirrors project-id backfill behavior and handles collision-suffixed project
+    keys (for example, ``analytics_3`` in YAML mapping to ``analytics`` in report rows).
+    """
+    metrics = {
+        "project_count": 0,
+        "environment_count": 0,
+        "missing_before": 0,
+        "filled_count": 0,
+        "fallback_filled_count": 0,
+        "missing_after": 0,
+        "updated": False,
+    }
+    try:
+        import yaml as yaml_lib
+
+        yaml_path = Path(yaml_file)
+        if not yaml_path.exists():
+            return metrics
+        yaml_data = yaml_lib.safe_load(yaml_path.read_text(encoding="utf-8")) or {}
+        projects = yaml_data.get("projects", []) if isinstance(yaml_data, dict) else []
+        if not isinstance(projects, list) or not projects:
+            return metrics
+
+        metrics["project_count"] = len(projects)
+
+        environments: list[tuple[dict[str, Any], dict[str, Any]]] = []
+        for project in projects:
+            if not isinstance(project, dict):
+                continue
+            for env in project.get("environments", []) or []:
+                if isinstance(env, dict):
+                    environments.append((project, env))
+        metrics["environment_count"] = len(environments)
+
+        missing_environments = [e for _, e in environments if e.get("id") is None]
+        metrics["missing_before"] = len(missing_environments)
+        if not missing_environments:
+            return metrics
+
+        if not source_report_items_file or not Path(source_report_items_file).exists():
+            metrics["missing_after"] = metrics["missing_before"]
+            return metrics
+
+        report_items = json.loads(Path(source_report_items_file).read_text(encoding="utf-8"))
+        ids_by_project_and_key: dict[tuple[str, str], list[int]] = {}
+        for item in report_items if isinstance(report_items, list) else []:
+            if not isinstance(item, dict):
+                continue
+            if str(item.get("element_type_code") or "") != "ENV":
+                continue
+            project_key = str(item.get("project_key") or "")
+            env_key = str(item.get("key") or "")
+            dbt_id = item.get("dbt_id")
+            if not project_key or not env_key or dbt_id is None:
+                continue
+            try:
+                ids_by_project_and_key.setdefault((project_key, env_key), []).append(int(dbt_id))
+            except Exception:
+                continue
+
+        for project, env in environments:
+            if env.get("id") is not None:
+                continue
+            project_key = str(project.get("key") or "")
+            env_key = str(env.get("key") or "")
+            used_fallback = False
+            candidates = ids_by_project_and_key.get((project_key, env_key), [])
+            if not candidates:
+                m = re.match(r"^(.*)_\d+$", project_key)
+                if m:
+                    base_project_key = m.group(1)
+                    candidates = ids_by_project_and_key.get((base_project_key, env_key), [])
+                    used_fallback = bool(candidates)
+            if candidates:
+                env["id"] = candidates.pop(0)
+                metrics["filled_count"] += 1
+                if used_fallback:
+                    metrics["fallback_filled_count"] += 1
+
+        metrics["missing_after"] = len([e for _, e in environments if e.get("id") is None])
+        if metrics["filled_count"] > 0:
+            yaml_path.write_text(
+                yaml_lib.dump(
+                    yaml_data,
+                    default_flow_style=False,
+                    sort_keys=False,
+                    allow_unicode=True,
+                ),
+                encoding="utf-8",
+            )
+            metrics["updated"] = True
+        return metrics
+    except Exception:
+        return metrics
+
+
+def _backfill_job_ids_from_source_report(yaml_file: str, source_report_items_file: Optional[str]) -> dict:
+    """Best-effort fill missing job ids in YAML from source report items."""
+    metrics = {
+        "project_count": 0,
+        "job_count": 0,
+        "missing_before": 0,
+        "filled_count": 0,
+        "fallback_filled_count": 0,
+        "missing_after": 0,
+        "updated": False,
+    }
+    try:
+        import yaml as yaml_lib
+
+        yaml_path = Path(yaml_file)
+        if not yaml_path.exists():
+            return metrics
+        yaml_data = yaml_lib.safe_load(yaml_path.read_text(encoding="utf-8")) or {}
+        projects = yaml_data.get("projects", []) if isinstance(yaml_data, dict) else []
+        if not isinstance(projects, list) or not projects:
+            return metrics
+
+        metrics["project_count"] = len(projects)
+
+        jobs: list[tuple[dict[str, Any], dict[str, Any]]] = []
+        for project in projects:
+            if not isinstance(project, dict):
+                continue
+            for job in project.get("jobs", []) or []:
+                if isinstance(job, dict):
+                    jobs.append((project, job))
+        metrics["job_count"] = len(jobs)
+
+        missing_jobs = [j for _, j in jobs if j.get("id") is None]
+        metrics["missing_before"] = len(missing_jobs)
+        if not missing_jobs:
+            return metrics
+
+        if not source_report_items_file or not Path(source_report_items_file).exists():
+            metrics["missing_after"] = metrics["missing_before"]
+            return metrics
+
+        report_items = json.loads(Path(source_report_items_file).read_text(encoding="utf-8"))
+        ids_by_project_and_key: dict[tuple[str, str], list[int]] = {}
+        for item in report_items if isinstance(report_items, list) else []:
+            if not isinstance(item, dict):
+                continue
+            if str(item.get("element_type_code") or "") != "JOB":
+                continue
+            project_key = str(item.get("project_key") or "")
+            job_key = str(item.get("key") or "")
+            dbt_id = item.get("dbt_id")
+            if not project_key or not job_key or dbt_id is None:
+                continue
+            try:
+                ids_by_project_and_key.setdefault((project_key, job_key), []).append(int(dbt_id))
+            except Exception:
+                continue
+
+        for project, job in jobs:
+            if job.get("id") is not None:
+                continue
+            project_key = str(project.get("key") or "")
+            job_key = str(job.get("key") or "")
+            used_fallback = False
+            candidates = ids_by_project_and_key.get((project_key, job_key), [])
+            if not candidates:
+                m = re.match(r"^(.*)_\d+$", project_key)
+                if m:
+                    base_project_key = m.group(1)
+                    candidates = ids_by_project_and_key.get((base_project_key, job_key), [])
+                    used_fallback = bool(candidates)
+            if candidates:
+                job["id"] = candidates.pop(0)
+                metrics["filled_count"] += 1
+                if used_fallback:
+                    metrics["fallback_filled_count"] += 1
+
+        metrics["missing_after"] = len([j for _, j in jobs if j.get("id") is None])
         if metrics["filled_count"] > 0:
             yaml_path.write_text(
                 yaml_lib.dump(
@@ -2192,12 +2387,48 @@ async def _run_generate(
                 f"{backfill_metrics.get('missing_after', backfill_metrics.get('missing_before', 0))} missing"
             )
         log_generate_step("project_id_backfill", backfill_metrics)
+
+        env_backfill_metrics = await asyncio.to_thread(
+            _backfill_environment_ids_from_source_report,
+            yaml_file,
+            state.fetch.last_report_items_file,
+        )
+        if env_backfill_metrics.get("updated"):
+            terminal.info(
+                "Backfilled environment IDs from source report items: "
+                f"{env_backfill_metrics.get('filled_count', 0)} filled"
+            )
+        elif env_backfill_metrics.get("missing_before", 0) > 0:
+            terminal.warning(
+                "Environment IDs are still missing after backfill attempt: "
+                f"{env_backfill_metrics.get('missing_after', env_backfill_metrics.get('missing_before', 0))} missing"
+            )
+        log_generate_step("environment_id_backfill", env_backfill_metrics)
+
+        job_backfill_metrics = await asyncio.to_thread(
+            _backfill_job_ids_from_source_report,
+            yaml_file,
+            state.fetch.last_report_items_file,
+        )
+        if job_backfill_metrics.get("updated"):
+            terminal.info(
+                "Backfilled job IDs from source report items: "
+                f"{job_backfill_metrics.get('filled_count', 0)} filled"
+            )
+        elif job_backfill_metrics.get("missing_before", 0) > 0:
+            terminal.warning(
+                "Job IDs are still missing after backfill attempt: "
+                f"{job_backfill_metrics.get('missing_after', job_backfill_metrics.get('missing_before', 0))} missing"
+            )
+        log_generate_step("job_id_backfill", job_backfill_metrics)
         
         converter = YamlToTerraformConverter()
+        target_env_path = resolve_project_env_path(state.project_path, "target")
         await asyncio.to_thread(
             converter.convert,
             yaml_file,
             str(output_path),
+            target_env_path,
         )
         
         log_generate_step("converter_complete", {"yaml_file": yaml_file})

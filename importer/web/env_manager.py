@@ -157,6 +157,7 @@ def load_env_values(env_path: Optional[str] = None) -> dict:
         path = Path(env_path)
     else:
         path = find_env_file()
+    resolved_env_path = str(path)
 
     if not path.exists():
         return {}
@@ -381,7 +382,8 @@ def load_connection_configs(env_path: Optional[str] = None) -> dict:
         Nested dictionary: {connection_name: {field: value}}
     """
     values = load_env_values(env_path)
-    configs = {}
+    resolved_env_path = str(Path(env_path)) if env_path else str(find_env_file())
+    configs: dict[str, dict[str, str]] = {}
     
     # Known field names (in uppercase, may have underscores)
     # These are all the fields used in CONNECTION_SCHEMAS and Terraform provider
@@ -665,7 +667,7 @@ def load_env_credential_configs(env_path: Optional[str] = None) -> dict:
         Nested dictionary: {env_id: {field: value, ...}}
     """
     values = load_env_values(env_path)
-    configs = {}
+    configs: dict[str, dict[str, str]] = {}
     
     prefix = "DBT_ENV_CRED_"
     

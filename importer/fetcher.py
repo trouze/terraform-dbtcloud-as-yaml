@@ -43,6 +43,14 @@ F = TypeVar("F", bound=Callable[..., Any])
 TRANSIENT_ERRORS: Tuple[type, ...] = (OSError, ConnectionError, TimeoutError)
 
 
+def _safe_credential_error_summary(exc: Exception) -> str:
+    """Return a concise credential fetch error summary for debug logs."""
+    text = str(exc).strip()
+    if len(text) > 400:
+        return text[:400] + "..."
+    return text
+
+
 def with_retry(max_retries: int = 3, backoff: float = 1.0) -> Callable[[F], F]:
     """Decorator to add retry logic for transient network errors.
     
@@ -387,6 +395,17 @@ def fetch_account_snapshot(
                 return {"credential_type": connection_type}
             except Exception as e:
                 log.warning(f"Failed to fetch credential {credential_id}: {e}")
+                with credential_fetch_warning_lock:
+                    credential_fetch_warnings.append(
+                        {
+                            "warning_type": "credential_detail_fetch_failed",
+                            "project_id": project_id,
+                            "credential_id": credential_id,
+                            "connection_type": connection_type,
+                            "path": f"/projects/{project_id}/credentials/{credential_id}/",
+                            "error_summary": _safe_credential_error_summary(e),
+                        }
+                    )
                 return {"credential_type": connection_type}
             finally:
                 c.close()
@@ -400,6 +419,9 @@ def fetch_account_snapshot(
     overrides_raw_by_job: dict[tuple[int, int], dict[str, Any]] = {}
     # Credentials keyed by (project_id, credential_id)
     credentials_raw_by_cred: dict[tuple[int, int], dict[str, Any]] = {}
+    credential_fetch_warnings: list[dict[str, Any]] = []
+    credential_fetch_warning_lock = threading.Lock()
+    credential_context_by_cred: dict[tuple[int, int], dict[str, Any]] = {}
 
     # Track project completeness
     project_name_by_id: dict[int, str] = {}
@@ -493,6 +515,18 @@ def fetch_account_snapshot(
                             "Failed to fetch credential for project=%s cred=%s: %s (continuing without credential details)",
                             pid, aux_id, e
                         )
+                        context = credential_context_by_cred.get((pid, int(aux_id or 0)), {})
+                        with credential_fetch_warning_lock:
+                            credential_fetch_warnings.append(
+                                {
+                                    "warning_type": "credential_detail_fetch_future_failed",
+                                    "project_id": pid,
+                                    "credential_id": int(aux_id or 0),
+                                    "environment_id": context.get("environment_id"),
+                                    "environment_name": context.get("environment_name"),
+                                    "error_summary": _safe_credential_error_summary(e),
+                                }
+                            )
                         # Use empty dict as fallback and mark as done
                         credentials_raw_by_cred[(pid, int(aux_id or 0))] = {}
                         project_done_flags[pid]["creds_done"] += 1
@@ -517,11 +551,18 @@ def fetch_account_snapshot(
                             progress.on_resource_item("environments", f"{pid}")
                     # Submit credential fetch tasks for each environment with credentials_id
                     for env_item in result:
-                        cred_id = env_item.get("credentials_id")
+                        cred_id = _extract_environment_credential_id(env_item)
                         if cred_id and isinstance(cred_id, int) and cred_id != 0:
                             # Get connection_type for this environment's connection
                             conn_id = env_item.get("connection_id")
                             conn_type = _get_connection_type(globals_model.connections, conn_id)
+                            cred_key = (pid, cred_id)
+                            if cred_key not in credential_context_by_cred:
+                                credential_context_by_cred[cred_key] = {
+                                    "environment_id": env_item.get("id"),
+                                    "environment_name": env_item.get("name"),
+                                    "project_id": pid,
+                                }
                             project_done_flags[pid]["creds"] += 1
                             pending[ex.submit(_fetch_credential_details_raw, pid, cred_id, conn_type)] = ("cred", pid, cred_id)
                 elif kind == "jobs":
@@ -556,6 +597,19 @@ def fetch_account_snapshot(
                     credentials_raw_by_cred[(pid, int(aux_id or 0))] = result if isinstance(result, dict) else {}
                     project_done_flags[pid]["creds_done"] += 1
                     creds_total += 1
+                    context = credential_context_by_cred.get((pid, int(aux_id or 0)), {})
+                    if isinstance(result, dict) and result.get("id") is None and result.get("credential_type") is not None:
+                        with credential_fetch_warning_lock:
+                            credential_fetch_warnings.append(
+                                {
+                                    "warning_type": "credential_detail_fallback_only",
+                                    "project_id": pid,
+                                    "credential_id": int(aux_id or 0),
+                                    "environment_id": context.get("environment_id"),
+                                    "environment_name": context.get("environment_name"),
+                                    "result_keys": sorted(list(result.keys())),
+                                }
+                            )
                     if progress:
                         progress.on_resource_item("credentials", f"{aux_id}")
 
@@ -653,7 +707,7 @@ def fetch_account_snapshot(
                         connection_type = _get_connection_type(globals_model.connections, connection_id)
                         
                         # Look up pre-fetched credential details
-                        credentials_id = env_item.get("credentials_id")
+                        credentials_id = _extract_environment_credential_id(env_item)
                         credential_details: dict[str, Any] = {}
                         if credentials_id:
                             # Credentials were fetched in parallel when environments were received
@@ -791,6 +845,7 @@ def fetch_account_snapshot(
         account_name=account_name,
         globals=globals_model,
         projects=projects,
+        fetch_warnings=credential_fetch_warnings,
     )
 
 
@@ -1345,7 +1400,7 @@ def _fetch_environments(
         connection_type = _get_connection_type(connections, connection_id)
         
         # Fetch detailed credential information if credentials_id is present
-        credentials_id = item.get("credentials_id")
+        credentials_id = _extract_environment_credential_id(item)
         credential_details: dict[str, Any] = {}
         if credentials_id:
             credential_details = _fetch_credential_details(
@@ -1540,6 +1595,33 @@ def _get_connection_type(connections: Dict[str, Connection], connection_id: int 
     return None
 
 
+def _extract_environment_credential_id(env_item: dict[str, Any]) -> Optional[int]:
+    """Resolve environment credential ID across API shape variations."""
+    raw_candidates = [
+        env_item.get("credentials_id"),
+        env_item.get("credential_id"),
+    ]
+
+    nested_credential = env_item.get("credential")
+    if isinstance(nested_credential, dict):
+        raw_candidates.append(nested_credential.get("id"))
+
+    nested_credentials = env_item.get("credentials")
+    if isinstance(nested_credentials, dict):
+        raw_candidates.append(nested_credentials.get("id"))
+
+    for raw in raw_candidates:
+        if isinstance(raw, int) and raw != 0:
+            return raw
+        if isinstance(raw, str):
+            stripped = raw.strip()
+            if stripped.isdigit():
+                parsed = int(stripped)
+                if parsed != 0:
+                    return parsed
+    return None
+
+
 def _fetch_credential_details(
     settings: Settings,
     project_id: int,
@@ -1621,7 +1703,11 @@ def _build_credential_from_api_data(
     """
     # Start with basic credential data from environment
     basic_cred = env_item.get("credentials") or env_item.get("credential") or {}
-    credentials_id = env_item.get("credentials_id")
+    credentials_id = _extract_environment_credential_id(env_item)
+    if credentials_id is None:
+        details_id = credential_details.get("id")
+        if isinstance(details_id, int) and details_id != 0:
+            credentials_id = details_id
     
     # Determine credential type
     cred_type = credential_details.get("credential_type") or connection_type

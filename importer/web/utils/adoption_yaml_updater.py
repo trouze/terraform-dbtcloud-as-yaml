@@ -1,6 +1,8 @@
 """Utility to update YAML config with target account values for adopted resources."""
 
+import json
 import logging
+import time
 from pathlib import Path
 from typing import Any, Optional, Union
 
@@ -63,10 +65,12 @@ def apply_adoption_overrides(
     # Build lookup of target resources by ID and type
     # Note: target report items use element_type_code (not element_type) and dbt_id (not id)
     target_by_id: dict[tuple[str, int], dict] = {}
+    available_types: set[str] = set()
     for item in target_report_items:
         element_type = item.get("element_type_code") or item.get("element_type") or item.get("type")
         item_id = item.get("dbt_id") or item.get("id")
         if element_type and item_id:
+            available_types.add(str(element_type))
             target_by_id[(element_type, int(item_id))] = item
     
     logger.info(f"  Built target lookup with {len(target_by_id)} entries")
@@ -84,6 +88,7 @@ def apply_adoption_overrides(
         return yaml_file
     
     changes_made = 0
+    missing_resource_types: set[str] = set()
     
     # Process each adoption row
     for row in adopt_rows:
@@ -114,6 +119,17 @@ def apply_adoption_overrides(
             target_id_int = int(target_id)
         except (ValueError, TypeError):
             logger.debug(f"Invalid target_id {target_id} for {source_key}")
+            continue
+
+        # If the fetched target snapshot has no items of this type, per-row
+        # lookup warnings are noisy and not actionable.
+        if resource_type not in available_types:
+            if resource_type not in missing_resource_types:
+                logger.info(
+                    "Skipping adoption overrides for %s: type absent from target report snapshot",
+                    resource_type,
+                )
+                missing_resource_types.add(resource_type)
             continue
             
         target_data = target_by_id.get((resource_type, target_id_int))

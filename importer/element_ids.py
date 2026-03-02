@@ -2,9 +2,32 @@
 
 from __future__ import annotations
 
+import json
+import time
 from typing import Any, Dict, List
 
 from .utils import short_hash
+
+
+def _dbg_25ac29(hypothesis_id: str, location: str, message: str, data: Dict[str, Any]) -> None:
+    payload = {
+        "sessionId": "25ac29",
+        "runId": "post-fix",
+        "hypothesisId": hypothesis_id,
+        "location": location,
+        "message": message,
+        "data": data,
+        "timestamp": int(time.time() * 1000),
+    }
+    try:
+        with open(
+            "/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug-25ac29.log",
+            "a",
+            encoding="utf-8",
+        ) as f:
+            f.write(json.dumps(payload, ensure_ascii=True) + "\n")
+    except Exception:
+        return
 
 
 def _extract_state(data: Dict[str, Any]) -> Any:
@@ -72,18 +95,58 @@ def apply_element_ids(payload: Dict[str, Any], start_number: int = 1001) -> List
         identifier=payload.get("account_id"),
     )
 
+    # Deduplicate project keys: multiple projects may share the same key
+    # (e.g. three projects all named "Analytics" with key "analytics").
+    # Apply the same suffix strategy the normalizer uses so that downstream
+    # lookups in match_grid can distinguish them.
+    _project_key_counts: Dict[str, int] = {}
+
+    def _dedup_project_key(raw_key: str) -> str:
+        if raw_key not in _project_key_counts:
+            _project_key_counts[raw_key] = 1
+            return raw_key
+        _project_key_counts[raw_key] += 1
+        return f"{raw_key}_{_project_key_counts[raw_key]}"
+
+    # Sort projects by ID for deterministic dedup: lowest ID gets base key.
+    # Fallback to (name, key) for projects without IDs.
+    _raw_projects = payload.get("projects", [])
+    _sorted_projects = sorted(
+        _raw_projects,
+        key=lambda p: (0, p.get("id") or 0, p.get("name", ""), p.get("key", ""))
+        if p.get("id")
+        else (1, 0, p.get("name", ""), p.get("key", "")),
+    )
+
+    # region agent log
+    _colliding_keys = {}
+    for _p in _sorted_projects:
+        _pk = _p.get("key", "")
+        _colliding_keys.setdefault(_pk, []).append(_p.get("id"))
+    _collisions = {k: v for k, v in _colliding_keys.items() if len(v) > 1}
+    if _collisions:
+        _dbg_25ac29(
+            "H-DEDUP",
+            "element_ids.py:apply_element_ids",
+            "project dedup: sorted order for colliding keys",
+            {"collisions": {k: [str(i) for i in v] for k, v in _collisions.items()}},
+        )
+    # endregion
+
     # First, register projects and build project_id -> mapping_id lookup
     project_id_to_mapping = {}
     project_key_to_mapping = {}
-    for project in payload.get("projects", []):
+    for project in _sorted_projects:
         project_name = project.get("name") or project.get("key")
+        raw_project_key = project.get("key") or ""
+        deduped_project_key = _dedup_project_key(raw_project_key)
         project_mapping_id = _register(
             records,
             project,
             "PRJ",
             name=project_name,
             extra={
-                "project_key": project.get("key"),
+                "project_key": deduped_project_key,
                 "repository_key": project.get("repository_key"),
             },
         )
@@ -91,8 +154,8 @@ def apply_element_ids(payload: Dict[str, Any], start_number: int = 1001) -> List
         # Track project mappings for repository linking
         if project.get("id"):
             project_id_to_mapping[project.get("id")] = project_mapping_id
-        if project.get("key"):
-            project_key_to_mapping[project.get("key")] = project_mapping_id
+        if deduped_project_key:
+            project_key_to_mapping[deduped_project_key] = project_mapping_id
 
         # Extended attributes (EXTATTR) - project-scoped
         # #region agent log
@@ -115,7 +178,7 @@ def apply_element_ids(payload: Dict[str, Any], start_number: int = 1001) -> List
                 name=eat_key,
                 identifier=eat.get("id"),
                 extra={
-                    "project_key": project.get("key"),
+                    "project_key": deduped_project_key,
                     "project_name": project_name,
                     "parent_project_id": project_mapping_id,
                     "extended_attributes_key": eat_key,
@@ -128,16 +191,15 @@ def apply_element_ids(payload: Dict[str, Any], start_number: int = 1001) -> List
             # Use project-scoped identifier so that same-named vars in different
             # projects get distinct element_mapping_ids (e.g. "bt_data_ops_db:DBT_ENVIRONMENT_NAME"
             # vs "sse_dm_fin_fido:DBT_ENVIRONMENT_NAME").
-            var_project_key = project.get("key") or ""
             var_name = var.get("name") or ""
             _register(
                 records,
                 var,
                 "VAR",
                 name=var_name,
-                identifier=f"{var_project_key}:{var_name}" if var_project_key else None,
+                identifier=f"{deduped_project_key}:{var_name}" if deduped_project_key else None,
                 extra={
-                    "project_key": var_project_key,
+                    "project_key": deduped_project_key,
                     "project_name": project_name,
                     "variant": variant,
                     "parent_project_id": project_mapping_id,
@@ -145,6 +207,12 @@ def apply_element_ids(payload: Dict[str, Any], start_number: int = 1001) -> List
             )
 
         # Environments
+        project_job_total = len(project.get("jobs", []) or [])
+        project_job_matched = 0
+        project_job_skipped_env_mismatch = 0
+        project_crd_total = 0
+        project_crd_with_id = 0
+        project_crd_skipped_null_id = 0
         for env in project.get("environments", []):
             env_mapping_id = _register(
                 records,
@@ -152,7 +220,7 @@ def apply_element_ids(payload: Dict[str, Any], start_number: int = 1001) -> List
                 "ENV",
                 name=env.get("name"),
                 extra={
-                    "project_key": project.get("key"),
+                    "project_key": deduped_project_key,
                     "project_name": project_name,
                     "parent_project_id": project_mapping_id,
                     "connection_key": env.get("connection_key"),  # For hierarchy linking
@@ -163,10 +231,32 @@ def apply_element_ids(payload: Dict[str, Any], start_number: int = 1001) -> List
             # Credential as child of environment (if present)
             credential = env.get("credential")
             if credential and isinstance(credential, dict):
+                project_crd_total += 1
                 cred_type = credential.get("credential_type") or "unknown"
-                cred_id = credential.get("id")
+                cred_id = credential.get("id") or env.get("credentials_id") or env.get("credential_id")
+                if isinstance(cred_id, str):
+                    stripped_cred_id = cred_id.strip()
+                    cred_id = int(stripped_cred_id) if stripped_cred_id.isdigit() else None
                 cred_schema = credential.get("schema") or credential.get("schema_name", "")
                 cred_user = credential.get("user") or credential.get("username", "")
+                # region agent log
+                _dbg_25ac29(
+                    "H26",
+                    "element_ids.py:apply_element_ids:credential_row_build",
+                    "resolved CRD identifier fields from environment and credential payload",
+                    {
+                        "project_key": deduped_project_key,
+                        "raw_project_key": raw_project_key,
+                        "environment_key": env.get("key"),
+                        "environment_name": env.get("name"),
+                        "credential_type": cred_type,
+                        "credential_id_from_credential": credential.get("id"),
+                        "credentials_id_from_env": env.get("credentials_id"),
+                        "credential_id_from_env": env.get("credential_id"),
+                        "resolved_credential_id": cred_id,
+                    },
+                )
+                # endregion
                 
                 # Build credential display name
                 cred_name_parts = [cred_type]
@@ -176,34 +266,46 @@ def apply_element_ids(payload: Dict[str, Any], start_number: int = 1001) -> List
                     cred_name_parts.append(f"user:{cred_user}")
                 cred_display_name = f"Credential ({', '.join(cred_name_parts)})"
                 
-                # Use a stable identifier based on environment
-                cred_identifier = f"{env.get('key')}:credential:{cred_id or cred_type}"
+                # Scope by deduped project key so identical credentials in
+                # different projects with the same display name get distinct IDs.
+                cred_identifier = f"{deduped_project_key}:{env.get('key')}:credential:{cred_id or cred_type}"
                 
+                # Dev environment credentials have null IDs (user-specific, not
+                # project-level). They can't be managed in Terraform, so skip them.
+                if cred_id is None:
+                    project_crd_skipped_null_id += 1
+                    continue
+                project_crd_with_id += 1
+
+                crd_extra: Dict[str, Any] = {
+                    "dbt_id": cred_id,
+                    "project_key": deduped_project_key,
+                    "project_name": project_name,
+                    "environment_key": env.get("key"),
+                    "environment_name": env.get("name"),
+                    "parent_environment_id": env_mapping_id,
+                    "parent_project_id": project_mapping_id,
+                    "credential_type": cred_type,
+                    "credential_schema": cred_schema,
+                    "credential_user": cred_user,
+                    "credential_id": cred_id,
+                }
                 _register(
                     records,
                     credential,
                     "CRD",
                     name=cred_display_name,
                     identifier=cred_identifier,
-                    extra={
-                        "project_key": project.get("key"),
-                        "project_name": project_name,
-                        "environment_key": env.get("key"),
-                        "environment_name": env.get("name"),
-                        "parent_environment_id": env_mapping_id,
-                        "parent_project_id": project_mapping_id,
-                        "credential_type": cred_type,
-                        "credential_schema": cred_schema,
-                        "credential_user": cred_user,
-                        "credential_id": cred_id,
-                    },
+                    extra=crd_extra,
                 )
 
             # Jobs per environment
             env_key = env.get("key")
             for job in project.get("jobs", []):
                 if job.get("environment_key") != env_key:
+                    project_job_skipped_env_mismatch += 1
                     continue
+                project_job_matched += 1
                 # Include environment_variable_overrides for derived resource counting
                 env_var_overrides = job.get("environment_variable_overrides", {})
                 # Include job_completion_trigger_condition for derived resource counting
@@ -215,7 +317,7 @@ def apply_element_ids(payload: Dict[str, Any], start_number: int = 1001) -> List
                     "JOB",
                     name=job.get("name"),
                     extra={
-                        "project_key": project.get("key"),
+                        "project_key": deduped_project_key,
                         "project_name": project_name,
                         "environment_key": env_key,
                         "environment_mapping_id": env_mapping_id,
@@ -224,6 +326,26 @@ def apply_element_ids(payload: Dict[str, Any], start_number: int = 1001) -> List
                         "job_completion_trigger_condition": jctc,
                     },
                 )
+        # region agent log
+        _dbg_25ac29(
+            "H70",
+            "element_ids.py:apply_element_ids:project_job_crd_summary",
+            "summarized project-level JOB and CRD extraction decisions",
+            {
+                "project_id": project.get("id"),
+                "project_name": project_name,
+                "project_key_raw": raw_project_key,
+                "project_key_deduped": deduped_project_key,
+                "environments_count": len(project.get("environments", []) or []),
+                "jobs_total_in_payload": project_job_total,
+                "jobs_emitted": project_job_matched,
+                "jobs_skipped_env_mismatch": project_job_skipped_env_mismatch,
+                "credentials_total_in_payload": project_crd_total,
+                "credentials_emitted_with_id": project_crd_with_id,
+                "credentials_skipped_null_id": project_crd_skipped_null_id,
+            },
+        )
+        # endregion
 
     # Now register globals (after projects so we can link repositories)
     globals_block = payload.get("globals") or {}
@@ -287,6 +409,26 @@ def apply_element_ids(payload: Dict[str, Any], start_number: int = 1001) -> List
     for record in records:
         record["line_item_number"] = current
         current += 1
+
+    # region agent log
+    missing_dbt_id_by_type: Dict[str, int] = {}
+    counts_by_type: Dict[str, int] = {}
+    for record in records:
+        element_type = str(record.get("element_type_code", "UNK"))
+        counts_by_type[element_type] = counts_by_type.get(element_type, 0) + 1
+        if record.get("dbt_id") is None:
+            missing_dbt_id_by_type[element_type] = missing_dbt_id_by_type.get(element_type, 0) + 1
+    _dbg_25ac29(
+        "H27",
+        "element_ids.py:apply_element_ids:dbt_id_audit",
+        "computed dbt_id coverage across generated report items",
+        {
+            "total_records": len(records),
+            "counts_by_type": counts_by_type,
+            "missing_dbt_id_by_type": missing_dbt_id_by_type,
+        },
+    )
+    # endregion
 
     return records
 

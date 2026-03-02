@@ -245,10 +245,12 @@ def _create_connection_provider_section(state: AppState) -> None:
     Snowflake account, Databricks host, BigQuery project, etc.
     """
     yaml_path = state.map.last_yaml_file
+    target_env_path = resolve_project_env_path(state.project_path, "target")
     
     with ui.column().classes("w-full"):
         create_connection_config_section(
             yaml_path=yaml_path,
+            env_path=target_env_path,
         )
 
 

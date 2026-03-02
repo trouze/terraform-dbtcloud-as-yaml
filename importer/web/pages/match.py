@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Optional, TYPE_CHECKING
 
@@ -74,11 +75,123 @@ def _dbg_db419a(hypothesis_id: str, location: str, message: str, data: dict) -> 
         return
 
 
+def _dbg_25ac29(hypothesis_id: str, location: str, message: str, data: dict) -> None:
+    payload = {
+        "sessionId": "25ac29",
+        "runId": "pre-fix",
+        "hypothesisId": hypothesis_id,
+        "location": location,
+        "message": message,
+        "data": data,
+        "timestamp": int(time.time() * 1000),
+    }
+    try:
+        with open(
+            "/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/.cursor/debug-25ac29.log",
+            "a",
+            encoding="utf-8",
+        ) as f:
+            f.write(json.dumps(payload, ensure_ascii=True) + "\n")
+    except Exception:
+        return
+
+
 def _project_root(state: Optional[AppState] = None) -> Path:
     """Return active project root when available, otherwise repository root."""
     if state and getattr(state, "project_path", None):
         return Path(state.project_path).resolve()
     return Path(__file__).parent.parent.parent.parent.resolve()
+
+
+def _state_resource_to_dict(res: object) -> dict:
+    return {
+        "address": getattr(res, "address", None),
+        "dbt_id": getattr(res, "dbt_id", None),
+        "name": getattr(res, "name", None),
+        "tf_name": getattr(res, "tf_name", None),
+        "element_code": getattr(res, "element_code", None),
+        "project_id": getattr(res, "project_id", None),
+        "resource_index": getattr(res, "resource_index", None),
+        **(getattr(res, "attributes", {}) or {}),
+    }
+
+
+def _resolve_crd_parent_env_state_resource(
+    source_item: dict,
+    grid_row: dict,
+    grid_rows: list[dict],
+    state_result: Optional[StateReadResult],
+) -> Optional[dict]:
+    """Resolve CRD state details via its parent ENV row/state address."""
+    if not state_result or not state_result.resources:
+        return None
+    source_env_name = source_item.get("environment_name", "")
+    source_project_name = grid_row.get("project_name", "") or source_item.get("project_name", "")
+    if not source_env_name:
+        return None
+    parent_env_row = None
+    for row in grid_rows:
+        if (
+            row.get("source_type") == "ENV"
+            and row.get("project_name", "") == source_project_name
+            and row.get("source_name", "") == source_env_name
+        ):
+            parent_env_row = row
+            break
+    if not parent_env_row:
+        return None
+    parent_state_address = parent_env_row.get("state_address", "")
+    if not parent_state_address:
+        return None
+    for res in state_result.resources:
+        if res.address == parent_state_address:
+            return _state_resource_to_dict(res)
+    return None
+
+
+def _source_yaml_changed_since_intent(
+    source_focus_yaml: Optional[str],
+    previous_intent: Optional[TargetIntentResult],
+) -> bool:
+    """Return True when source YAML appears newer than the persisted intent."""
+    if not source_focus_yaml or not previous_intent or not previous_intent.computed_at:
+        return False
+    try:
+        source_path = Path(source_focus_yaml)
+        if not source_path.exists():
+            return False
+        computed_at_raw = str(previous_intent.computed_at or "").strip()
+        if not computed_at_raw:
+            return False
+        if computed_at_raw.endswith("Z"):
+            computed_at_raw = computed_at_raw[:-1] + "+00:00"
+        computed_at_dt = datetime.fromisoformat(computed_at_raw)
+        if computed_at_dt.tzinfo is None:
+            computed_at_dt = computed_at_dt.replace(tzinfo=timezone.utc)
+        source_mtime = datetime.fromtimestamp(source_path.stat().st_mtime, tz=timezone.utc)
+        return source_mtime > computed_at_dt
+    except Exception:
+        return False
+
+
+def _expand_selected_entity_ids(
+    entities: list[dict],
+    selected_ids: set[str],
+) -> set[str]:
+    """Expand selected IDs to include required hierarchy neighbors.
+
+    Scope selection is often project-centric. Match needs descendants (ENV/CRD/JOB/etc.)
+    to be present when a project is selected.
+    """
+    if not entities or not selected_ids:
+        return selected_ids
+    hierarchy = HierarchyIndex(entities)
+    expanded: set[str] = set(selected_ids)
+    for mapping_id in list(selected_ids):
+        expanded.update(hierarchy.get_all_descendants(mapping_id))
+        expanded.update(hierarchy.get_required_ancestors(mapping_id))
+        expanded.update(hierarchy.get_linked_entities(mapping_id))
+    return expanded
 
 
 def create_match_page(
@@ -150,12 +263,34 @@ def create_match_page(
         )
         selection_manager.load()
         selected_ids = selection_manager.get_selected_ids()
-        
-        # Filter to only selected items
+        expanded_selected_ids = _expand_selected_entity_ids(all_source_items, selected_ids)
+
+        # Filter to selected items and their hierarchy-linked neighbors
         source_items = [
             item for item in all_source_items 
-            if item.get("element_mapping_id") in selected_ids
+            if item.get("element_mapping_id") in expanded_selected_ids
         ]
+        # region agent log
+        _dbg_25ac29(
+            "H18",
+            "match.py:create_match_page:source_filtering",
+            "computed source selection counts by element type",
+            {
+                "all_source_count": len(all_source_items),
+                "selected_source_count": len(source_items),
+                "selected_ids_count": len(selected_ids),
+                "expanded_selected_ids_count": len(expanded_selected_ids),
+                "all_source_by_type": {
+                    t: len([i for i in all_source_items if i.get("element_type_code") == t])
+                    for t in sorted({i.get("element_type_code", "") for i in all_source_items})
+                },
+                "selected_source_by_type": {
+                    t: len([i for i in source_items if i.get("element_type_code") == t])
+                    for t in sorted({i.get("element_type_code", "") for i in source_items})
+                },
+            },
+        )
+        # endregion
         # region agent log
         _dbg_db419a(
             "H12",
@@ -294,7 +429,25 @@ def _load_report_items(state: AppState, target: bool = False) -> list:
     try:
         report_path = Path(report_file)
         if report_path.exists():
-            return json.loads(report_path.read_text(encoding="utf-8"))
+            items = json.loads(report_path.read_text(encoding="utf-8"))
+            type_counts = {}
+            for item in items:
+                t = str(item.get("element_type_code", "UNK"))
+                type_counts[t] = type_counts.get(t, 0) + 1
+            # region agent log
+            _dbg_25ac29(
+                "H73",
+                "match.py:_load_report_items",
+                "loaded report_items for match page",
+                {
+                    "target": target,
+                    "path": str(report_path),
+                    "total_items": len(items),
+                    "type_counts": type_counts,
+                },
+            )
+            # endregion
+            return items
     except Exception as e:
         logging.warning(f"Error loading report items: {e}")
     
@@ -315,6 +468,15 @@ def _persist_target_intent_from_match(
     manager = state.get_target_intent_manager()
     previous_intent = manager.load()
     _dbg_started_at = time.time()
+    mapping_actions: dict[str, int] = {}
+    for mapping in state.map.confirmed_mappings or []:
+        action_key = str(mapping.get("action") or "missing")
+        mapping_actions[action_key] = mapping_actions.get(action_key, 0) + 1
+    prev_output_projects = 0
+    prev_output_globals = 0
+    if previous_intent and isinstance(previous_intent.output_config, dict):
+        prev_output_projects = len(previous_intent.output_config.get("projects", []) or [])
+        prev_output_globals = len(previous_intent.output_config.get("globals", {}) or {})
     # region agent log
     _dbg_db419a(
         "H13",
@@ -343,7 +505,11 @@ def _persist_target_intent_from_match(
     # side-effects pending, avoid expensive full intent recomputation.
     removal_keys = set(getattr(state.map, "removal_keys", None) or [])
     adopt_rows = getattr(state.deploy, "reconcile_adopt_rows", []) or []
-    if previous_intent and state_to_target is None and not removal_keys and not adopt_rows:
+    source_focus_yaml = getattr(state.map, "last_yaml_file", None)
+    source_yaml_changed = _source_yaml_changed_since_intent(source_focus_yaml, previous_intent)
+    if source_yaml_changed:
+        logger.debug("skipping fast-path because source YAML is newer than persisted intent")
+    if previous_intent and state_to_target is None and not removal_keys and not adopt_rows and not source_yaml_changed:
         previous_intent.match_mappings = new_mm
         state.save_target_intent(previous_intent)
         # region agent log
@@ -360,7 +526,6 @@ def _persist_target_intent_from_match(
         )
         # endregion
         return
-
     # Gather inputs for compute_target_intent
     tf_dir = state.deploy.terraform_dir or "deployments/migration"
     tf_path = Path(tf_dir)
@@ -380,8 +545,6 @@ def _persist_target_intent_from_match(
     )
     # endregion
     tfstate_path = tf_path / "terraform.tfstate"
-
-    source_focus_yaml = getattr(state.map, "last_yaml_file", None)
     # Load target report items
     target_report_items = None
     if getattr(state, "target_fetch", None) and getattr(state.target_fetch, "last_report_items_file", None):
@@ -2562,6 +2725,22 @@ def _create_matching_content(
                     if str(t.get("dbt_id")) == str(target_id):
                         target_data = t
                         break
+            # region agent log
+            _dbg_25ac29(
+                "H15",
+                "match.py:on_view_details:state_only_target_lookup_id",
+                "state-only target lookup by dbt_id completed",
+                {
+                    "source_key": source_key,
+                    "source_type": source_type,
+                    "project_name": project_name,
+                    "target_id": target_id,
+                    "target_name_from_grid": target_name_val,
+                    "target_items_count": len(target_items_ref.get("items", [])),
+                    "lookup_hit": bool(target_data),
+                },
+            )
+            # endregion
             
             # Fallback target by (type, project, name)
             if not target_data and target_name_val:
@@ -2572,6 +2751,41 @@ def _create_matching_content(
                     if t_type == source_type and t_name == target_name_val and t_proj == project_name:
                         target_data = t
                         break
+            # region agent log
+            _dbg_25ac29(
+                "H16",
+                "match.py:on_view_details:state_only_target_lookup_name_project",
+                "state-only target lookup by type/name/project completed",
+                {
+                    "source_key": source_key,
+                    "source_type": source_type,
+                    "project_name": project_name,
+                    "target_name_from_grid": target_name_val,
+                    "lookup_hit": bool(target_data),
+                },
+            )
+            # endregion
+
+            if not target_data and source_type == "REP" and target_id not in ("", "None", None):
+                for t in target_items_ref.get("items", []):
+                    if str(t.get("element_type_code", "")) != "REP":
+                        continue
+                    candidate_repo_id = t.get("repository_id") or (t.get("metadata") or {}).get("repository_id")
+                    if str(candidate_repo_id) == str(target_id):
+                        target_data = t
+                        break
+                # region agent log
+                _dbg_25ac29(
+                    "H17",
+                    "match.py:on_view_details:state_only_rep_lookup_repository_id",
+                    "state-only REP lookup by repository_id completed",
+                    {
+                        "source_key": source_key,
+                        "target_id": target_id,
+                        "lookup_hit": bool(target_data),
+                    },
+                )
+                # endregion
             
             # Find state resource
             state_resource = None
@@ -2626,6 +2840,20 @@ def _create_matching_content(
                     if str(t.get("dbt_id")) == str(target_id):
                         target_data = t
                         break
+            # region agent log
+            if source_type == "CRD":
+                _dbg_25ac29(
+                    "H22",
+                    "match.py:on_view_details:crd_target_lookup_by_id",
+                    "CRD details target lookup by dbt_id completed",
+                    {
+                        "source_key": source_key,
+                        "target_id": target_id,
+                        "lookup_hit": bool(target_data),
+                        "target_items_count": len(target_items_ref.get("items", [])),
+                    },
+                )
+            # endregion
             
             # Fallback for NAME_KEYED_TYPES (VAR, JEVO) and PROJECT_SCOPED_TYPES:
             # These may not have a usable dbt_id. Match by (type, project, name) instead.
@@ -2645,11 +2873,47 @@ def _create_matching_content(
                         else:
                             target_data = t
                             break
+            # region agent log
+            if source_type == "CRD":
+                _dbg_25ac29(
+                    "H23",
+                    "match.py:on_view_details:crd_target_lookup_by_name_project",
+                    "CRD details target lookup by type/name/project completed",
+                    {
+                        "source_key": source_key,
+                        "target_name": grid_row.get("target_name", ""),
+                        "project_name": grid_row.get("project_name", ""),
+                        "lookup_hit": bool(target_data),
+                        "resolved_target_name": (target_data or {}).get("name", ""),
+                    },
+                )
+            # endregion
             
             # Find state resource data if available
             state_resource = None
             state_id = grid_row.get("state_id")
             state_address_from_grid = grid_row.get("state_address", "")
+            # region agent log
+            if source_type == "CRD":
+                _dbg_25ac29(
+                    "H9",
+                    "match.py:on_view_details:crd_state_lookup_start",
+                    "starting CRD details state lookup",
+                    {
+                        "source_key": source_key,
+                        "source_name": source_item.get("name", ""),
+                        "project_name": grid_row.get("project_name", ""),
+                        "source_env_name": source_item.get("environment_name", ""),
+                        "drift_status": grid_row.get("drift_status", ""),
+                        "state_id": state_id,
+                        "state_address": state_address_from_grid,
+                        "has_state_result": bool(state_ref.get("state_result")),
+                        "state_resource_count": len(
+                            getattr(state_ref.get("state_result"), "resources", []) or []
+                        ),
+                    },
+                )
+            # endregion
             if state_ref.get("state_result") and state_ref["state_result"].resources:
                 if not source_type:
                     source_type = source_item.get("element_type_code", "")
@@ -2657,16 +2921,7 @@ def _create_matching_content(
                 if state_id:
                     for res in state_ref["state_result"].resources:
                         if res.dbt_id == state_id and res.element_code == source_type:
-                            state_resource = {
-                                "address": res.address,
-                                "dbt_id": res.dbt_id,
-                                "name": res.name,
-                                "tf_name": res.tf_name,
-                                "element_code": res.element_code,
-                                "project_id": res.project_id,
-                                "resource_index": res.resource_index,
-                                **res.attributes,
-                            }
+                            state_resource = _state_resource_to_dict(res)
                             break
                 
                 # Fallback for NAME_KEYED_TYPES (VAR, JEVO): state_id is always None.
@@ -2678,16 +2933,7 @@ def _create_matching_content(
                     if state_address_from_grid:
                         for res in state_ref["state_result"].resources:
                             if res.address == state_address_from_grid:
-                                state_resource = {
-                                    "address": res.address,
-                                    "dbt_id": res.dbt_id,
-                                    "name": res.name,
-                                    "tf_name": res.tf_name,
-                                    "element_code": res.element_code,
-                                    "project_id": res.project_id,
-                                    "resource_index": res.resource_index,
-                                    **res.attributes,
-                                }
+                                state_resource = _state_resource_to_dict(res)
                                 break
                     # Then try by (element_code, project, name) using resource_index
                     if not state_resource and source_name_val:
@@ -2698,17 +2944,52 @@ def _create_matching_content(
                                 if project_name_val and res.resource_index and res.resource_index.endswith(expected_suffix):
                                     res_project = res.resource_index[:-len(expected_suffix)]
                                     if res_project == project_name_val:
-                                        state_resource = {
-                                            "address": res.address,
-                                            "dbt_id": res.dbt_id,
-                                            "name": res.name,
-                                            "tf_name": res.tf_name,
-                                            "element_code": res.element_code,
-                                            "project_id": res.project_id,
-                                            "resource_index": res.resource_index,
-                                            **res.attributes,
-                                        }
+                                        state_resource = _state_resource_to_dict(res)
                                         break
+                # CRD has no direct TF resource; use parent ENV state row for details.
+                if not state_resource and source_type == "CRD":
+                    state_resource = _resolve_crd_parent_env_state_resource(
+                        source_item=source_item,
+                        grid_row=grid_row,
+                        grid_rows=grid_data_ref.get("all", []) or grid_data_ref.get("data", []),
+                        state_result=state_ref.get("state_result"),
+                    )
+            # region agent log
+            if source_type == "CRD":
+                env_probe_candidates = 0
+                env_probe_hits = 0
+                source_project_name = grid_row.get("project_name", "")
+                source_env_name = source_item.get("environment_name", "")
+                if state_ref.get("state_result") and state_ref["state_result"].resources:
+                    for _res in state_ref["state_result"].resources:
+                        if _res.element_code != "ENV":
+                            continue
+                        env_probe_candidates += 1
+                        if (
+                            (_res.name or "") == source_env_name
+                            and (
+                                source_project_name == ""
+                                or source_project_name in (_res.resource_index or "")
+                            )
+                        ):
+                            env_probe_hits += 1
+                _dbg_25ac29(
+                    "H10",
+                    "match.py:on_view_details:crd_state_lookup_end",
+                    "finished CRD details state lookup",
+                    {
+                        "source_key": source_key,
+                        "state_resource_found": state_resource is not None,
+                        "state_resource_address": (state_resource or {}).get("address"),
+                        "state_resource_element_code": (state_resource or {}).get("element_code"),
+                        "resolved_via_parent_env": bool(
+                            state_resource and (state_resource.get("element_code") == "ENV")
+                        ),
+                        "env_probe_candidates": env_probe_candidates,
+                        "env_probe_hits": env_probe_hits,
+                    },
+                )
+            # endregion
             
             # Callback to handle manual target selection from dropdown
             def handle_target_selected(selected_target: dict):
@@ -6629,6 +6910,13 @@ def _create_navigation_with_grid_data(
                 if not unsaved and not state.map.mapping_file_valid:
                     state.map.mapping_file_valid = True
                     save_state()
+                # Always persist target intent before leaving Match so Deploy sees
+                # current create/update/removal intent even without explicit save click.
+                try:
+                    _persist_target_intent_from_match(state)
+                    logging.debug("persisted target intent during continue navigation")
+                except Exception as e:
+                    logging.warning(f"Failed to persist target intent on continue: {e}")
                 on_step_change(WorkflowStep.CONFIGURE)
             
             btn = ui.button(

@@ -68,6 +68,7 @@ resource "dbtcloud_extended_attributes" "extended_attrs" {
     source_id         = try(each.value.ext_data.id, null)
     source_identity   = "EXTATTR:${each.value.project_key}:${each.value.ext_key}"
     source_key        = each.value.ext_key
+    source_name       = each.value.ext_key
     source_project_key = each.value.project_key
   }
 }
@@ -89,6 +90,7 @@ resource "dbtcloud_extended_attributes" "protected_extended_attrs" {
     source_id         = try(each.value.ext_data.id, null)
     source_identity   = "EXTATTR:${each.value.project_key}:${each.value.ext_key}"
     source_key        = each.value.ext_key
+    source_name       = each.value.ext_key
     source_project_key = each.value.project_key
   }
 

@@ -414,6 +414,15 @@ resource "dbtcloud_environment" "environments" {
 
   # Extended attributes (project-scoped JSON overrides)
   extended_attributes_id = try(each.value.env_data.extended_attributes_key, null) != null && each.value.env_data.extended_attributes_key != "" ? lookup(local.resolve_extended_attributes_id, "${each.value.project_key}_${each.value.env_data.extended_attributes_key}", null) : null
+
+  resource_metadata = {
+    source_project_id  = lookup(local.source_project_ids_by_key, each.value.project_key, null)
+    source_id          = try(each.value.env_data.id, null)
+    source_identity    = "ENV:${each.value.project_key}:${each.value.env_key}"
+    source_key         = each.value.env_key
+    source_project_key = each.value.project_key
+    source_name        = each.value.env_data.name
+  }
 }
 
 #############################################
@@ -428,7 +437,7 @@ resource "dbtcloud_environment" "protected_environments" {
   project_id    = each.value.project_id
   name          = each.value.env_data.name
   type          = each.value.env_data.type
-  connection_id = local.resolve_connection_id["${each.value.project_key}_${each.value.env_key}"]  # Look up credential_id from the appropriate credential resource based on type
+  connection_id = local.resolve_connection_id["${each.value.project_key}_${each.value.env_key}"] # Look up credential_id from the appropriate credential resource based on type
   # Use try() to handle environments without credentials (returns null)
   credential_id = try(coalesce(
     try(dbtcloud_databricks_credential.credentials[each.key].credential_id, null),
@@ -443,7 +452,7 @@ resource "dbtcloud_environment" "protected_environments" {
     try(dbtcloud_starburst_credential.credentials[each.key].credential_id, null),
     try(dbtcloud_spark_credential.credentials[each.key].credential_id, null),
     try(dbtcloud_teradata_credential.credentials[each.key].credential_id, null),
-  ), null)  # Optional fields
+  ), null) # Optional fields
   dbt_version                = try(each.value.env_data.dbt_version, null)
   enable_model_query_history = try(each.value.env_data.enable_model_query_history, null)
   custom_branch              = try(each.value.env_data.custom_branch, null)
@@ -452,6 +461,15 @@ resource "dbtcloud_environment" "protected_environments" {
 
   # Extended attributes (project-scoped JSON overrides)
   extended_attributes_id = try(each.value.env_data.extended_attributes_key, null) != null && each.value.env_data.extended_attributes_key != "" ? lookup(local.resolve_extended_attributes_id, "${each.value.project_key}_${each.value.env_data.extended_attributes_key}", null) : null
+
+  resource_metadata = {
+    source_project_id  = lookup(local.source_project_ids_by_key, each.value.project_key, null)
+    source_id          = try(each.value.env_data.id, null)
+    source_identity    = "ENV:${each.value.project_key}:${each.value.env_key}"
+    source_key         = each.value.env_key
+    source_project_key = each.value.project_key
+    source_name        = each.value.env_data.name
+  }
 
   lifecycle {
     prevent_destroy = true

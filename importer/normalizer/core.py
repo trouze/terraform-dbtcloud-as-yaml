@@ -50,6 +50,7 @@ CONNECTION_FIELD_MAPPING: Dict[str, Dict[str, str]] = {
         # Auth type
         "deployment_env_auth_type": "deployment_env_auth_type",
         # Service account (non-sensitive parts)
+        "private_key_id": "private_key_id",
         "client_email": "client_email",
         "client_id": "client_id",
         "auth_uri": "auth_uri",
@@ -74,7 +75,7 @@ CONNECTION_FIELD_MAPPING: Dict[str, Dict[str, str]] = {
         "gcs_bucket": "gcs_bucket",
         # Adapter version
         "use_latest_adapter": "use_latest_adapter",
-        # Note: private_key, private_key_id, application_id/secret are sensitive
+        # Note: private_key and application_id/secret are sensitive
     },
     "redshift": {
         "hostname": "hostname",
@@ -193,7 +194,11 @@ def _map_connection_details_to_terraform(
     return result
 
 
-def _build_credential_dict(credential: Credential) -> Dict[str, Any]:
+def _build_credential_dict(
+    credential: Credential,
+    *,
+    include_source_id: bool = False,
+) -> Dict[str, Any]:
     """Build credential dict with fields appropriate for the credential type.
     
     Different credential types have different fields:
@@ -214,6 +219,8 @@ def _build_credential_dict(credential: Credential) -> Dict[str, Any]:
     result: Dict[str, Any] = {
         "schema": credential.schema or "",
     }
+    if include_source_id and credential.id:
+        result["id"] = credential.id
     
     # Add credential_type if known
     if cred_type:
@@ -453,7 +460,8 @@ def _normalize_connections(
     exclude_ids = config.get_exclude_ids("connections")
     include_only = config.get_include_only_keys("connections")
     
-    for key, conn in connections.items():
+    _sorted_connections = sorted(connections.items(), key=lambda kv: (kv[0], kv[1].id or 0))
+    for key, conn in _sorted_connections:
         element_id = _get_element_id(conn)
         
         # Apply filters
@@ -503,23 +511,26 @@ def _normalize_connections(
                 conn_data["private_link_endpoint_key"] = lookup_id
                 context.add_placeholder(lookup_id, f"PrivateLink endpoint ID {privatelink_id}")
         
-        # Extract provider_config from connection details (fetched from individual endpoint)
-        # This contains provider-specific fields like host, http_path, account, etc.
-        # The config can be in two places:
-        # 1. conn.details.connection_details.config (when using include_related)
-        # 2. conn.details.config (direct from individual endpoint response)
+        # Extract provider_config from connection details (fetched from individual endpoint).
+        # Config values can appear in two places:
+        # 1) conn.details.connection_details.config (include_related payload)
+        # 2) conn.details.config (top-level detail payload)
+        #
+        # We merge both so fields missing from include_related (for example BigQuery
+        # private_key_id in some API responses) are backfilled from top-level config.
+        provider_config: Dict[str, Any] = {}
         connection_details = conn.details.get("connection_details")
         if connection_details and isinstance(connection_details, dict):
-            provider_config = _map_connection_details_to_terraform(
-                conn.type, connection_details
+            provider_config.update(
+                _map_connection_details_to_terraform(conn.type, connection_details)
             )
-        elif conn.details.get("config") and isinstance(conn.details.get("config"), dict):
-            # Fallback: config is directly in details (common with individual endpoint)
-            provider_config = _map_connection_details_to_terraform(
-                conn.type, {"config": conn.details["config"]}
+        details_config = conn.details.get("config")
+        if details_config and isinstance(details_config, dict):
+            fallback_provider_config = _map_connection_details_to_terraform(
+                conn.type, {"config": details_config}
             )
-        else:
-            provider_config = {}
+            for field, value in fallback_provider_config.items():
+                provider_config.setdefault(field, value)
         
         if provider_config:
             conn_data["provider_config"] = provider_config
@@ -561,7 +572,8 @@ def _normalize_repositories(
     exclude_ids = config.get_exclude_ids("repositories")
     include_only = config.get_include_only_keys("repositories")
     
-    for key, repo in repositories.items():
+    _sorted_repos = sorted(repositories.items(), key=lambda kv: (kv[0], kv[1].id or 0))
+    for key, repo in _sorted_repos:
         # Apply filters
         if key in exclude_keys:
             context.add_exclusion("repository", key, "Excluded by key filter", _get_element_id(repo))
@@ -846,7 +858,11 @@ def _build_project_id_mapping(
     exclude_keys = config.get_exclude_keys("projects")
     exclude_ids = config.get_exclude_ids("projects")
     
-    for project in snapshot.projects:
+    _sorted_projects = sorted(
+        snapshot.projects,
+        key=lambda p: (0, p.id or 0, p.name, p.key) if p.id else (1, 0, p.name, p.key),
+    )
+    for project in _sorted_projects:
         # Apply same filters as _normalize_projects
         if scope_mode == "specific_projects":
             if project.key not in scope_project_keys and project.id not in scope_project_ids:
@@ -886,7 +902,11 @@ def _normalize_projects(
     exclude_keys = config.get_exclude_keys("projects")
     exclude_ids = config.get_exclude_ids("projects")
     
-    for project in snapshot.projects:
+    _sorted_projects = sorted(
+        snapshot.projects,
+        key=lambda p: (0, p.id or 0, p.name, p.key) if p.id else (1, 0, p.name, p.key),
+    )
+    for project in _sorted_projects:
         # Apply scope filter
         if scope_mode == "specific_projects":
             if project.key not in scope_project_keys and project.id not in scope_project_ids:
@@ -1012,7 +1032,10 @@ def _normalize_environments(
             env_data["connection"] = None
         
         # Credential - output fields based on credential type
-        env_data["credential"] = _build_credential_dict(env.credential)
+        env_data["credential"] = _build_credential_dict(
+            env.credential,
+            include_source_id=not config.should_strip_source_ids(),
+        )
         
         # Optional fields - ALWAYS include to ensure Terraform type consistency
         env_data["dbt_version"] = env.dbt_version or None
@@ -1020,6 +1043,8 @@ def _normalize_environments(
         env_data["enable_model_query_history"] = env.enable_model_query_history
         env_data["deployment_type"] = env.deployment_type or None
         env_data["extended_attributes_key"] = getattr(env, "extended_attributes_key", None) or None
+        if not config.should_strip_source_ids() and env.id:
+            env_data["id"] = env.id
         
         result.append(env_data)
     
@@ -1348,6 +1373,8 @@ def _normalize_jobs(
         # Job-level environment variable overrides.
         # Always include for Terraform type consistency.
         job_data["environment_variable_overrides"] = getattr(job, "environment_variable_overrides", {}) or {}
+        if not config.should_strip_source_ids() and job.id:
+            job_data["id"] = job.id
         
         result.append(job_data)
     
@@ -1416,6 +1443,9 @@ def _normalize_environment_variables(
             "name": var.name,
             "environment_values": env_values,
         }
+        source_var_id = getattr(var, "id", None)
+        if not config.should_strip_source_ids() and source_var_id:
+            var_data["id"] = source_var_id
         
         result.append(var_data)
     

@@ -109,6 +109,15 @@ resource "dbtcloud_environment_variable" "environment_variables" {
       env_value
     )
   }
+
+  resource_metadata = {
+    source_project_id  = lookup(local.source_project_ids_by_key, each.value.project_key, null)
+    source_id          = try(each.value.env_var_data.id, null)
+    source_identity    = "VAR:${each.value.project_key}:${each.value.env_var_key}"
+    source_key         = each.value.env_var_key
+    source_project_key = each.value.project_key
+    source_name        = each.value.env_var_data.name
+  }
 }
 
 #############################################
@@ -133,6 +142,15 @@ resource "dbtcloud_environment_variable" "protected_environment_variables" {
       lookup(var.token_map, replace(env_value, "secret_", ""), env_value) :
       env_value
     )
+  }
+
+  resource_metadata = {
+    source_project_id  = lookup(local.source_project_ids_by_key, each.value.project_key, null)
+    source_id          = try(each.value.env_var_data.id, null)
+    source_identity    = "VAR:${each.value.project_key}:${each.value.env_var_key}"
+    source_key         = each.value.env_var_key
+    source_project_key = each.value.project_key
+    source_name        = each.value.env_var_data.name
   }
 
   lifecycle {

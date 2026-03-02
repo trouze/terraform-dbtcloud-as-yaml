@@ -260,6 +260,15 @@ resource "dbtcloud_job" "jobs" {
   # Include "state_aware_orchestration" to enable SAO (requires dbt_version="latest-fusion")
   cost_optimization_features = try(each.value.job_data.cost_optimization_features, null)
 
+  resource_metadata = {
+    source_project_id  = lookup(local.source_project_ids_by_key, each.value.project_key, null)
+    source_id          = try(each.value.job_data.id, null)
+    source_identity    = "JOB:${each.value.project_key}:${each.value.job_key}"
+    source_key         = each.value.job_key
+    source_project_key = each.value.project_key
+    source_name        = each.value.job_data.name
+  }
+
   lifecycle {
     ignore_changes = [
       job_completion_trigger_condition,
@@ -323,6 +332,15 @@ resource "dbtcloud_job" "protected_jobs" {
   # SAO (State-Aware Orchestration) fields
   force_node_selection       = local.force_node_selection_effective[each.key]
   cost_optimization_features = try(each.value.job_data.cost_optimization_features, null)
+
+  resource_metadata = {
+    source_project_id  = lookup(local.source_project_ids_by_key, each.value.project_key, null)
+    source_id          = try(each.value.job_data.id, null)
+    source_identity    = "JOB:${each.value.project_key}:${each.value.job_key}"
+    source_key         = each.value.job_key
+    source_project_key = each.value.project_key
+    source_name        = each.value.job_data.name
+  }
 
   lifecycle {
     prevent_destroy = true

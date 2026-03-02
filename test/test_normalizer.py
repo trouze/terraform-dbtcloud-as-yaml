@@ -112,10 +112,21 @@ def full_snapshot_dict():
                 "environment_variables": [
                     {
                         "name": "DBT_ENV_VAR_TEST",
+                        "id": 600,
                         "project_default": "default_value",
                         "environment_values": {"production": "prod_value"},
                         "element_mapping_id": "VAR_001",
                         "include_in_conversion": True,
+                    }
+                ],
+                "extended_attributes": [
+                    {
+                        "key": "ext_attrs_1",
+                        "id": 700,
+                        "extended_attributes": {
+                            "connection_parameters": {"_retry_stop_after_attempts_count": 30}
+                        },
+                        "state": 1,
                     }
                 ],
                 "metadata": {},
@@ -461,6 +472,168 @@ def test_preserve_source_ids_option(full_snapshot_dict):
     assert result["globals"]["connections"][0]["id"] == 100
     assert result["globals"]["repositories"][0]["id"] == 200
     assert result["projects"][0]["id"] == 300
+    assert result["projects"][0]["environments"][0]["id"] == 400
+    assert result["projects"][0]["jobs"][0]["id"] == 500
+    assert result["projects"][0]["environment_variables"][0]["id"] == 600
+    assert result["projects"][0]["extended_attributes"][0]["id"] == 700
+
+
+def test_bigquery_connection_maps_private_key_id_from_details_config(default_mapping_config):
+    """BigQuery private_key_id should map from details.config into provider_config."""
+    snapshot_dict = {
+        "account_id": 12345,
+        "account_name": "Test Account",
+        "globals": {
+            "connections": {
+                "bigquery_sthibeault": {
+                    "key": "bigquery_sthibeault",
+                    "id": 238776,
+                    "name": "BigQuery - sthibeault",
+                    "type": "bigquery",
+                    "details": {
+                        "adapter_version": "bigquery_v1",
+                        "config": {
+                            "project_id": "ps-sthibeault-fusion-dev",
+                            "deployment_env_auth_type": "service-account-json",
+                            "private_key_id": "8efdff6229f48bfc1047e7259e8d0d968ef55a78",
+                            "private_key": "**********",
+                            "client_email": "dbt-service@ps-sthibeault-fusion-dev.iam.gserviceaccount.com",
+                            "client_id": "110206344724199657711",
+                            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                            "token_uri": "https://oauth2.googleapis.com/token",
+                            "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+                            "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/dbt-service%40ps-sthibeault-fusion-dev.iam.gserviceaccount.com",
+                        },
+                    },
+                    "include_in_conversion": True,
+                }
+            },
+            "repositories": {},
+            "service_tokens": {},
+            "groups": {},
+            "notifications": {},
+            "webhooks": {},
+            "privatelink_endpoints": {},
+        },
+        "projects": [],
+    }
+
+    snapshot = AccountSnapshot(**snapshot_dict)
+    context = NormalizationContext(default_mapping_config)
+    result = normalize_snapshot(snapshot, default_mapping_config, context)
+
+    connection = result["globals"]["connections"][0]
+    provider_config = connection.get("provider_config", {})
+    assert provider_config["gcp_project_id"] == "ps-sthibeault-fusion-dev"
+    assert provider_config["deployment_env_auth_type"] == "service-account-json"
+    assert provider_config["private_key_id"] == "8efdff6229f48bfc1047e7259e8d0d968ef55a78"
+    # private_key is sensitive/masked and should not be propagated into provider_config
+    assert "private_key" not in provider_config
+
+
+def test_bigquery_mapped_private_key_id_wins_over_module_dummy(default_mapping_config):
+    """When source provides private_key_id, normalized output should preserve it.
+
+    Terraform module fallback should only apply when this field is absent.
+    """
+    source_private_key_id = "8efdff6229f48bfc1047e7259e8d0d968ef55a78"
+    module_dummy_private_key_id = "0000000000000000000000000000000000000000"
+
+    snapshot_dict = {
+        "account_id": 12345,
+        "account_name": "Test Account",
+        "globals": {
+            "connections": {
+                "bigquery_with_id": {
+                    "key": "bigquery_with_id",
+                    "id": 238776,
+                    "name": "BigQuery - with id",
+                    "type": "bigquery",
+                    "details": {
+                        "config": {
+                            "project_id": "ps-sthibeault-fusion-dev",
+                            "deployment_env_auth_type": "service-account-json",
+                            "private_key_id": source_private_key_id,
+                        },
+                    },
+                    "include_in_conversion": True,
+                }
+            },
+            "repositories": {},
+            "service_tokens": {},
+            "groups": {},
+            "notifications": {},
+            "webhooks": {},
+            "privatelink_endpoints": {},
+        },
+        "projects": [],
+    }
+
+    snapshot = AccountSnapshot(**snapshot_dict)
+    context = NormalizationContext(default_mapping_config)
+    result = normalize_snapshot(snapshot, default_mapping_config, context)
+
+    provider_config = result["globals"]["connections"][0].get("provider_config", {})
+    assert provider_config["private_key_id"] == source_private_key_id
+    assert provider_config["private_key_id"] != module_dummy_private_key_id
+
+
+def test_bigquery_private_key_id_backfilled_from_details_config_when_include_related_omits_it(
+    default_mapping_config,
+):
+    """Merge connection_details.config and details.config for provider_config mapping.
+
+    Some API responses include BigQuery private_key_id only in details.config.
+    """
+    snapshot_dict = {
+        "account_id": 12345,
+        "account_name": "Test Account",
+        "globals": {
+            "connections": {
+                "bigquery_sthibeault": {
+                    "key": "bigquery_sthibeault",
+                    "id": 238776,
+                    "name": "BigQuery - sthibeault",
+                    "type": "bigquery",
+                    "details": {
+                        # include_related payload: missing private_key_id
+                        "connection_details": {
+                            "config": {
+                                "project_id": "ps-sthibeault-fusion-dev",
+                                "deployment_env_auth_type": "service-account-json",
+                                "client_email": "dbt-service@ps-sthibeault-fusion-dev.iam.gserviceaccount.com",
+                                "client_id": "110206344724199657711",
+                            }
+                        },
+                        # top-level details payload: contains private_key_id
+                        "config": {
+                            "project_id": "ps-sthibeault-fusion-dev",
+                            "deployment_env_auth_type": "service-account-json",
+                            "private_key_id": "8efdff6229f48bfc1047e7259e8d0d968ef55a78",
+                            "client_email": "dbt-service@ps-sthibeault-fusion-dev.iam.gserviceaccount.com",
+                            "client_id": "110206344724199657711",
+                        },
+                    },
+                    "include_in_conversion": True,
+                }
+            },
+            "repositories": {},
+            "service_tokens": {},
+            "groups": {},
+            "notifications": {},
+            "webhooks": {},
+            "privatelink_endpoints": {},
+        },
+        "projects": [],
+    }
+
+    snapshot = AccountSnapshot(**snapshot_dict)
+    context = NormalizationContext(default_mapping_config)
+    result = normalize_snapshot(snapshot, default_mapping_config, context)
+
+    provider_config = result["globals"]["connections"][0].get("provider_config", {})
+    assert provider_config["gcp_project_id"] == "ps-sthibeault-fusion-dev"
+    assert provider_config["private_key_id"] == "8efdff6229f48bfc1047e7259e8d0d968ef55a78"
 
 
 if __name__ == "__main__":
