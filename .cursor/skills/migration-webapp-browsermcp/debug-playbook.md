@@ -140,3 +140,37 @@ Actions:
 Rule:
 
 - do not leave run-debug artifacts only in external folders
+
+## 9) Test integrity and TDD default
+
+Default strategy:
+
+- use test-driven debugging: reproduce with a failing test (or nearest existing test), implement minimal fix, rerun targeted tests, then broader checks
+- prefer adding focused tests over broad speculative changes
+
+Hard rule:
+
+- do not alter existing tests just to force a pass after repeated code failures
+- treat repeated failures as a signal to revisit production code assumptions first
+
+If changing an existing test appears necessary:
+
+1. run an adversarial analysis that argues against changing the test:
+   - could production code satisfy the original expectation?
+   - is the failure due to environment/setup instead of logic?
+   - does test behavior encode an intentional contract or regression guard?
+2. document why keeping the existing test is insufficient
+3. only proceed when confidence is >= 95% that the test is flaky or malformed
+4. if test is changed, keep proof:
+   - failure evidence before change
+   - rationale for flake/malformation
+   - passing result after fix with no contract regression
+
+Enforcement add-ons:
+
+- if an existing test file is edited, include a `Test-Change Justification` block in the commit message:
+  - why test change was necessary,
+  - why production-only fix was insufficient,
+  - how contract/regression intent is preserved.
+- cap retries per hypothesis at 2 attempts; on attempt 3, stop and replan before any further edits.
+- for migration/adopt/destroy bug fixes, add at least one negative test asserting the failure mode is blocked.

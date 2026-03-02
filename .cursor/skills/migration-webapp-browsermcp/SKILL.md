@@ -161,6 +161,24 @@ Use helper script:
 
 This script creates the timestamped run folder and copies files there.
 
+## Local Provider Override and Rebuild
+
+When testing with a local override from:
+
+- `/Users/operator/Documents/git/dbt-labs/terraform-provider-dbtcloud`
+
+it is expected and correct to rebuild the provider binary after provider code changes so Terraform picks up the new behavior.
+
+Standard expectation:
+
+- rebuild provider binary after each meaningful provider change
+- rerun `terraform init` in the test/deployment directory if needed to refresh provider usage
+- verify override is active via Terraform's dev override warning
+
+Reference workflow and troubleshooting:
+
+- `dev_support/LOCAL_PROVIDER_TESTING.md`
+
 ## Timeout and Recovery Rules
 
 If commands or browser actions stall:
@@ -180,6 +198,42 @@ Prefer deterministic recovery over repeated blind retries.
 - adopt -> unadopt transitions (stale import artifacts risk)
 - counters/grid parity issues (rows hidden but summary non-zero)
 - post-restart session behavior and project state rehydrate
+
+## Test Strategy and Integrity Rules
+
+Default approach:
+
+- use TDD-style debugging: reproduce with a failing test (or closest targeted test), apply minimal production fix, rerun targeted tests, then broaden checks
+- prefer adding focused regression tests over broad refactors during incident debugging
+
+Never do this:
+
+- do not modify existing tests just to get a green pass after repeated code failures
+- do not weaken assertions, skip tests, or broaden mocks without explicit evidence-based justification
+
+Before changing an existing test, run adversarial analysis:
+
+1. argue the strongest case for leaving the test unchanged
+2. verify failure is not due to setup/environment drift
+3. verify current test behavior is not an intentional contract/regression guard
+4. only change test when confidence is >=95% that it is flaky or malformed
+5. preserve evidence in notes:
+   - failing output before test edit
+   - rationale for flake/malformation
+   - passing results after fix with no contract regression
+
+Repeated-failure guardrail:
+
+- if the same fix pattern fails twice, stop and change strategy (new hypothesis, narrower repro, or consult debug-playbook symptoms) instead of repeatedly editing tests.
+
+Additional enforcement:
+
+- if an existing test file is edited, include a `Test-Change Justification` block in the commit message with:
+  - why test change was necessary,
+  - why production-only fix was insufficient,
+  - evidence that contract/regression intent is preserved.
+- cap retries per hypothesis at 2 attempts; on attempt 3, mandatory replanning is required before additional code/test edits.
+- for bug fixes in migration/adopt/destroy paths, require at least one negative test that asserts the failure mode is prevented.
 
 ## Supporting Files
 
