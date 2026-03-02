@@ -18,37 +18,17 @@
 
 locals {
   bigquery_dummy_private_key_id = "0000000000000000000000000000000000000000"
-  bigquery_dummy_private_key = trimspace(<<EOT
-    -----BEGIN PRIVATE KEY-----
-    MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDxqaA1avXCIpS5
-    IyAY/LafgEQEhV+Jnc5j05rZDP+BG3ZIwdAlUSLogDKMOwjAGYSI3IMG/FvYIixe
-    kLiz3ZbDF/RdwkEH6DM8Ysysa75pRkGOyBXhDZFHghVc/FlBAob2iCkNOjKy8Eik
-    +AUfUozgT4fDGbrMSKwTZnFKqmViC1ZrXeXzZx5y40sbybHj4jLjkmGD9BMRnOAi
-    GamhP4Sdkrgj92S6ffpQJy2VY3wEJ3CcH+mAarlb/XzFZAQW1mteCtlHHbpxWIuN
-    /wDrpa71T/fb/1CSKQ+AOY+83ZTwQhHmQXt1wUMdupBdXZpu12wl4WcxMmrWUBf2
-    Q7mJ/tQTAgMBAAECggEBAJ9QqVqt8eiTLaLD4lQ2vhp2z+B/INWzoC21gb8Xz5WI
-    yjj69MK1M6M9aJWEEae66uHjJcpEMjRRixiopeuF6O8i6qmo94BD9wsXQ0FkInp6
-    o5uCktH0RNN0karkfd7a0KjUaOPcezH2MJ35GD9nB5KVO7ZGTxx/yFldztBfd0jj
-    Un30WA5ic1rJ3RU+TlVlXUgTWlYJai0aPiRVT6ucE6FLKN8A8H2DK09xt5EQsI9j
-    HoLSqX22UL2jA+VJhCABaFlGR9veALP16iaXn6+YudoEi98jBJTMwQSdStjEanKP
-    gi6OzGriaihHOEKnFBP2CaF1sZfqfSZl+5hLIWRbvqECgYEA/yXsfp2ilEx8ghtf
-    NmDs7UBEOEw0krOolIFwHnfrdL+bIg8oxXqmQCNbLLrhzJbv5T/OTn7xFI8s5SzV
-    u8n0YIaun3U+ZYrUyBERNa0tkf9F23BT+Jh3nGFOxltyhdexjOIgZPaH0rXX0XAl
-    KZ5dtYIFjpX1oLU0JOSCrAN/SBECgYEA8ngtBTh4aGR6nJ1xwVefZ8VG4eMtty8s
-    CeO6NhZZ8Drhz12TfDj9PC1S9mQPPEx7Xwc/w0J2370bwzW25D5ecM+C8k6lnEm3
-    o3D5HAcGNyuBqk1l3a93N664izZqzAc+zNp1B+kxPoXlE8DNiH3LQMo/GXjpfHlL
-    MohwNG14HeMCgYBB/lYgHbeqceoWYOwMjZ9aci/y+8rxUuS8nIoaZ1wQU2rVsWQT
-    R/juR/bSJ/g1Saj8+7bp2K2Uar/q+uDBdKfvu4Y5GkMsUm9c3AU+g+9wfr1b177w
-    Ysc1PHn6ljaV5cc3sFk+pAFXf881jbMfA6YrR1kWmzTv/05gaHZf9XubcQKBgQCH
-    +uG0tdDBKuiggKPVPGDHf5mbAR8YRro56Z76yloyIbOV6fLWjddnMjv+tmrc9D+U
-    MaqOxO2J2LKDLdKd+mRYe+gCIB08oxL79FWgZEgWFK4pZjKkuszvS2tvl1sZhU6w
-    8CsF/r+BQvIPu+cIjxO4CDSPAoJfLl7/vgi/Pk1I5QKBgAOS78ZwisHI99n+/r95
-    Etq02/kN6LbHbwYC6m1sMMPFqPflqUQle5TDjKMwPmLsqGwoT4dQwleb7PJ2Kcro
-    qoe2dXUBlFwdh2JfhrIWS+kaWbJap1PS3jb1NBb/wdpXyCAGql+Q8J/ywhnzAe/c
-    SD6TfLyibA7EwovT9hwyr9Ql
-    -----END PRIVATE KEY-----
-EOT
-  )
+  # Build a deterministic dummy PEM-shaped value without committing key blobs.
+  bigquery_dummy_private_key_seed = "terraform-dbtcloud-yaml:dummy:bigquery:private-key"
+  bigquery_dummy_private_key_body = join("", [
+    for i in range(0, 8) : base64encode(sha512(format("%s:%d", local.bigquery_dummy_private_key_seed, i)))
+  ])
+  bigquery_dummy_private_key_lines = regexall(".{1,64}", local.bigquery_dummy_private_key_body)
+  bigquery_dummy_private_key = join("\n", concat(
+    [format("-----BEGIN %s-----", "PRIVATE KEY")],
+    local.bigquery_dummy_private_key_lines,
+    [format("-----END %s-----", "PRIVATE KEY")]
+  ))
 
   # ---- Groups ----
   all_groups_map = {

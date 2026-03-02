@@ -13,40 +13,35 @@ Schema structure:
 - conditional: Fields with conditional visibility based on other field values
 """
 
+import base64
+import os
+import subprocess
+from functools import lru_cache
+from textwrap import wrap
 from typing import Any, Dict, List, Optional
 
 
-# A valid RSA 2048-bit private key in PKCS#8 PEM format for use as dummy credential.
-# This is a randomly generated key with no actual use - purely for Terraform validation.
-# Generated once and stored here to ensure consistent dummy credentials across runs.
-DUMMY_PRIVATE_KEY_PEM = """-----BEGIN PRIVATE KEY-----
-MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDxqaA1avXCIpS5
-IyAY/LafgEQEhV+Jnc5j05rZDP+BG3ZIwdAlUSLogDKMOwjAGYSI3IMG/FvYIixe
-kLiz3ZbDF/RdwkEH6DM8Ysysa75pRkGOyBXhDZFHghVc/FlBAob2iCkNOjKy8Eik
-+AUfUozgT4fDGbrMSKwTZnFKqmViC1ZrXeXzZx5y40sbybHj4jLjkmGD9BMRnOAi
-GamhP4Sdkrgj92S6ffpQJy2VY3wEJ3CcH+mAarlb/XzFZAQW1mteCtlHHbpxWIuN
-/wDrpa71T/fb/1CSKQ+AOY+83ZTwQhHmQXt1wUMdupBdXZpu12wl4WcxMmrWUBf2
-Q7mJ/tQTAgMBAAECggEBAJ9QqVqt8eiTLaLD4lQ2vhp2z+B/INWzoC21gb8Xz5WI
-yjj69MK1M6M9aJWEEae66uHjJcpEMjRRixiopeuF6O8i6qmo94BD9wsXQ0FkInp6
-o5uCktH0RNN0karkfd7a0KjUaOPcezH2MJ35GD9nB5KVO7ZGTxx/yFldztBfd0jj
-Un30WA5ic1rJ3RU+TlVlXUgTWlYJai0aPiRVT6ucE6FLKN8A8H2DK09xt5EQsI9j
-HoLSqX22UL2jA+VJhCABaFlGR9veALP16iaXn6+YudoEi98jBJTMwQSdStjEanKP
-gi6OzGriaihHOEKnFBP2CaF1sZfqfSZl+5hLIWRbvqECgYEA/yXsfp2ilEx8ghtf
-NmDs7UBEOEw0krOolIFwHnfrdL+bIg8oxXqmQCNbLLrhzJbv5T/OTn7xFI8s5SzV
-u8n0YIaun3U+ZYrUyBERNa0tkf9F23BT+Jh3nGFOxltyhdexjOIgZPaH0rXX0XAl
-KZ5dtYIFjpX1oLU0JOSCrAN/SBECgYEA8ngtBTh4aGR6nJ1xwVefZ8VG4eMtty8s
-CeO6NhZZ8Drhz12TfDj9PC1S9mQPPEx7Xwc/w0J2370bwzW25D5ecM+C8k6lnEm3
-o3D5HAcGNyuBqk1l3a93N664izZqzAc+zNp1B+kxPoXlE8DNiH3LQMo/GXjpfHlL
-MohwNG14HeMCgYBB/lYgHbeqceoWYOwMjZ9aci/y+8rxUuS8nIoaZ1wQU2rVsWQT
-R/juR/bSJ/g1Saj8+7bp2K2Uar/q+uDBdKfvu4Y5GkMsUm9c3AU+g+9wfr1b177w
-Ysc1PHn6ljaV5cc3sFk+pAFXf881jbMfA6YrR1kWmzTv/05gaHZf9XubcQKBgQCH
-+uG0tdDBKuiggKPVPGDHf5mbAR8YRro56Z76yloyIbOV6fLWjddnMjv+tmrc9D+U
-MaqOxO2J2LKDLdKd+mRYe+gCIB08oxL79FWgZEgWFK4pZjKkuszvS2tvl1sZhU6w
-8CsF/r+BQvIPu+cIjxO4CDSPAoJfLl7/vgi/Pk1I5QKBgAOS78ZwisHI99n+/r95
-Etq02/kN6LbHbwYC6m1sMMPFqPflqUQle5TDjKMwPmLsqGwoT4dQwleb7PJ2Kcro
-qoe2dXUBlFwdh2JfhrIWS+kaWbJap1PS3jb1NBb/wdpXyCAGql+Q8J/ywhnzAe/c
-SD6TfLyibA7EwovT9hwyr9Ql
------END PRIVATE KEY-----""".strip()
+@lru_cache(maxsize=1)
+def get_dummy_private_key_pem() -> str:
+    """Generate a process-local dummy private key to avoid committing key blobs."""
+    try:
+        # Generate a valid PKCS#8 key dynamically when openssl is available.
+        generated = subprocess.run(
+            ["openssl", "genpkey", "-algorithm", "RSA", "-pkeyopt", "rsa_keygen_bits:2048"],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=8,
+        )
+        key = generated.stdout.strip()
+        if "BEGIN PRIVATE KEY" in key and "END PRIVATE KEY" in key:
+            return key
+    except Exception:
+        pass
+
+    # Fallback: syntactically PEM-shaped placeholder generated at runtime.
+    body = "\n".join(wrap(base64.b64encode(os.urandom(512)).decode("ascii"), 64))
+    return f"-----BEGIN PRIVATE KEY-----\n{body}\n-----END PRIVATE KEY-----"
 
 
 # Credential type schemas - aligned with Terraform provider *_credential resources
@@ -108,7 +103,7 @@ CREDENTIAL_SCHEMAS: Dict[str, Dict[str, Any]] = {
                 "password": "dummy_password_placeholder",
             },
             "keypair": {
-                "private_key": DUMMY_PRIVATE_KEY_PEM,
+                "private_key": get_dummy_private_key_pem(),
             },
         },
     },
@@ -535,7 +530,7 @@ def build_dummy_credentials_from_source(
             elif field == "password":
                 result[field] = "dummy_password_placeholder"
             elif field == "private_key":
-                result[field] = DUMMY_PRIVATE_KEY_PEM
+                result[field] = get_dummy_private_key_pem()
             elif field == "token":
                 result[field] = "dummy_token_placeholder"
             elif "secret" in field.lower():

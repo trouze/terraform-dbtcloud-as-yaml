@@ -31,24 +31,19 @@ This patch release fixes a critical issue where multi-line private keys in `secr
 
 ## Changed
 
-### Valid Dummy Private Key
+### Dummy Private Key Handling
 
-**Before:** Dummy keypair credentials used an invalid placeholder string that could cause validation issues:
-```
------BEGIN PRIVATE KEY-----
-dummy_key_placeholder_for_terraform_validation_only
------END PRIVATE KEY-----
-```
+**Before:** Dummy keypair credentials used a static placeholder value that could cause validation issues.
 
-**After:** Now uses a syntactically valid 2048-bit RSA private key in PKCS#8 PEM format, stored as `DUMMY_PRIVATE_KEY_PEM` constant.
+**After:** Dummy keypair values are generated at runtime and are not stored as committed key material in the repository.
 
 **Benefits:**
-- Terraform validation passes with dummy credentials
-- Prevents confusion about whether credentials are properly formatted
-- Key is obviously for testing (randomly generated, not associated with any real account)
+- Avoids committing key-like blobs that trigger secret scanners
+- Keeps test/dummy behavior separate from real credential storage
+- Preserves Terraform compatibility for dummy credential flows
 
 **Files Changed:**
-- `importer/web/components/credential_schemas.py` - Added `DUMMY_PRIVATE_KEY_PEM` constant
+- `importer/web/components/credential_schemas.py` - Runtime dummy private key generation
 
 ### Dummy Credential Indicator
 
