@@ -267,10 +267,128 @@ async def run_generate_pipeline(
         _progress(on_progress, "Merging target baseline into deployment YAML...")
         try:
             if adopt_only_non_project:
-                _progress(
-                    on_progress,
-                    "  Skipping baseline merge (no adopted projects selected)",
-                )
+                # Adopt-only non-project runs still need matching global resources
+                # in deployment YAML so generated HCL contains import targets.
+                if baseline_yaml_path and baseline_yaml_path.exists():
+                    with open(str(baseline_yaml_path), "r") as bf:
+                        baseline_config = yaml.safe_load(bf) or {}
+                    with open(str(yaml_file), "r") as df:
+                        deploy_config = yaml.safe_load(df) or {}
+
+                    baseline_globals = (
+                        baseline_config.get("globals", {})
+                        if isinstance(baseline_config, dict)
+                        else {}
+                    )
+                    deploy_globals = (
+                        deploy_config.get("globals", {})
+                        if isinstance(deploy_config.get("globals", {}), dict)
+                        else {}
+                    )
+
+                    section_by_type = {
+                        "GRP": "groups",
+                        "CON": "connections",
+                        "TOK": "service_tokens",
+                        "NOT": "notifications",
+                        "WEB": "webhooks",
+                    }
+                    selected_by_section: dict[str, set[str]] = {}
+                    selected_names_by_section: dict[str, set[str]] = {}
+
+                    for row in adopt_rows or []:
+                        if row.get("action") != "adopt":
+                            continue
+                        section = section_by_type.get(str(row.get("source_type") or ""))
+                        if not section:
+                            continue
+                        source_key = str(row.get("source_key") or "")
+                        if source_key.startswith("target__"):
+                            source_key = source_key[len("target__"):]
+                        source_key = source_key.strip()
+                        source_name = str(
+                            row.get("source_name")
+                            or row.get("target_name")
+                            or ""
+                        ).lstrip("↳").strip()
+                        selected_by_section.setdefault(section, set())
+                        selected_names_by_section.setdefault(section, set())
+                        if source_key:
+                            selected_by_section[section].add(source_key.lower())
+                        if source_name:
+                            selected_names_by_section[section].add(source_name.lower())
+
+                    merged_items = 0
+                    for section, wanted_keys in selected_by_section.items():
+                        baseline_items = (
+                            baseline_globals.get(section, [])
+                            if isinstance(baseline_globals, dict)
+                            else []
+                        )
+                        if not isinstance(baseline_items, list) or not baseline_items:
+                            continue
+
+                        existing_items = list(deploy_globals.get(section, []))
+                        existing_keys = {
+                            str(item.get("key", "")).strip().lower()
+                            for item in existing_items
+                            if isinstance(item, dict)
+                        }
+                        existing_names = {
+                            str(item.get("name", "")).strip().lower()
+                            for item in existing_items
+                            if isinstance(item, dict)
+                        }
+                        wanted_names = selected_names_by_section.get(section, set())
+
+                        for item in baseline_items:
+                            if not isinstance(item, dict):
+                                continue
+                            item_key = str(item.get("key", "")).strip().lower()
+                            item_name = str(item.get("name", "")).strip().lower()
+                            is_selected = (
+                                (item_key and item_key in wanted_keys)
+                                or (item_name and item_name in wanted_names)
+                            )
+                            if not is_selected:
+                                continue
+                            if (item_key and item_key in existing_keys) or (
+                                item_name and item_name in existing_names
+                            ):
+                                continue
+                            existing_items.append(item)
+                            if item_key:
+                                existing_keys.add(item_key)
+                            if item_name:
+                                existing_names.add(item_name)
+                            merged_items += 1
+
+                        deploy_globals[section] = existing_items
+
+                    if merged_items > 0:
+                        deploy_config["globals"] = deploy_globals
+                        with open(str(yaml_file), "w") as wf:
+                            yaml.dump(
+                                deploy_config,
+                                wf,
+                                default_flow_style=False,
+                                sort_keys=False,
+                                allow_unicode=True,
+                            )
+                        _progress(
+                            on_progress,
+                            f"  Merged {merged_items} selected global resources from target baseline",
+                        )
+                    else:
+                        _progress(
+                            on_progress,
+                            "  No selected global resources found in target baseline merge",
+                        )
+                else:
+                    _progress(
+                        on_progress,
+                        "  No target baseline available for selected global resource merge",
+                    )
             elif baseline_yaml_path and baseline_yaml_path.exists():
                 from importer.web.utils.adoption_yaml_updater import merge_yaml_configs
 

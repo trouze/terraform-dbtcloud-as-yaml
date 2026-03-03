@@ -104,3 +104,6 @@ projects/
 dev_support/bt/
 dev_support/bt2/
 dev_support/btrsamples/
+
+# Added by ggshield
+.cache_ggshield

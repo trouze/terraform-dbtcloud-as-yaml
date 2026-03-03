@@ -1119,6 +1119,11 @@ async def _run_adopt_apply(
             text=True,
             env=env,
         )
+        _error_line = ""
+        for _line in (result.stderr or "").splitlines():
+            if "Error:" in _line:
+                _error_line = _line.strip()[:240]
+                break
 
         _emit_bounded_terminal_output(
             terminal,
@@ -1575,6 +1580,7 @@ def create_adopt_page(
                 "project_id": row.get("project_id", ""),
                 "action": _action,
             })
+
 
         # region agent log
         _dbg_673991(
@@ -2253,6 +2259,7 @@ def create_adopt_page(
                 """Build summary dict directly from adopt_grid_data (reflects UI toggles)."""
                 adopt_rows = list(adopt_grid_data)  # shallow copy
                 adopt_count = sum(1 for r in adopt_rows if r.get("action") == "adopt")
+                adopted_count = sum(1 for r in adopt_rows if r.get("action") == "adopted")
                 protected_count = sum(
                     1 for r in adopt_rows
                     if r.get("protected") and r.get("action") == "adopt"

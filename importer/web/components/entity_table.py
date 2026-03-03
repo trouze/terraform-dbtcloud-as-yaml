@@ -1770,8 +1770,17 @@ def _render_match_debug_tab(
     drift_status = grid_row.get("drift_status", "no_state")
     confidence = grid_row.get("confidence", "none")
     action = grid_row.get("action", "")
-    state_address = grid_row.get("state_address") or (state_resource.get("address") if state_resource else None)
-    
+    state_address = grid_row.get("state_address")
+    crd_env_parent_inherited = (
+        source_type == "CRD"
+        and bool(state_resource)
+        and state_resource.get("element_code") == "ENV"
+    )
+    parent_env_state_address = (
+        (state_resource or {}).get("address")
+        if crd_env_parent_inherited
+        else None
+    )
     with ui.column().classes("w-full gap-4 p-4"):
         ui.label("Match Resolution Debug").classes("font-bold text-lg text-purple-600")
         ui.label("Diagnostic information about how this resource match was resolved").classes("text-sm text-slate-500 mb-2")
@@ -1806,7 +1815,7 @@ def _render_match_debug_tab(
                 ui.label(strategy_desc).classes("text-sm text-slate-600")
             
             # Check for special cases
-            if confidence == "none" and state_resource:
+            if confidence == "none" and state_resource and not crd_env_parent_inherited:
                 ui.label("⚠️ Resource exists in state but no target match").classes("text-xs text-amber-500 mt-1")
         
         # Section 2: Key Comparison
@@ -1816,6 +1825,10 @@ def _render_match_debug_tab(
                 ui.label("Key Comparison").classes("font-semibold")
             
             state_resource_index = state_resource.get("resource_index") if state_resource else None
+            if crd_env_parent_inherited:
+                # CRD detail view can include parent ENV state context for debugging.
+                # Don't compare CRD key to ENV for_each key.
+                state_resource_index = None
             
             # Check for key match using helper that accounts for project prefixes
             keys_match, match_type = _keys_match_with_project_prefix(
@@ -2009,7 +2022,6 @@ def _render_match_debug_tab(
             with ui.row().classes("items-center gap-2 mb-2"):
                 ui.icon("upload", size="sm").classes("text-purple-500")
                 ui.label("Terraform Import Address").classes("font-semibold")
-            
             if state_address:
                 ui.label("Current state address:").classes("text-xs text-slate-500")
                 ui.code(state_address).classes("text-sm font-mono w-full")
@@ -2021,6 +2033,13 @@ def _render_match_debug_tab(
                     ui.label(
                         "This resource has lifecycle.prevent_destroy = true"
                     ).classes("text-xs text-blue-500")
+            elif crd_env_parent_inherited:
+                ui.label("No direct CRD import address in state.").classes("text-xs text-slate-500")
+                ui.label(
+                    "The address below is the parent environment context used for diagnostics only."
+                ).classes("text-xs text-slate-500")
+                if parent_env_state_address:
+                    ui.code(parent_env_state_address).classes("text-xs font-mono w-full")
             else:
                 # Show what the import address would be
                 type_to_resource = {
@@ -2369,8 +2388,19 @@ def _build_llm_diagnostic(
     # Fall back to row-level target fields when detail lookup misses.
     target_id = target_id or str(grid_row.get("target_id", "") or "")
     target_name = target_name or str(grid_row.get("target_name", "") or "")
-    crd_env_parent_inherited = source_type == "CRD" and confidence == "env_parent_match"
-    
+    crd_env_parent_match = source_type == "CRD" and confidence == "env_parent_match"
+    crd_env_parent_inherited = (
+        source_type == "CRD"
+        and (
+            crd_env_parent_match
+            or (
+                bool(state_resource)
+                and state_resource.get("element_code") == "ENV"
+            )
+        )
+    )
+    if crd_env_parent_inherited:
+        state_resource_index = None
     # Check key matching using helper that accounts for project prefixes
     keys_match, match_type = _keys_match_with_project_prefix(
         source_key, state_resource_index, project_name, source_type
@@ -2378,7 +2408,7 @@ def _build_llm_diagnostic(
     # CRD rows inherit drift from parent ENV; they usually have no direct TF state row/index.
     # Avoid reporting "no_state" in key analysis when drift has already resolved as in_sync.
     if source_type == "CRD" and drift_status == "in_sync" and (
-        crd_env_parent_inherited or not state_resource_index
+        crd_env_parent_match or not state_resource_index
     ):
         keys_match = True
         match_type = "crd_env_inherited"
@@ -2481,7 +2511,7 @@ def _build_llm_diagnostic(
     
     # Key mismatch handling: only report as issue if it's a real problem
     # If drift_status is "in_sync" and we have a valid target, key differences are informational
-    if source_key and state_resource_index and not keys_match:
+    if source_key and state_resource_index and not keys_match and not crd_env_parent_inherited:
         if drift_status == "in_sync" and target_id and str(state_id) == str(target_id):
             # State ID matches target ID - key difference is just cosmetic
             informational.append(
@@ -2534,10 +2564,10 @@ def _build_llm_diagnostic(
     lines.append("## Terraform State")
     lines.append(f"- **State Loaded**: {has_state_loaded}")
     lines.append(f"- **State ID**: {state_id or 'None'}")
-    state_address_label = "Parent ENV State Address" if crd_env_parent_inherited else "State Address"
+    state_address_label = "Parent ENV State Address" if crd_env_parent_match else "State Address"
     state_index_label = (
         "Parent ENV resource_index (for_each key)"
-        if crd_env_parent_inherited
+        if crd_env_parent_match
         else "State resource_index (for_each key)"
     )
     lines.append(f"- **{state_address_label}**: `{state_address or 'None'}`")
@@ -2783,7 +2813,7 @@ def _build_llm_diagnostic(
     if source_type == "CRD" and project_name:
         source_env_name = (source_data or {}).get("environment_name", "")
         if source_env_name:
-            if crd_env_parent_inherited:
+            if crd_env_parent_match:
                 lines.append(
                     f"2. **Parent environment fallback**: `target_env_by_proj_env_name[(\"{project_name}\", \"{source_env_name}\")]`"
                 )
@@ -2793,7 +2823,7 @@ def _build_llm_diagnostic(
                 )
     if state_id:
         next_idx = 3 if source_type == "CRD" else 2
-        state_lookup_type = "ENV" if crd_env_parent_inherited else source_type
+        state_lookup_type = "ENV" if crd_env_parent_match else source_type
         lines.append(f"{next_idx}. **State ID lookup**: `target_by_id[{state_id}]` for type {state_lookup_type}")
     if source_type == "REP" and project_name:
         next_idx = 4 if (source_type == "CRD" and state_id) else (3 if source_type == "CRD" else 3)
@@ -2812,7 +2842,7 @@ def _build_llm_diagnostic(
     if source_type == "REP":
         lines.append("2. Is the repository linked to the correct project in the target account?")
         lines.append("3. Was the resource imported using the project name as the key?")
-    elif source_type == "CRD" and crd_env_parent_inherited:
+    elif source_type == "CRD" and crd_env_parent_match:
         lines.append("2. Is the matched parent ENV in the same project/environment as the source credential?")
         lines.append("3. Does the source credential intentionally inherit drift/status from that ENV?")
     lines.append("4. Is the state-aware auto-matching code being reached?")

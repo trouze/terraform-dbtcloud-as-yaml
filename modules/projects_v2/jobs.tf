@@ -196,7 +196,27 @@ locals {
     key => (
       local.is_ci_or_merge_job[key]
       ? "--select state:modified"
-      : try(item.job_data.compare_changes_flags, "--select state:modified")
+      : (
+        try(item.job_data.compare_changes_flags, null) == null ||
+        try(item.job_data.compare_changes_flags, null) == false ||
+        lower(trimspace(try(tostring(item.job_data.compare_changes_flags), ""))) == "false" ||
+        trimspace(try(tostring(item.job_data.compare_changes_flags), "")) == ""
+        ? "--select state:modified"
+        : trimspace(try(tostring(item.job_data.compare_changes_flags), "--select state:modified"))
+      )
+    )
+  }
+
+  # API only allows linting on CI jobs.
+  run_lint_effective = {
+    for key, item in local.jobs_map :
+    key => (
+      (
+        try(item.job_data.triggers.git_provider_webhook, false) == true ||
+        lower(trimspace(try(item.job_data.job_type, ""))) == "ci"
+      )
+      ? try(item.job_data.run_lint, false)
+      : false
     )
   }
 
@@ -238,7 +258,7 @@ resource "dbtcloud_job" "jobs" {
   # perpetual "(known after apply)" diffs when run_compare_changes is false.
   compare_changes_flags = local.compare_changes_flags_effective[each.key]
   run_generate_sources  = try(each.value.job_data.run_generate_sources, false)
-  run_lint              = try(each.value.job_data.run_lint, false)
+  run_lint              = local.run_lint_effective[each.key]
   schedule_cron         = local.schedule_cron_effective[each.key]
   schedule_days         = try(each.value.job_data.schedule_days, null)
   schedule_hours        = local.schedule_hours_effective[each.key]
@@ -315,7 +335,7 @@ resource "dbtcloud_job" "protected_jobs" {
   # perpetual "(known after apply)" diffs when run_compare_changes is false.
   compare_changes_flags = local.compare_changes_flags_effective[each.key]
   run_generate_sources  = try(each.value.job_data.run_generate_sources, false)
-  run_lint              = try(each.value.job_data.run_lint, false)
+  run_lint              = local.run_lint_effective[each.key]
   schedule_cron         = local.schedule_cron_effective[each.key]
   schedule_days         = try(each.value.job_data.schedule_days, null)
   schedule_hours        = local.schedule_hours_effective[each.key]
