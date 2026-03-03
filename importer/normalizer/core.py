@@ -764,20 +764,37 @@ def _normalize_groups(
         group_data["group_permissions"] = []
         group_permissions = group.metadata.get("group_permissions", [])
         if group_permissions:
+            seen_permission_signatures: set[tuple[str, bool, str, tuple[str, ...]]] = set()
+            duplicate_permissions_dropped = 0
             for perm in group_permissions:
                 source_project_id = perm.get("project_id")
                 # Convert source project_id to project_key for cross-account migration
                 project_key = context.resolve_project_id_to_key(source_project_id) if source_project_id else None
-                
+                writable_categories = perm.get("writable_environment_categories", [])
+                if not isinstance(writable_categories, list):
+                    writable_categories = []
+                writable_categories = [str(x) for x in writable_categories]
+                all_projects = source_project_id is None
+                permission_set = str(perm.get("permission_set", ""))
+                signature = (
+                    permission_set,
+                    all_projects,
+                    str(project_key) if project_key is not None else "",
+                    tuple(sorted(writable_categories)),
+                )
+                if signature in seen_permission_signatures:
+                    duplicate_permissions_dropped += 1
+                    continue
+                seen_permission_signatures.add(signature)
                 perm_data = {
-                    "permission_set": perm["permission_set"],
-                    "all_projects": source_project_id is None,
+                    "permission_set": permission_set,
+                    "all_projects": all_projects,
                     # Use project_key instead of project_id for Terraform to resolve to target project
                     "project_key": project_key,
                     # Keep project_id for type consistency but set to None (source IDs don't exist in target)
                     "project_id": None,
                     # Always include writable_environment_categories for type consistency (empty list if not present)
-                    "writable_environment_categories": perm.get("writable_environment_categories", []),
+                    "writable_environment_categories": writable_categories,
                 }
                 
                 group_data["group_permissions"].append(perm_data)

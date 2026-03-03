@@ -59,6 +59,8 @@ class WorkflowStep(IntEnum):
     UTILITIES = 18  # Protection intent management and utilities
     # Adoption step (between Match and Configure in Migration workflow)
     ADOPT = 19  # Automated terraform state rm + import for adopted resources
+    # Utility step for explicit state removal operations
+    REMOVAL_MANAGEMENT = 20
 
 
 class WorkflowType(str, Enum):
@@ -92,6 +94,7 @@ STEP_NAMES = {
     WorkflowStep.JAC_GENERATE: "Generate YAML",
     # Utilities
     WorkflowStep.UTILITIES: "Protection Management",
+    WorkflowStep.REMOVAL_MANAGEMENT: "Removal Management",
     # Adoption step
     WorkflowStep.ADOPT: "Adopt Resources",
 }
@@ -118,6 +121,7 @@ STEP_ICONS = {
     WorkflowStep.JAC_GENERATE: "code",
     # Utilities
     WorkflowStep.UTILITIES: "security",
+    WorkflowStep.REMOVAL_MANAGEMENT: "remove_circle",
     # Adoption step
     WorkflowStep.ADOPT: "download_for_offline",
 }
@@ -170,8 +174,8 @@ WORKFLOW_STEPS = {
 
 # Utility steps shown in sidebar but not numbered (available after deploy)
 WORKFLOW_UTILITIES = {
-    WorkflowType.MIGRATION: [WorkflowStep.UTILITIES, WorkflowStep.DESTROY],
-    WorkflowType.IMPORT_ADOPT: [WorkflowStep.UTILITIES, WorkflowStep.DESTROY],
+    WorkflowType.MIGRATION: [WorkflowStep.UTILITIES, WorkflowStep.REMOVAL_MANAGEMENT, WorkflowStep.DESTROY],
+    WorkflowType.IMPORT_ADOPT: [WorkflowStep.UTILITIES, WorkflowStep.REMOVAL_MANAGEMENT, WorkflowStep.DESTROY],
 }
 
 # No workflow-specific name overrides needed - all steps have descriptive names now
@@ -1090,6 +1094,9 @@ class AppState:
             return self.map.normalize_complete and self.target_fetch.fetch_complete
         elif step == WorkflowStep.UTILITIES:
             return True  # Always accessible - can load state, manage protection intents, etc.
+        elif step == WorkflowStep.REMOVAL_MANAGEMENT:
+            # Available with utilities regardless of whether deploy has already run.
+            return True
         # Jobs as Code Generator steps
         elif step == WorkflowStep.JAC_SELECT:
             return True  # Always accessible

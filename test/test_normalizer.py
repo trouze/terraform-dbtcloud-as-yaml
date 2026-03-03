@@ -636,6 +636,58 @@ def test_bigquery_private_key_id_backfilled_from_details_config_when_include_rel
     assert provider_config["private_key_id"] == "8efdff6229f48bfc1047e7259e8d0d968ef55a78"
 
 
+def test_group_permissions_are_deduplicated(default_mapping_config):
+    """Duplicate group permissions should be collapsed to avoid TF set collisions."""
+    snapshot_dict = {
+        "account_id": 12345,
+        "account_name": "Test Account",
+        "globals": {
+            "connections": {},
+            "repositories": {},
+            "service_tokens": {},
+            "groups": {
+                "owner": {
+                    "key": "owner",
+                    "id": 11851,
+                    "name": "Owner",
+                    "assign_by_default": False,
+                    "sso_mapping_groups": [],
+                    "metadata": {
+                        "group_permissions": [
+                            {
+                                "permission_set": "owner",
+                                "project_id": None,
+                                "writable_environment_categories": [],
+                            },
+                            {
+                                "permission_set": "owner",
+                                "project_id": None,
+                                "writable_environment_categories": [],
+                            },
+                        ]
+                    },
+                    "include_in_conversion": True,
+                }
+            },
+            "notifications": {},
+            "webhooks": {},
+            "privatelink_endpoints": {},
+        },
+        "projects": [],
+    }
+
+    snapshot = AccountSnapshot(**snapshot_dict)
+    context = NormalizationContext(default_mapping_config)
+    result = normalize_snapshot(snapshot, default_mapping_config, context)
+
+    owner_group = result["globals"]["groups"][0]
+    permissions = owner_group.get("group_permissions", [])
+    assert len(permissions) == 1
+    assert permissions[0]["permission_set"] == "owner"
+    assert permissions[0]["all_projects"] is True
+    assert permissions[0]["project_id"] is None
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
 

@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.24.0] - 2026-03-02
+
+### Added
+- **Removal Management Utility Page**: Added `/removal-management` as a dedicated utility flow for explicit `terraform state rm` operations with command preview, selection controls, and confirmation.
+- **Removal Workflow Tests**: Added focused unit coverage for removal candidate shaping, filtering, command generation, and workflow step accessibility.
+
+### Changed
+- **Web Server Restart Script**: Extended `restart_web.sh` with optional `--daemon` mode, graceful port shutdown handling, startup readiness checks, and centralized log output at `.cursor/web-server.log`.
+
+### Fixed
+- **Removal Management Object-Type Filter**: Object type multi-select now persists and applies correctly, and dropdown options now include per-type counts.
+- **Match Unadopt Intent Persistence**: Match grid now correctly applies persisted `removal_keys` when keys are stored with or without the `target__` prefix.
+- **Group Permission Normalization**: Duplicate `group_permissions` entries are deduplicated during normalization to prevent Terraform set collisions.
+
 ## [0.23.4] - 2026-02-20
 
 ### Fixed

@@ -2129,7 +2129,10 @@ def build_grid_data(
     
     # Post-process: Apply removal_keys (unadopt) so persisted intent shows on load
     for row in rows:
-        if row.get("source_key") in removal_keys:
+        source_key = str(row.get("source_key") or "")
+        bare_key = source_key.removeprefix("target__")
+        matched_removal_key = source_key in removal_keys or bare_key in removal_keys
+        if matched_removal_key:
             row["action"] = "unadopt"
             row["status"] = "unadopted"
     
