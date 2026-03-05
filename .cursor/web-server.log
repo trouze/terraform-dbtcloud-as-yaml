@@ -1,0 +1,123 @@
+/Users/operator/Library/Python/3.9/lib/python/site-packages/urllib3/__init__.py:35: NotOpenSSLWarning: urllib3 v2 only supports OpenSSL 1.1.1+, currently the 'ssl' module is compiled with 'LibreSSL 2.8.3'. See: https://github.com/urllib3/urllib3/issues/3020
+  warnings.warn(
+NiceGUI ready to go on http://127.0.0.1:8080
+Task exception was never retrieved
+future: <Task finished name='Task-127' coro=<create_removal_management_page.<locals>._execute_selected() done, defined at /Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/importer/web/pages/removal_management.py:337> exception=RuntimeError('The current slot cannot be determined because the slot stack for this task is empty.\nThis may happen if you try to create UI from a background task.\nTo fix this, enter the target slot explicitly using `with container_element:`.')>
+Traceback (most recent call last):
+  File "/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/importer/web/pages/removal_management.py", line 348, in _execute_selected
+    if not await _confirm_execution(commands):
+  File "/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/importer/web/pages/removal_management.py", line 314, in _confirm_execution
+    with ui.dialog() as dialog, ui.card().classes("p-4").style("min-width: 560px;"):
+  File "/Users/operator/Library/Python/3.9/lib/python/site-packages/nicegui/elements/dialog.py", line 22, in __init__
+    super().__init__(value=value, on_value_change=None)
+  File "/Users/operator/Library/Python/3.9/lib/python/site-packages/nicegui/elements/mixins/value_element.py", line 31, in __init__
+    super().__init__(**kwargs)
+  File "/Users/operator/Library/Python/3.9/lib/python/site-packages/nicegui/element.py", line 60, in __init__
+    client = _client or context.client
+  File "/Users/operator/Library/Python/3.9/lib/python/site-packages/nicegui/context.py", line 31, in client
+    return self.slot.parent.client
+  File "/Users/operator/Library/Python/3.9/lib/python/site-packages/nicegui/context.py", line 23, in slot
+    raise RuntimeError('The current slot cannot be determined because the slot stack for this task is empty.\n'
+RuntimeError: The current slot cannot be determined because the slot stack for this task is empty.
+This may happen if you try to create UI from a background task.
+To fix this, enter the target slot explicitly using `with container_element:`.
+Task exception was never retrieved
+future: <Task finished name='Task-233' coro=<create_removal_management_page.<locals>._execute_selected() done, defined at /Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/importer/web/pages/removal_management.py:337> exception=RuntimeError('The current slot cannot be determined because the slot stack for this task is empty.\nThis may happen if you try to create UI from a background task.\nTo fix this, enter the target slot explicitly using `with container_element:`.')>
+Traceback (most recent call last):
+  File "/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/importer/web/pages/removal_management.py", line 348, in _execute_selected
+    if not await _confirm_execution(commands):
+  File "/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/importer/web/pages/removal_management.py", line 314, in _confirm_execution
+    with ui.dialog() as dialog, ui.card().classes("p-4").style("min-width: 560px;"):
+  File "/Users/operator/Library/Python/3.9/lib/python/site-packages/nicegui/elements/dialog.py", line 22, in __init__
+    super().__init__(value=value, on_value_change=None)
+  File "/Users/operator/Library/Python/3.9/lib/python/site-packages/nicegui/elements/mixins/value_element.py", line 31, in __init__
+    super().__init__(**kwargs)
+  File "/Users/operator/Library/Python/3.9/lib/python/site-packages/nicegui/element.py", line 60, in __init__
+    client = _client or context.client
+  File "/Users/operator/Library/Python/3.9/lib/python/site-packages/nicegui/context.py", line 31, in client
+    return self.slot.parent.client
+  File "/Users/operator/Library/Python/3.9/lib/python/site-packages/nicegui/context.py", line 23, in slot
+    raise RuntimeError('The current slot cannot be determined because the slot stack for this task is empty.\n'
+RuntimeError: The current slot cannot be determined because the slot stack for this task is empty.
+This may happen if you try to create UI from a background task.
+To fix this, enter the target slot explicitly using `with container_element:`.
+Task exception was never retrieved
+future: <Task finished name='Task-251' coro=<create_removal_management_page.<locals>._execute_selected() done, defined at /Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/importer/web/pages/removal_management.py:337> exception=RuntimeError('The current slot cannot be determined because the slot stack for this task is empty.\nThis may happen if you try to create UI from a background task.\nTo fix this, enter the target slot explicitly using `with container_element:`.')>
+Traceback (most recent call last):
+  File "/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/importer/web/pages/removal_management.py", line 348, in _execute_selected
+    if not await _confirm_execution(commands):
+  File "/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/importer/web/pages/removal_management.py", line 314, in _confirm_execution
+    with ui.dialog() as dialog, ui.card().classes("p-4").style("min-width: 560px;"):
+  File "/Users/operator/Library/Python/3.9/lib/python/site-packages/nicegui/elements/dialog.py", line 22, in __init__
+    super().__init__(value=value, on_value_change=None)
+  File "/Users/operator/Library/Python/3.9/lib/python/site-packages/nicegui/elements/mixins/value_element.py", line 31, in __init__
+    super().__init__(**kwargs)
+  File "/Users/operator/Library/Python/3.9/lib/python/site-packages/nicegui/element.py", line 60, in __init__
+    client = _client or context.client
+  File "/Users/operator/Library/Python/3.9/lib/python/site-packages/nicegui/context.py", line 31, in client
+    return self.slot.parent.client
+  File "/Users/operator/Library/Python/3.9/lib/python/site-packages/nicegui/context.py", line 23, in slot
+    raise RuntimeError('The current slot cannot be determined because the slot stack for this task is empty.\n'
+RuntimeError: The current slot cannot be determined because the slot stack for this task is empty.
+This may happen if you try to create UI from a background task.
+To fix this, enter the target slot explicitly using `with container_element:`.
+Task exception was never retrieved
+future: <Task finished name='Task-284' coro=<create_removal_management_page.<locals>._execute_selected() done, defined at /Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/importer/web/pages/removal_management.py:337> exception=RuntimeError('The current slot cannot be determined because the slot stack for this task is empty.\nThis may happen if you try to create UI from a background task.\nTo fix this, enter the target slot explicitly using `with container_element:`.')>
+Traceback (most recent call last):
+  File "/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/importer/web/pages/removal_management.py", line 348, in _execute_selected
+    if not await _confirm_execution(commands):
+  File "/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/importer/web/pages/removal_management.py", line 314, in _confirm_execution
+    with ui.dialog() as dialog, ui.card().classes("p-4").style("min-width: 560px;"):
+  File "/Users/operator/Library/Python/3.9/lib/python/site-packages/nicegui/elements/dialog.py", line 22, in __init__
+    super().__init__(value=value, on_value_change=None)
+  File "/Users/operator/Library/Python/3.9/lib/python/site-packages/nicegui/elements/mixins/value_element.py", line 31, in __init__
+    super().__init__(**kwargs)
+  File "/Users/operator/Library/Python/3.9/lib/python/site-packages/nicegui/element.py", line 60, in __init__
+    client = _client or context.client
+  File "/Users/operator/Library/Python/3.9/lib/python/site-packages/nicegui/context.py", line 31, in client
+    return self.slot.parent.client
+  File "/Users/operator/Library/Python/3.9/lib/python/site-packages/nicegui/context.py", line 23, in slot
+    raise RuntimeError('The current slot cannot be determined because the slot stack for this task is empty.\n'
+RuntimeError: The current slot cannot be determined because the slot stack for this task is empty.
+This may happen if you try to create UI from a background task.
+To fix this, enter the target slot explicitly using `with container_element:`.
+Task exception was never retrieved
+future: <Task finished name='Task-530' coro=<create_removal_management_page.<locals>._execute_selected() done, defined at /Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/importer/web/pages/removal_management.py:337> exception=RuntimeError('The current slot cannot be determined because the slot stack for this task is empty.\nThis may happen if you try to create UI from a background task.\nTo fix this, enter the target slot explicitly using `with container_element:`.')>
+Traceback (most recent call last):
+  File "/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/importer/web/pages/removal_management.py", line 348, in _execute_selected
+    if not await _confirm_execution(commands):
+  File "/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/importer/web/pages/removal_management.py", line 314, in _confirm_execution
+    with ui.dialog() as dialog, ui.card().classes("p-4").style("min-width: 560px;"):
+  File "/Users/operator/Library/Python/3.9/lib/python/site-packages/nicegui/elements/dialog.py", line 22, in __init__
+    super().__init__(value=value, on_value_change=None)
+  File "/Users/operator/Library/Python/3.9/lib/python/site-packages/nicegui/elements/mixins/value_element.py", line 31, in __init__
+    super().__init__(**kwargs)
+  File "/Users/operator/Library/Python/3.9/lib/python/site-packages/nicegui/element.py", line 60, in __init__
+    client = _client or context.client
+  File "/Users/operator/Library/Python/3.9/lib/python/site-packages/nicegui/context.py", line 31, in client
+    return self.slot.parent.client
+  File "/Users/operator/Library/Python/3.9/lib/python/site-packages/nicegui/context.py", line 23, in slot
+    raise RuntimeError('The current slot cannot be determined because the slot stack for this task is empty.\n'
+RuntimeError: The current slot cannot be determined because the slot stack for this task is empty.
+This may happen if you try to create UI from a background task.
+To fix this, enter the target slot explicitly using `with container_element:`.
+Task exception was never retrieved
+future: <Task finished name='Task-896' coro=<create_removal_management_page.<locals>._execute_selected() done, defined at /Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/importer/web/pages/removal_management.py:337> exception=RuntimeError('The current slot cannot be determined because the slot stack for this task is empty.\nThis may happen if you try to create UI from a background task.\nTo fix this, enter the target slot explicitly using `with container_element:`.')>
+Traceback (most recent call last):
+  File "/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/importer/web/pages/removal_management.py", line 348, in _execute_selected
+    if not await _confirm_execution(commands):
+  File "/Users/operator/Documents/git/dbt-labs/terraform-dbtcloud-yaml/importer/web/pages/removal_management.py", line 314, in _confirm_execution
+    with ui.dialog() as dialog, ui.card().classes("p-4").style("min-width: 560px;"):
+  File "/Users/operator/Library/Python/3.9/lib/python/site-packages/nicegui/elements/dialog.py", line 22, in __init__
+    super().__init__(value=value, on_value_change=None)
+  File "/Users/operator/Library/Python/3.9/lib/python/site-packages/nicegui/elements/mixins/value_element.py", line 31, in __init__
+    super().__init__(**kwargs)
+  File "/Users/operator/Library/Python/3.9/lib/python/site-packages/nicegui/element.py", line 60, in __init__
+    client = _client or context.client
+  File "/Users/operator/Library/Python/3.9/lib/python/site-packages/nicegui/context.py", line 31, in client
+    return self.slot.parent.client
+  File "/Users/operator/Library/Python/3.9/lib/python/site-packages/nicegui/context.py", line 23, in slot
+    raise RuntimeError('The current slot cannot be determined because the slot stack for this task is empty.\n'
+RuntimeError: The current slot cannot be determined because the slot stack for this task is empty.
+This may happen if you try to create UI from a background task.
+To fix this, enter the target slot explicitly using `with container_element:`.

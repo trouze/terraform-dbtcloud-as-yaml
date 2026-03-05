@@ -2172,7 +2172,7 @@ async def _run_generate(
                                     terminal.warning(f"  Target lookup ({src_type}, {tgt_id}): NOT FOUND")
                             except ValueError:
                                 terminal.warning(f"  Target lookup ({src_type}, {tgt_id}): Invalid target_id")
-                    
+
                     yaml_file = await asyncio.to_thread(
                         apply_adoption_overrides,
                         str(adoption_yaml),
@@ -3059,7 +3059,6 @@ async def _run_terraform_plan(
             },
         )
         # endregion
-
         # Output stdout (cap rendered lines to avoid websocket overload)
         max_render_lines = 700
         if len(stdout_lines) > max_render_lines:
