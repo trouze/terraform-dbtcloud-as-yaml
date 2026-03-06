@@ -21,14 +21,11 @@ resource "dbtcloud_ip_restrictions_rule" "rules" {
   description      = try(each.value.description, null)
   rule_set_enabled = try(each.value.rule_set_enabled, false)
 
-  dynamic "cidrs" {
-    for_each = try(each.value.cidrs, [])
-    content {
-      cidr        = cidrs.value.cidr
-      cidr_ipv6   = try(cidrs.value.cidr_ipv6, null)
-      description = try(cidrs.value.description, null)
+  cidrs = [
+    for c in try(each.value.cidrs, []) : {
+      cidr = c.cidr
     }
-  }
+  ]
 
   resource_metadata = {
     source_id       = try(each.value.id, null)
@@ -46,14 +43,11 @@ resource "dbtcloud_ip_restrictions_rule" "protected_rules" {
   description      = try(each.value.description, null)
   rule_set_enabled = try(each.value.rule_set_enabled, false)
 
-  dynamic "cidrs" {
-    for_each = try(each.value.cidrs, [])
-    content {
-      cidr        = cidrs.value.cidr
-      cidr_ipv6   = try(cidrs.value.cidr_ipv6, null)
-      description = try(cidrs.value.description, null)
+  cidrs = [
+    for c in try(each.value.cidrs, []) : {
+      cidr = c.cidr
     }
-  }
+  ]
 
   resource_metadata = {
     source_id       = try(each.value.id, null)
