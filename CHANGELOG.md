@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Resource type map rollout (S3-S6)**: Registered 10 new resource type codes across all protection, hierarchy, and UI maps:
+  - S3 Quick Wins: `JCTG` (Job Completion Trigger), `JEVO` (Environment Variable Job Override)
+  - S4 Account-Level: `ACFT` (Account Features), `IPRST` (IP Restrictions Rule), `LNGI` (Lineage Integration), `OAUTH` (OAuth Configuration)
+  - S5 Project-Level: `PARFT` (Project Artefacts), `USRGRP` (User Groups)
+  - S6 Semantic Layer: `SLCFG` (Semantic Layer Configuration), `SLSTM` (Semantic Layer Credential Mapping)
+
 ## [0.26.0] - 2026-03-05
 
 ### Added

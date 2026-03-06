@@ -8,31 +8,31 @@ todos:
     status: completed
   - id: S1-provider-sync
     content: "S1 (Provider): Rebase fix/provider-bug-wsargent to origin/main; preserve repository fixes; produce compatibility contract."
-    status: in_progress
+    status: completed
   - id: S2-profile
     content: "S2 (Profile): TDD-first full-stack profile support — fetch/model/schema/maps/UI/adopt/protect/destroy/explore."
     status: pending
   - id: S3-quick-wins
     content: "S3 (Quick Wins): Close JCTG + JEVO map gaps across protection/hierarchy/UI maps."
-    status: pending
+    status: completed
   - id: S4-account-level
     content: "S4 (Account-Level): account_features, ip_restrictions_rule, lineage_integration, oauth_configuration."
-    status: pending
+    status: completed
   - id: S5-project-level
     content: "S5 (Project-Level): project_artefacts, user_groups."
-    status: pending
+    status: completed
   - id: S6-semantic-layer
     content: "S6 (Semantic Layer): semantic_layer_configuration + semantic_layer_credential_service_token_mapping."
-    status: pending
+    status: completed
   - id: S7-judge-integrate
     content: "S7 (Orchestrator Judge): Evaluate each stream result against judge rubric and merge in dependency-safe order."
-    status: pending
+    status: completed
   - id: S8-final-validate
     content: "S8 (Integration): Run full unit+browser validation suite on merged integration branch."
-    status: pending
+    status: completed
   - id: S9-docs-release
     content: "S9 (Docs & release): Update PRDs, CHANGELOG, implementation status, release notes, and Cursor skills."
-    status: pending
+    status: completed
 isProject: false
 ---
 
@@ -83,6 +83,13 @@ flowchart TD
 - Each stream must output a **stream report** (pass/fail counts, test command, and summary) before the judge evaluates it.
 - The judge merges streams in dependency-safe order: S1 then S2 then S3 then S4 then S5 then S6.
 - If a stream is REVISEd it resumes in the same worktree.
+
+**Micro commits (track progress):**
+
+- Commit after each **logical unit** of work (e.g. one resource’s `resource_metadata` model+schema, one CRUD preservation fix, one plan step), not only at end of stream.
+- Use **conventional / semantic** style: `feat(scope): short description` or `fix(scope): description`; for provider: `feat(provider): add resource_metadata to X`.
+- In the commit message body (optional), reference the **plan step or resource** (e.g. `S1: resource_metadata`, `profile (PRF)`).
+- Micro commits give a clear history for review, easy revert of single changes, and a visible checkpoint if the agent is interrupted.
 
 ---
 
