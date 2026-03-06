@@ -9,8 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed
+## [0.26.0] - 2026-03-05
+
+### Added
 - **Deploy UI local provider override**: When a project `.terraformrc` exists (e.g. for provider debugging), Terraform Init/Plan/Apply from the UI now set `TF_CLI_CONFIG_FILE` so the local provider binary is used automatically.
+- **GitHub installation owner matching**: Repositories are now matched to the correct GitHub App installation by owner login, supporting accounts with multiple GitHub organizations.
+
+### Fixed
+- **GitLab deploy_token tfvars not written**: The pre-flight probe verified deploy_token access but never wrote `enable_gitlab_deploy_token = true` to the generated Terraform configuration. The generated `main.tf` now declares the variable and passes it to the module, and a `gitlab_probe.auto.tfvars` file is written when the probe keeps repos as deploy_token.
+- **Job completion triggers**: Removed separate `dbtcloud_job_completion_trigger` resource block that conflicted with inline trigger management on `dbtcloud_job`; triggers are now managed via the job's `job_completion_trigger_condition` attribute.
+- **SAO / cost_optimization_features mapping**: Jobs with `cost_optimization_features = ["state_aware_orchestration"]` in YAML now correctly map to `force_node_selection = false` instead of attempting to set the unsupported `cost_optimization_features` attribute.
 
 ## [0.25.0] - 2026-03-05
 

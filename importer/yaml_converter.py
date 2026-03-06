@@ -619,6 +619,12 @@ variable "environment_credentials" {{
   # Actual secrets (password, private_key, tokens) are still protected by
   # Terraform's state encryption and should not be committed to version control.
 }}
+
+variable "enable_gitlab_deploy_token" {{
+  description = "Allow GitLab repositories to use deploy_token strategy (verified by pre-flight probe)"
+  type        = bool
+  default     = false
+}}
 {credential_vars}
 module "dbt_cloud" {{
   source = "{module_source}"
@@ -631,6 +637,9 @@ module "dbt_cloud" {{
 
   yaml_file   = "${{path.module}}/dbt-cloud-config.yml"
   target_name = "deployment"
+
+  # GitLab deploy_token strategy (set by pre-flight probe)
+  enable_gitlab_deploy_token = var.enable_gitlab_deploy_token
 
   # Credential token mapping (add secrets here if needed)
   token_map = {{

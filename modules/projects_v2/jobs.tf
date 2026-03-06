@@ -181,11 +181,19 @@ locals {
     )
   }
 
-  # force_node_selection: null for CI/Merge jobs, configured value otherwise
-  # Note: This field is deprecated in favor of cost_optimization_features
+  # force_node_selection: null for CI/Merge jobs, otherwise from cost_optimization_features or legacy force_node_selection
+  # cost_optimization_features ["state_aware_orchestration"] = SAO on = force_node_selection false (same thing, different name)
   force_node_selection_effective = {
     for key, item in local.jobs_map :
-    key => local.is_ci_or_merge_job[key] ? null : try(item.job_data.force_node_selection, null)
+    key => (
+      local.is_ci_or_merge_job[key]
+      ? null
+      : (
+        length(coalesce(try(item.job_data.cost_optimization_features, null), [])) > 0 && contains(coalesce(try(item.job_data.cost_optimization_features, null), []), "state_aware_orchestration")
+        ? false
+        : try(item.job_data.force_node_selection, null)
+      )
+    )
   }
 
   # compare_changes_flags is canonicalized by the API for CI/Merge jobs.
@@ -272,13 +280,8 @@ resource "dbtcloud_job" "jobs" {
     try(each.value.job_data.deferring_environment_key, null) == null
   ) ? try(each.value.job_data.self_deferring, null) : null
 
-  # SAO (State-Aware Orchestration) fields
-  # force_node_selection: Controls SAO. null for CI/Merge jobs (API rejects explicit values)
-  # Deprecated in favor of cost_optimization_features
+  # SAO (State-Aware Orchestration): we map YAML cost_optimization_features to force_node_selection (same purpose)
   force_node_selection = local.force_node_selection_effective[each.key]
-  # cost_optimization_features: New preferred method for SAO control
-  # Include "state_aware_orchestration" to enable SAO (requires dbt_version="latest-fusion")
-  cost_optimization_features = try(each.value.job_data.cost_optimization_features, null)
 
   resource_metadata = {
     source_project_id  = lookup(local.source_project_ids_by_key, each.value.project_key, null)
@@ -349,9 +352,8 @@ resource "dbtcloud_job" "protected_jobs" {
     try(each.value.job_data.deferring_environment_key, null) == null
   ) ? try(each.value.job_data.self_deferring, null) : null
 
-  # SAO (State-Aware Orchestration) fields
-  force_node_selection       = local.force_node_selection_effective[each.key]
-  cost_optimization_features = try(each.value.job_data.cost_optimization_features, null)
+  # SAO: same as jobs above (YAML cost_optimization_features mapped to force_node_selection)
+  force_node_selection = local.force_node_selection_effective[each.key]
 
   resource_metadata = {
     source_project_id  = lookup(local.source_project_ids_by_key, each.value.project_key, null)

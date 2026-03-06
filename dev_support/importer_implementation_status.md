@@ -1,7 +1,7 @@
 # Importer Implementation Status & Tracking
 
 **Last Updated:** 2026-03-05  
-**Current Importer Version:** 0.25.0  
+**Current Importer Version:** 0.26.0  
 **Status:** Phase 3 Complete + Interactive Mode + Web UI + E2E Testing Infrastructure + Destroy Workflow + Target Match Feature + Jobs as Code Generator + dbt-jobs-as-code Validation + SAO Support + Native Integration Detection + Target Credentials Redesign + Resource Protection with Cascade + Destroy Page Enhancements + State-Aware Matching Fix + Match Diagnostics Improvements + AG Grid Standardization + Dialog Width Fix + Protection Mismatch Fix + Adoption Override Data Flow Fix + Debug Logging Standards + View Output Plan Dialog Fix + Independent Protection Architecture + Comprehensive Protection Unit Tests + Repository Key Prefix Matching Fix + Extended Attributes (EXTATTR) Support + Target Intent State File + Protection as Disposition Property + Explicit Global Intent Filtering + Drift Detection + TF State Repo Identity Fixup + Global Resources Configuration + Protection Intent Key Fix + EnvVar Protection + State-Only Resource Fixes + TF Plan Stability + Plan Targeting Fix + Deploy Page State-Based Protection
 
 > **⚠️ IMPORTANT: Keep This Document Updated**
@@ -666,6 +666,14 @@ The following items require API endpoint research before implementation can begi
 ---
 
 ## Change Log
+
+### 2026-03-05 (v0.26.0)
+- **Version:** Incremented to 0.26.0 (minor release - deploy_token tfvars fix, GitHub installation owner matching, SAO mapping, job trigger cleanup)
+- **Fixed:** GitLab deploy_token probe now writes `enable_gitlab_deploy_token = true` to generated tfvars
+- **Fixed:** Job completion triggers managed inline instead of separate resource block
+- **Fixed:** SAO cost_optimization_features correctly mapped to force_node_selection
+- **Added:** GitHub installation owner-based matching for multi-org accounts
+- **Added:** Local provider dev override via `.terraformrc`
 
 ### 2026-03-05 (v0.25.0)
 - **Version:** Incremented to 0.25.0 (minor release - state management refresh-only workflows + clone strategy and job row fixes)

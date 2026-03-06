@@ -50,22 +50,31 @@ locals {
   dbt_host_url     = replace(local.dbt_host_url_raw, "/api", "")
 
   # Parse GitHub installations response
-  # Response is an array of installation objects: [{"id": 267820, "access_tokens_url": "..."}, ...]
+  # Response is an array of installation objects with nested account info:
+  #   [{"id": 28374841, "account": {"login": "dbt-labs"}, "access_tokens_url": "..."}, ...]
   # Note: API may return error string (e.g., "Github installations failed to load, account disassociated")
-  # which jsondecode parses as a string, not a list. We use try() to handle all error cases
-  # and ensure we always return a list type.
+  # which jsondecode parses as a string, not a list. We use try() to handle all error cases.
   github_installations_raw = try(
     tolist(jsondecode(data.http.github_installations[0].response_body)),
     []
   )
 
-  # Get primary GitHub installation ID (first one, typically there's only one per account)
   # Filter to only GitHub installations (access_tokens_url contains "github")
   github_installations = [
     for inst in local.github_installations_raw :
     inst if can(regex("github", try(inst.access_tokens_url, "")))
   ]
 
+  # Map of GitHub owner login (lowercase) → installation ID.
+  # Each installation serves a specific GitHub org or user account.
+  # Repos are matched to the correct installation by their owner.
+  github_installation_by_owner = {
+    for inst in local.github_installations :
+    lower(try(inst.account.login, "")) => inst.id
+    if try(inst.account.login, "") != ""
+  }
+
+  # Fallback: first installation (for repos where we can't extract the owner)
   github_installation_id = length(local.github_installations) > 0 ? local.github_installations[0].id : null
 }
 

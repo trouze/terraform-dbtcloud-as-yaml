@@ -4,7 +4,7 @@
   "created_at": "2026-03-05",
   "streams": {
     "S0": { "id": "S0", "name": "Orchestrator Bootstrap", "status": "merged", "worktree": null, "branch": null },
-    "S1": { "id": "S1", "name": "Provider Sync", "status": "pending", "worktree": "../terraform-provider-dbtcloud", "branch": "fix/provider-bug-wsargent" },
+    "S1": { "id": "S1", "name": "Provider Sync", "status": "approved", "worktree": "../terraform-provider-dbtcloud", "branch": "fix/provider-bug-wsargent" },
     "S2": { "id": "S2", "name": "Profile", "status": "pending", "worktree": "worktrees/feature/profile", "branch": "feature/profile" },
     "S3": { "id": "S3", "name": "Quick Wins (JCTG+JEVO)", "status": "pending", "worktree": "worktrees/feature/jctg-jevo", "branch": "feature/jctg-jevo" },
     "S4": { "id": "S4", "name": "Account-Level Resources", "status": "pending", "worktree": "worktrees/feature/account-resources", "branch": "feature/account-resources" },
