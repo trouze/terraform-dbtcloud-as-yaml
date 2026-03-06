@@ -2281,7 +2281,7 @@ async def _run_generate(
                     repos_stripped += 1
             
             terminal.info(f"  Total repos stripped: {repos_stripped}")
-            
+
             if repos_stripped > 0:
                 with open(yaml_output_path, "w") as f:
                     yaml_strip.dump(yaml_config, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
@@ -2294,6 +2294,38 @@ async def _run_generate(
             terminal.warning(f"  Failed to strip github_installation_id: {e}")
             import traceback
             terminal.warning(f"  {traceback.format_exc()[:500]}")
+
+        # GitLab deploy_token probe: check preconditions and downgrade repos that can't succeed
+        terminal.info("")
+        terminal.info("Probing GitLab deploy_token repositories...")
+        try:
+            from importer.web.utils.gitlab_probe import probe_and_patch_deploy_token_repos
+
+            yaml_output_path_str = str(output_path / "dbt-cloud-config.yml")
+            probe_result = await asyncio.to_thread(
+                probe_and_patch_deploy_token_repos,
+                yaml_output_path_str,
+                state.target_credentials.host_url,
+                state.target_credentials.account_id,
+                state.target_credentials.api_token,
+            )
+            if probe_result["total"] == 0:
+                terminal.info("  No deploy_token repos found — skipping probe")
+            else:
+                for repo_key, info in probe_result["repos"].items():
+                    if info["action"] == "kept":
+                        terminal.success(f"  ✓ {repo_key}: deploy_token kept ({info['reason']})")
+                    else:
+                        terminal.warning(f"  ↓ {repo_key}: downgraded to deploy_key ({info['reason']})")
+                terminal.info(
+                    f"  Summary: {probe_result['kept']} kept as deploy_token, "
+                    f"{probe_result['downgraded']} downgraded to deploy_key"
+                )
+                if probe_result["kept"] > 0:
+                    terminal.info("  Module variable enable_gitlab_deploy_token=true will be set in tfvars")
+        except Exception as e:
+            terminal.warning(f"  GitLab probe failed: {e}")
+            terminal.info("  deploy_token repos will use module-level fallback behavior")
 
         # Protection is now sourced from target intent dispositions (built above).
         # The protected_resources and unprotected_keys sets were populated from
@@ -3020,6 +3052,7 @@ async def _run_terraform_plan(
         else:
             terminal.warning("No PAT provided - repositories will use deploy key")
         terminal.info("")
+
 
         adopt_imports = Path(tf_dir) / "adopt_imports.tf"
         adopt_imports_exists = adopt_imports.exists()
