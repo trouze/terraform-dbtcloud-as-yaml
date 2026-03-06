@@ -255,7 +255,7 @@ resource "dbtcloud_job" "jobs" {
   deferring_environment_id = (
     try(each.value.job_data.deferring_environment_key, null) != null
   ) ? try(local.environment_id_lookup["${each.value.project_key}_${each.value.job_data.deferring_environment_key}"], null) : null
-  errors_on_lint_failure = try(each.value.job_data.errors_on_lint_failure, true)
+  errors_on_lint_failure = try(each.value.job_data.errors_on_lint_failure, false)
   generate_docs          = try(each.value.job_data.generate_docs, false)
   is_active              = try(each.value.job_data.is_active, true)
   num_threads            = coalesce(try(each.value.job_data.num_threads, null), 4)
@@ -327,7 +327,7 @@ resource "dbtcloud_job" "protected_jobs" {
   deferring_environment_id = (
     try(each.value.job_data.deferring_environment_key, null) != null
   ) ? try(local.environment_id_lookup["${each.value.project_key}_${each.value.job_data.deferring_environment_key}"], null) : null
-  errors_on_lint_failure = try(each.value.job_data.errors_on_lint_failure, true)
+  errors_on_lint_failure = try(each.value.job_data.errors_on_lint_failure, false)
   generate_docs          = try(each.value.job_data.generate_docs, false)
   is_active              = try(each.value.job_data.is_active, true)
   num_threads            = coalesce(try(each.value.job_data.num_threads, null), 4)
