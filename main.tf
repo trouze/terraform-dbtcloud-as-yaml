@@ -153,4 +153,5 @@ module "projects_v2" {
   dbt_pat                 = var.dbt_pat != "" ? var.dbt_pat : null
   dbt_host_url            = var.dbt_host_url
   skip_global_project_permissions = var.projects_v2_skip_global_project_permissions
+  enable_gitlab_deploy_token      = var.enable_gitlab_deploy_token
 }

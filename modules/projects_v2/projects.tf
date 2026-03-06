@@ -43,6 +43,14 @@ locals {
   # If github_app is specified but no PAT/installation ID is available, fallback to deploy_key.
   # When github_installation_id is provided, API automatically uses github_app, so we must match that.
   # Use nonsensitive() to prevent strategy string from inheriting PAT's sensitivity
+  #
+  # deploy_token (GitLab native) repos are downgraded to deploy_key unless
+  # var.enable_gitlab_deploy_token is true.  The dbt Cloud v3 API can return 500
+  # when the PAT owner's GitLab OAuth token lacks access to the project (unhandled
+  # GitlabGetError — backend fix pending in dbt-cloud PR #16687).
+  # When the user has confirmed their GitLab linkage and project access, they can
+  # set enable_gitlab_deploy_token = true to preserve the native strategy.
+  # See: bugs/bug3-gitlab-deploy-token-pat.md
   effective_git_clone_strategy = {
     for key, repo in local.resolve_repository :
     key => nonsensitive(
@@ -52,8 +60,10 @@ locals {
         trimspace(tostring(try(repo.azure_active_directory_project_id, ""))) == "" ||
         trimspace(tostring(try(repo.azure_active_directory_repository_id, ""))) == ""
       ) ? "deploy_key" :
-      # If GitLab integration strategy is selected but project ID is missing, force deploy_key.
-      try(repo.git_clone_strategy, "") == "deploy_token" && try(repo.gitlab_project_id, null) == null ? "deploy_key" :
+      # GitLab deploy_token: use native strategy when enabled, otherwise fall back to deploy_key
+      try(repo.git_clone_strategy, "") == "deploy_token" ? (
+        var.enable_gitlab_deploy_token ? "deploy_token" : "deploy_key"
+      ) :
       # If github_installation_id is provided, API will use github_app regardless of what we send
       # So we must set it to github_app to match API behavior and avoid replacement
       local.effective_github_installation_id[key] != null ? "github_app" :
@@ -66,32 +76,74 @@ locals {
     )
   }
 
-  # dbt Cloud repository creation expects SSH-style URLs ("git@" or "ssh:")
-  # when integrations are not configured. Fall back to a known-good SSH repo.
+  # Detect repos that were downgraded from deploy_token to deploy_key.
+  # Their remote_url is a GitLab project path (e.g., "group/project") that must
+  # be converted to SSH format for the deploy_key strategy.
+  # When enable_gitlab_deploy_token is true, no downgrade occurs and the original
+  # remote_url + gitlab_project_id are preserved.
+  gitlab_deploy_token_downgraded = {
+    for key, repo in local.resolve_repository :
+    key => try(repo.git_clone_strategy, "") == "deploy_token" && local.effective_git_clone_strategy[key] == "deploy_key"
+  }
+
+  # Extract GitLab hostname from pull_request_url_template for SSH URL construction.
+  # Template format: "https://gitlab.example.com/group/proj/-/merge_requests/new?..."
+  # Falls back to "gitlab.com" for SaaS GitLab.
+  gitlab_ssh_host = {
+    for key, repo in local.resolve_repository :
+    key => try(regex("https?://([^/]+)/", try(repo.pull_request_url_template, ""))[0], "gitlab.com")
+  }
+
+  # Determine effective remote URL per repo.
+  # - deploy_key repos require SSH-style URLs; fall back to a known-good one.
+  # - github_app repos use their original URL (may be git://, https://, or SSH).
+  # - azure_active_directory_app repos use their original URL.
+  # - GitLab repos downgraded from deploy_token → deploy_key get their path
+  #   converted to git@gitlab.com:<path>.git
   effective_repository_remote_url = {
     for key, repo in local.resolve_repository :
     key => (
-      can(regex("^(git@|ssh:)", trimspace(try(repo.remote_url, "")))) ?
-      trimspace(try(repo.remote_url, "")) :
-      local.repository_ssh_fallback_url
+      local.gitlab_deploy_token_downgraded[key] ? (
+        "git@${local.gitlab_ssh_host[key]}:${trimspace(try(repo.remote_url, ""))}.git"
+      ) :
+      local.effective_git_clone_strategy[key] == "github_app" ||
+      local.effective_git_clone_strategy[key] == "azure_active_directory_app"
+      ? trimspace(try(repo.remote_url, local.repository_ssh_fallback_url))
+      : (
+        can(regex("^(git@|ssh:)", trimspace(try(repo.remote_url, "")))) ?
+        trimspace(try(repo.remote_url, "")) :
+        local.repository_ssh_fallback_url
+      )
     )
     if repo != null
   }
 
-  # Determine effective GitHub installation ID
-  # For migrations, prefer the discovered TARGET account installation ID
-  # But allow per-repo override for adoption workflows where we know the target's ID
+  # Extract GitHub owner from remote_url for per-repo installation matching.
+  # Supports formats: git@github.com:OWNER/repo, git://github.com/OWNER/repo,
+  # https://github.com/OWNER/repo, ssh://git@github.com/OWNER/repo
+  repo_github_owner = {
+    for key, repo in local.resolve_repository :
+    key => lower(try(
+      regex("github\\.com[:/]([^/]+)/", try(repo.remote_url, ""))[0],
+      ""
+    ))
+  }
+
+  # Determine effective GitHub installation ID by matching repo owner to installation.
+  # An account may have multiple GitHub App installations (e.g., one per org/user).
+  # We match the repo's GitHub owner to the installation's account.login.
   effective_github_installation_id = {
     for key, repo in local.resolve_repository :
     key => (
       try(repo.git_clone_strategy, "") == "github_app" ? (
-        # First, use discovered target account installation ID if available
+        # 1. Match repo owner to a specific installation
+        lookup(local.github_installation_by_owner, local.repo_github_owner[key], null) != null ?
+        lookup(local.github_installation_by_owner, local.repo_github_owner[key], null) :
+        # 2. Fallback to first discovered installation
         local.github_installation_id != null ? local.github_installation_id :
-        # Fallback: use per-repo github_installation_id if specified (for adoption workflows)
-        # This allows adopting existing repos without needing PAT discovery
+        # 3. Last resort: per-repo github_installation_id (adoption workflows)
         try(repo.github_installation_id, null)
       ) :
-      # For non-github_app strategies, no installation ID needed
       null
     )
   }
@@ -229,8 +281,8 @@ resource "dbtcloud_repository" "repositories" {
     source_name        = try(local.resolve_repository[each.key].name, each.key)
   }
 
-  # GitLab native integration
-  gitlab_project_id = try(
+  # GitLab native integration (nulled when downgraded from deploy_token to deploy_key)
+  gitlab_project_id = local.gitlab_deploy_token_downgraded[each.key] ? null : try(
     local.resolve_repository[each.key].gitlab_project_id,
     null
   )
@@ -303,8 +355,8 @@ resource "dbtcloud_repository" "protected_repositories" {
     source_name        = try(local.resolve_repository[each.key].name, each.key)
   }
 
-  # GitLab native integration
-  gitlab_project_id = try(
+  # GitLab native integration (nulled when downgraded from deploy_token to deploy_key)
+  gitlab_project_id = local.gitlab_deploy_token_downgraded[each.key] ? null : try(
     local.resolve_repository[each.key].gitlab_project_id,
     null
   )

@@ -95,6 +95,19 @@ variable "skip_global_project_permissions" {
   default     = false
 }
 
+variable "enable_gitlab_deploy_token" {
+  description = <<-EOT
+    When true, GitLab repositories keep their native deploy_token strategy and
+    gitlab_project_id. Requires: (1) GitLab application configured on the target
+    account, (2) PAT owner has linked their GitLab account in dbt Cloud, and
+    (3) the linked GitLab user has Maintainer+ access to the GitLab project.
+    When false (default), GitLab deploy_token repos are downgraded to deploy_key
+    with SSH URLs as a safe fallback.
+  EOT
+  type        = bool
+  default     = false
+}
+
 variable "environment_credentials" {
   description = "Map of environment keys to credential values. Keys are 'project_key_env_key' (e.g., 'my_project_prod')"
   type = map(object({

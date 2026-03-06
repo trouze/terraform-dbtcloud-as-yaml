@@ -201,14 +201,32 @@ output "repository_integration_status" {
   )
 }
 
+output "gitlab_deploy_token_status" {
+  description = "GitLab deploy_token repos: which are native vs downgraded to deploy_key"
+  value = {
+    enabled = var.enable_gitlab_deploy_token
+    repos = {
+      for key, repo in local.resolve_repository :
+      key => {
+        source_strategy = try(repo.git_clone_strategy, null)
+        effective_strategy = local.effective_git_clone_strategy[key]
+        downgraded = local.gitlab_deploy_token_downgraded[key]
+        gitlab_project_id = local.gitlab_deploy_token_downgraded[key] ? null : try(repo.gitlab_project_id, null)
+        remote_url = local.effective_repository_remote_url[key]
+      }
+      if try(repo.git_clone_strategy, "") == "deploy_token"
+    }
+  }
+}
+
 output "github_integration_discovery" {
   description = "Debug: GitHub integration discovery status"
   value = {
     pat_provided           = var.dbt_pat != null
     installations_found    = length(local.github_installations)
-    github_installation_id = local.github_installation_id
+    installation_by_owner  = local.github_installation_by_owner
+    fallback_id            = local.github_installation_id
     host_url               = local.dbt_host_url
-    # Include raw response for debugging (status code, etc.)
     http_status = var.dbt_pat != null && length(data.http.github_installations) > 0 ? (
       try(data.http.github_installations[0].status_code, "unknown")
     ) : "not_called"

@@ -49,6 +49,12 @@ variable "projects_v2_skip_global_project_permissions" {
   default     = false
 }
 
+variable "enable_gitlab_deploy_token" {
+  description = "When true, GitLab repos keep their native deploy_token strategy. Requires GitLab app on target account, PAT owner linked to GitLab, and Maintainer+ project access. When false (default), deploy_token repos fall back to deploy_key."
+  type        = bool
+  default     = false
+}
+
 #############################################
 # YAML Configuration
 #############################################
