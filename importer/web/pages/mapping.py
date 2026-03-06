@@ -42,6 +42,14 @@ RESOURCE_TYPES = {
     "JCTG": {"name": "Job Completion Trigger", "code": "JCTG", "icon": "play_circle_outline", "color": "#F97316"},
     "JEVO": {"name": "Env Var Job Override", "code": "JEVO", "icon": "tune", "color": "#14B8A6"},
     "EXTATTR": {"name": "Extended Attributes", "code": "EXTATTR", "icon": "tune", "color": "#7C3AED"},
+    "ACFT": {"name": "Account Features", "code": "ACFT", "icon": "settings", "color": "#6366F1"},
+    "IPRST": {"name": "IP Restrictions", "code": "IPRST", "icon": "security", "color": "#DC2626"},
+    "LNGI": {"name": "Lineage Integration", "code": "LNGI", "icon": "account_tree", "color": "#0EA5E9"},
+    "OAUTH": {"name": "OAuth Config", "code": "OAUTH", "icon": "vpn_key", "color": "#D97706"},
+    "PARFT": {"name": "Project Artefacts", "code": "PARFT", "icon": "inventory_2", "color": "#059669"},
+    "USRGRP": {"name": "User Groups", "code": "USRGRP", "icon": "group", "color": "#7C3AED"},
+    "SLCFG": {"name": "Semantic Layer Config", "code": "SLCFG", "icon": "layers", "color": "#EC4899"},
+    "SLSTM": {"name": "SL Credential Mapping", "code": "SLSTM", "icon": "link", "color": "#F43F5E"},
 }
 
 

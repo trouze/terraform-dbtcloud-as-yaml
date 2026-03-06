@@ -10,6 +10,14 @@ ENTITY_PARENT_TYPES = {
     "JCTG": ["ENV", "PRJ"],
     "JEVO": ["JOB"],
     "CRD": ["ENV"],         # Credential belongs to Environment
+    "ACFT": ["ACC"],
+    "IPRST": ["ACC"],
+    "LNGI": ["ACC"],
+    "OAUTH": ["ACC"],
+    "PARFT": ["PRJ"],
+    "USRGRP": ["ACC"],
+    "SLCFG": ["PRJ"],
+    "SLSTM": ["ACC"],
     "ENV": ["PRJ"],         # Environment belongs to Project
     "VAR": ["PRJ"],         # Environment Variable belongs to Project
     "EXTATTR": ["PRJ"],     # Extended Attributes belong to Project
@@ -48,6 +56,14 @@ TYPE_DEPTH = {
     "JOB": 3,  # Jobs at depth 3
     "JCTG": 3,
     "JEVO": 4,
+    "ACFT": 1,
+    "IPRST": 1,
+    "LNGI": 1,
+    "OAUTH": 1,
+    "PARFT": 2,
+    "USRGRP": 1,
+    "SLCFG": 2,
+    "SLSTM": 1,
 }
 
 # Sort order for entity types (for hierarchical display)
@@ -68,6 +84,14 @@ TYPE_SORT_ORDER = {
     "JOB": 40,
     "JCTG": 41,
     "JEVO": 42,
+    "ACFT": 5,
+    "IPRST": 6,
+    "LNGI": 7,
+    "OAUTH": 8,
+    "PARFT": 26,
+    "USRGRP": 9,
+    "SLCFG": 27,
+    "SLSTM": 17,
 }
 
 

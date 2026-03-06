@@ -56,6 +56,17 @@ TF_TYPE_TO_CODE = {
     "dbtcloud_project_repository": "PREP",
     "dbtcloud_job_completion_trigger": "JCTG",
     "dbtcloud_extended_attributes": "EXTATTR",
+    # Account-level resources
+    "dbtcloud_account_features": "ACFT",
+    "dbtcloud_ip_restrictions_rule": "IPRST",
+    "dbtcloud_lineage_integration": "LNGI",
+    "dbtcloud_oauth_configuration": "OAUTH",
+    # Project-level resources
+    "dbtcloud_project_artefacts": "PARFT",
+    "dbtcloud_user_groups": "USRGRP",
+    # Semantic layer
+    "dbtcloud_semantic_layer_configuration": "SLCFG",
+    "dbtcloud_semantic_layer_credential_service_token_mapping": "SLSTM",
     # Credential types - all map to CRD
     "dbtcloud_athena_credential": "CRD",
     "dbtcloud_bigquery_credential": "CRD",

@@ -18,6 +18,14 @@ NODE_STYLES = {
     "JOB": {"shape": "hexagon", "color": "#3B82F6", "icon": "play_circle"},
     "JCTG": {"shape": "triangle", "color": "#F97316", "icon": "play_circle_outline"},
     "JEVO": {"shape": "rectangle", "color": "#14B8A6", "icon": "tune"},
+    "ACFT": {"shape": "round-rectangle", "color": "#6366F1", "icon": "settings"},
+    "IPRST": {"shape": "octagon", "color": "#DC2626", "icon": "security"},
+    "LNGI": {"shape": "diamond", "color": "#0EA5E9", "icon": "account_tree"},
+    "OAUTH": {"shape": "round-rectangle", "color": "#D97706", "icon": "vpn_key"},
+    "PARFT": {"shape": "rectangle", "color": "#059669", "icon": "inventory_2"},
+    "USRGRP": {"shape": "ellipse", "color": "#7C3AED", "icon": "group"},
+    "SLCFG": {"shape": "diamond", "color": "#EC4899", "icon": "layers"},
+    "SLSTM": {"shape": "rectangle", "color": "#F43F5E", "icon": "link"},
 }
 
 # Type display names
@@ -36,6 +44,14 @@ TYPE_NAMES = {
     "JOB": "Job",
     "JCTG": "Job Completion Trigger",
     "JEVO": "Env Var Job Override",
+    "ACFT": "Account Features",
+    "IPRST": "IP Restrictions",
+    "LNGI": "Lineage Integration",
+    "OAUTH": "OAuth Config",
+    "PARFT": "Project Artefacts",
+    "USRGRP": "User Groups",
+    "SLCFG": "Semantic Layer Config",
+    "SLSTM": "SL Credential Mapping",
 }
 
 

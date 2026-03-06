@@ -47,6 +47,17 @@ RESOURCE_TYPE_MAP = {
     "CON": ("dbtcloud_global_connection", "connections", "protected_connections"),
     "TOK": ("dbtcloud_service_token", "service_tokens", "protected_service_tokens"),
     "NOT": ("dbtcloud_notification", "notifications", "notifications"),  # Notifications skipped in TF (user_id mapping)
+    # --- S4: Account-level ---
+    "ACFT": ("dbtcloud_account_features", "account_features", "protected_account_features"),
+    "IPRST": ("dbtcloud_ip_restrictions_rule", "ip_restrictions_rules", "protected_ip_restrictions_rules"),
+    "LNGI": ("dbtcloud_lineage_integration", "lineage_integrations", "protected_lineage_integrations"),
+    "OAUTH": ("dbtcloud_oauth_configuration", "oauth_configurations", "protected_oauth_configurations"),
+    # --- S5: Project-level ---
+    "PARFT": ("dbtcloud_project_artefacts", "project_artefacts", "protected_project_artefacts"),
+    "USRGRP": ("dbtcloud_user_groups", "user_groups", "protected_user_groups"),
+    # --- S6: Semantic Layer ---
+    "SLCFG": ("dbtcloud_semantic_layer_configuration", "semantic_layer_configurations", "protected_semantic_layer_configurations"),
+    "SLSTM": ("dbtcloud_semantic_layer_credential_service_token_mapping", "semantic_layer_credential_service_token_mappings", "protected_semantic_layer_credential_service_token_mappings"),
 }
 
 
@@ -785,6 +796,14 @@ TYPE_LABELS = {
     "GRP": "Group",
     "NOT": "Notification",
     "EXTATTR": "Extended Attributes",
+    "ACFT": "Account Features",
+    "IPRST": "IP Restrictions Rule",
+    "LNGI": "Lineage Integration",
+    "OAUTH": "OAuth Configuration",
+    "PARFT": "Project Artefacts",
+    "USRGRP": "User Groups",
+    "SLCFG": "Semantic Layer Configuration",
+    "SLSTM": "Semantic Layer Credential Mapping",
 }
 
 
@@ -1114,6 +1133,17 @@ EXTENDED_RESOURCE_TYPE_MAP = {
     "GRP": ("dbtcloud_group", "groups", "protected_groups"),
     "CON": ("dbtcloud_global_connection", "connections", "protected_connections"),
     "TOK": ("dbtcloud_service_token", "service_tokens", "protected_service_tokens"),
+    # --- S4: Account-level ---
+    "ACFT": ("dbtcloud_account_features", "account_features", "protected_account_features"),
+    "IPRST": ("dbtcloud_ip_restrictions_rule", "ip_restrictions_rules", "protected_ip_restrictions_rules"),
+    "LNGI": ("dbtcloud_lineage_integration", "lineage_integrations", "protected_lineage_integrations"),
+    "OAUTH": ("dbtcloud_oauth_configuration", "oauth_configurations", "protected_oauth_configurations"),
+    # --- S5: Project-level ---
+    "PARFT": ("dbtcloud_project_artefacts", "project_artefacts", "protected_project_artefacts"),
+    "USRGRP": ("dbtcloud_user_groups", "user_groups", "protected_user_groups"),
+    # --- S6: Semantic Layer ---
+    "SLCFG": ("dbtcloud_semantic_layer_configuration", "semantic_layer_configurations", "protected_semantic_layer_configurations"),
+    "SLSTM": ("dbtcloud_semantic_layer_credential_service_token_mapping", "semantic_layer_credential_service_token_mappings", "protected_semantic_layer_credential_service_token_mappings"),
 }
 
 
