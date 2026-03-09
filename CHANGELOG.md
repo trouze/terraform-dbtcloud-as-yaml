@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.27.1] - 2026-03-09
+
+### Fixed
+- **IP restrictions `cidrs` attribute**: Changed `dynamic "cidrs"` block to direct list comprehension assignment, matching the provider's `SetNestedAttribute` schema for `dbtcloud_ip_restrictions_rule`.
+- **`errors_on_lint_failure` CI-only guard**: Introduced `errors_on_lint_failure_effective` local that forces `false` for non-CI jobs, preventing "linting is not supported on non-ci jobs" API errors during apply. Default fallback also changed from `true` to `false`.
+- **`project_artefacts` 404 on apply**: Normalizer now stores `docs_job_key` / `freshness_job_key` (not source numeric IDs) in YAML. Terraform module resolves these to target job IDs via `job_id_by_key` lookup, and uses `project_id_lookup` to handle both protected and unprotected projects.
+
 ## [0.27.0] - 2026-03-05
 
 ### Added
