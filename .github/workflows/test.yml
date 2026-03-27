@@ -23,10 +23,10 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: "~> 1.7"
+          terraform_version_file: .terraform-version
 
       - name: Terraform Init
-        run: terraform init
+        run: terraform init -backend=false
 
       - name: Terraform Test
         run: terraform test -verbose
@@ -50,11 +50,11 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: "~> 1.7"
+          terraform_version_file: .terraform-version
 
       - name: Terraform Init
         working-directory: modules/${{ matrix.module }}
-        run: terraform init
+        run: terraform init -backend=false
 
       - name: Terraform Test
         working-directory: modules/${{ matrix.module }}

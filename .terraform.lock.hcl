@@ -3,9 +3,12 @@
 
 provider "registry.terraform.io/dbt-labs/dbtcloud" {
   version     = "1.8.2"
-  constraints = "~> 1.3"
+  constraints = "~> 1.8"
   hashes = [
+    "h1:3Hw1in/qcHdAp2BRhEaFRr/ez9lFjBv3V5WIUxHXcSs=",
+    "h1:ASwPE1I3U7cufOLFvGV+yHmV4/24y2Jrmt8V3Pn9lEY=",
     "h1:BIVjUC8FxluKSvwm2jvySD0AvSkFPKwGn/SHez082Oc=",
+    "h1:IpC3g4srpeI3iJ5GL3GcxSMO/+XHBktS/zumEm/8xbc=",
     "zh:01df4a2592c7d66152aa18bae2fb6abcca205f2c0d75486a67e3c8307ea70af2",
     "zh:020e8c80eb8973ac0571b8cb2c990d76c82d2032f590ffaec418fc6728a48594",
     "zh:0c30dd1d7ac516efe921362143c0372b2dedab59950662c08513c8c1e0430ee4",
