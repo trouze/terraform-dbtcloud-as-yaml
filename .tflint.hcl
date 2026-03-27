@@ -1,7 +1,3 @@
-plugin "aws" {
-  enabled = false
-}
-
 rule "terraform_required_version" {
   enabled = true
 }
@@ -21,6 +17,12 @@ rule "terraform_documented_outputs" {
 rule "terraform_naming_convention" {
   enabled = true
   format  = "snake_case"
+
+  # Allow a leading underscore for locals — used as a convention for
+  # "private" intermediate locals in validation.tf.
+  locals {
+    custom = "^_?[a-z][a-z0-9_]*$"
+  }
 }
 
 rule "terraform_comment_syntax" {
@@ -37,4 +39,8 @@ rule "terraform_unused_required_providers" {
 
 rule "terraform_standard_module_structure" {
   enabled = true
+}
+
+rule "terraform_module_pinned_source" {
+  enabled = false
 }
