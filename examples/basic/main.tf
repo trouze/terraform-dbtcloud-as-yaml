@@ -16,7 +16,8 @@ provider "dbtcloud" {
 }
 
 module "dbt_cloud" {
-  source = "github.com/trouze/terraform-dbtcloud-yaml"
+  source  = "trouze/yaml/dbtcloud"
+  version = "0.1.0-alpha"
 
   dbt_account_id = var.dbt_account_id
   dbt_token      = var.dbt_token

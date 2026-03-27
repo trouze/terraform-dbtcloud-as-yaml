@@ -22,12 +22,6 @@ variable "dbt_host_url" {
   default     = "https://cloud.getdbt.com"
 }
 
-variable "yaml_file_path" {
-  description = "Path to the dbt Cloud configuration YAML file"
-  type        = string
-  default     = "./dbt-config.yml"
-}
-
 variable "target_name" {
   description = "Default target name (e.g., 'prod')"
   type        = string
