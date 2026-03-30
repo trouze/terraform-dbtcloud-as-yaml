@@ -1,0 +1,39 @@
+# importer.yml — runs pytest for the importer package.
+# Triggered only when importer source or tests change.
+
+name: Importer Tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "importer/**"
+      - ".github/workflows/importer.yml"
+  pull_request:
+    paths:
+      - "importer/**"
+      - ".github/workflows/importer.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  pytest:
+    name: Importer Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r importer/requirements.txt -r importer/tests/requirements.txt
+
+      - name: Run tests
+        run: pytest importer/tests/ -v
+        env:
+          PYTHONPATH: .
