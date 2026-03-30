@@ -52,12 +52,73 @@ fi
 
 echo "Done. Starter created in ./$TARGET"
 echo ""
+
+# ── Phase 2: Existing account import ─────────────────────────────────────────
+printf "Do you have an existing dbt Cloud account to import? [y/N] "
+read -r IMPORT_ACCOUNT
+
+if [[ "$IMPORT_ACCOUNT" =~ ^[Yy]$ ]]; then
+    if ! command -v python3 &>/dev/null; then
+        echo "  python3 is required for the import. Install it and re-run." >&2
+        exit 1
+    fi
+
+    # Virtualenv + slim deps (requires local checkout of this repo)
+    python3 -m venv "$TARGET/.venv"
+    # shellcheck disable=SC1091
+    source "$TARGET/.venv/bin/activate"
+    pip install -q -r importer/requirements.txt
+
+    printf "  dbt Cloud host URL [https://<your-account>.<region>.dbt.com]: "
+    read -r DBT_SOURCE_HOST_URL
+    DBT_SOURCE_HOST_URL="${DBT_SOURCE_HOST_URL:-https://cloud.getdbt.com}"
+
+    printf "  Account ID: "
+    read -r DBT_SOURCE_ACCOUNT_ID
+
+    printf "  API token: "
+    read -rs DBT_SOURCE_API_TOKEN
+    echo
+
+    printf "  Project ID(s) to import, comma-separated [leave blank for all]: "
+    read -r PROJECT_IDS_INPUT
+
+    IMPORTER_FLAGS=()
+    if [[ -n "$PROJECT_IDS_INPUT" ]]; then
+        IFS=',' read -ra _ids <<< "$PROJECT_IDS_INPUT"
+        for _id in "${_ids[@]}"; do
+            _id="${_id// /}"  # trim spaces
+            [[ -n "$_id" ]] && IMPORTER_FLAGS+=(--project-id "$_id")
+        done
+    fi
+
+    export DBT_SOURCE_HOST_URL DBT_SOURCE_ACCOUNT_ID DBT_SOURCE_API_TOKEN
+    (cd "$TARGET" && python -m importer "${IMPORTER_FLAGS[@]}")
+
+    # Pre-populate .env so Terraform credentials don't need to be re-entered
+    if [[ -f "$TARGET/.env.example" ]]; then
+        python3 -c "
+import sys, pathlib
+target, acct, token, host = sys.argv[1:]
+txt = pathlib.Path(f'{target}/.env.example').read_text()
+txt = txt.replace('YOUR_ACCOUNT_ID', acct).replace('YOUR_API_TOKEN', token).replace('YOUR_HOST_URL', host)
+pathlib.Path(f'{target}/.env').write_text(txt)
+" "$TARGET" "$DBT_SOURCE_ACCOUNT_ID" "$DBT_SOURCE_API_TOKEN" "$DBT_SOURCE_HOST_URL"
+        echo "  \u2713  $TARGET/.env pre-filled with your dbt Cloud credentials"
+    fi
+fi
+
+# ── Phase 3: Next steps ───────────────────────────────────────────────────────
+echo ""
 echo "Next steps:"
 echo "  1.  cd $TARGET"
-echo "  2.  cp .env.example .env"
-echo "      # fill in DBT_ACCOUNT_ID, DBT_TOKEN, and warehouse credentials"
-echo "  3.  Edit dbt-config.yml"
-echo "      # replace YOUR_ placeholders with your warehouse and repo details"
-echo "  4.  source .env && terraform init && terraform apply"
+if [[ "${IMPORT_ACCOUNT:-N}" =~ ^[Yy]$ ]]; then
+    echo "  2.  Review .env — your dbt Cloud credentials are pre-filled;"
+    echo "      add warehouse credentials (TF_VAR_environment_credentials, etc.)"
+else
+    echo "  2.  cp .env.example .env"
+    echo "      # fill in TF_VAR_dbt_account_id, TF_VAR_dbt_token, and warehouse credentials"
+fi
+echo "  3.  source .env && terraform init && terraform apply"
 echo ""
 echo "Full walkthrough: https://github.com/$REPO/blob/main/examples/basic/README.md"
