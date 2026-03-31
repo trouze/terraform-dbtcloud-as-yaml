@@ -1201,6 +1201,9 @@ def _normalize_projects(
             context.add_exclusion("project", project.key, "Inactive", _get_element_id(project))
             continue
         
+        # Set project cursor for scoped import registration (used by `add` command)
+        context.set_current_project(project.id)
+
         # Normalize project
         normalized_key = context.resolve_collision(project.key, namespace="projects")
         if _get_element_id(project):
@@ -1294,7 +1297,8 @@ def _normalize_projects(
                 project_data["semantic_layer_config"]["id"] = project.semantic_layer_config.id
 
         result.append(project_data)
-    
+        context.clear_current_project()
+
     return result
 
 

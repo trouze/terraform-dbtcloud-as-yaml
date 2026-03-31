@@ -20,3 +20,9 @@ variable "enable_gitlab_deploy_token" {
   type        = bool
   default     = false
 }
+
+variable "global_repositories" {
+  description = "List of repository objects from globals.repositories[]. Used to resolve slug references in project.repository."
+  type        = any
+  default     = []
+}

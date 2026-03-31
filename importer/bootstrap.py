@@ -27,11 +27,12 @@ ACCOUNT_LEVEL_GLOBALS = {
 }
 
 
-def run(
+def _run_core(
     output_path: Path | None = None,
     project_ids: Optional[List[int]] = None,
     slim: bool = False,
     import_blocks: bool = False,
+    import_scope_project_ids: Optional[set] = None,
 ) -> None:
     from importer.config import Settings
     from importer.client import DbtCloudClient
@@ -41,7 +42,7 @@ def run(
     import yaml
 
     output_path = output_path or Path.cwd() / "dbt-config.yml"
-    mapping_path = Path(__file__).parent.parent / "importer_mapping.yml"
+    mapping_path = Path(__file__).parent / "importer_mapping.yml"
 
     try:
         settings = Settings.from_env()
@@ -58,7 +59,7 @@ def run(
         if project_ids:
             config.scope["mode"] = "specific_projects"
             config.scope["project_ids"] = list(project_ids)
-        context = NormalizationContext(config)
+        context = NormalizationContext(config, import_scope_project_ids=import_scope_project_ids)
         normalized = normalize_snapshot(snapshot, config, context)
 
         yaml_output = yaml.dump(
@@ -74,9 +75,10 @@ def run(
         print(f"  \u2713  {output_path} written")
 
         if import_blocks:
-            from importer.importblocks import generate_import_blocks
+            from importer.importblocks import detect_module_prefix, generate_import_blocks
+            module_prefix = detect_module_prefix(output_path.parent)
             import_path = output_path.parent / "imports.tf"
-            import_path.write_text(generate_import_blocks(context), encoding="utf-8")
+            import_path.write_text(generate_import_blocks(context, module_prefix=module_prefix), encoding="utf-8")
             print(f"  \u2713  {import_path} written ({len(context.import_registry)} import blocks)")
 
         if context.placeholders:
@@ -87,3 +89,31 @@ def run(
     except Exception as e:
         print(f"  \u2717  Import failed: {e}", file=sys.stderr)
         sys.exit(1)
+
+
+def run(
+    output_path: Path | None = None,
+    project_ids: Optional[List[int]] = None,
+    slim: bool = False,
+    import_blocks: bool = False,
+) -> None:
+    _run_core(
+        output_path=output_path,
+        project_ids=project_ids,
+        slim=slim,
+        import_blocks=import_blocks,
+    )
+
+
+def run_add(
+    output_path: Path | None = None,
+    project_ids: Optional[List[int]] = None,
+    new_project_ids: Optional[List[int]] = None,
+) -> None:
+    _run_core(
+        output_path=output_path,
+        project_ids=project_ids,
+        slim=False,
+        import_blocks=True,
+        import_scope_project_ids=set(new_project_ids) if new_project_ids else None,
+    )

@@ -3,16 +3,27 @@ terraform {
   required_providers {
     dbtcloud = {
       source  = "dbt-labs/dbtcloud"
-      version = "~> 1.8"
+      version = "~> 1.9"
     }
   }
 }
 
 locals {
-  # Build a map of project_key => repository object (skip projects with no repository)
+  # Index global repositories by key for slug resolution
+  _global_repos_by_key = {
+    for r in var.global_repositories :
+    r.key => r
+  }
+
+  # Build a map of project_key => repository object (skip projects with no repository).
+  # When project.repository is a string slug, resolve it from _global_repos_by_key.
   repos_map = {
     for p in var.projects :
-    try(p.key, p.name) => p.repository
+    try(p.key, p.name) => (
+      can(p.repository.remote_url)
+      ? p.repository
+      : local._global_repos_by_key[tostring(p.repository)]
+    )
     if try(p.repository, null) != null
   }
 

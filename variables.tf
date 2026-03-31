@@ -124,11 +124,15 @@ variable "enable_gitlab_deploy_token" {
 locals {
   yaml_content = yamldecode(file(var.yaml_file))
 
-  # Support both single project (project:) and multi-project (projects:) YAML shapes.
-  # Single-project users keep their existing YAML unchanged — the project: key is
-  # automatically wrapped into a one-element list.
-  projects = try(
-    local.yaml_content.projects,
-    [local.yaml_content.project]
-  )
+  _globals = try(local.yaml_content.globals, {})
+
+  _global_connections     = try(local._globals.connections, [])
+  _service_tokens         = try(local._globals.service_tokens, [])
+  _groups                 = try(local._globals.groups, [])
+  _notifications_global   = try(local._globals.notifications, [])
+  _privatelink_endpoints  = try(local._globals.privatelink_endpoints, [])
+  _semantic_layer_configs = try(local._globals.semantic_layer_configs, [])
+  _global_repositories    = try(local._globals.repositories, [])
+
+  projects = try(local.yaml_content.projects, [local.yaml_content.project])
 }

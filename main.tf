@@ -38,10 +38,10 @@ module "account_features" {
 #############################################
 
 module "global_connections" {
-  count  = length(try(local.yaml_content.global_connections, [])) > 0 ? 1 : 0
+  count  = length(local._global_connections) > 0 ? 1 : 0
   source = "./modules/global_connections"
 
-  connections_data       = try(local.yaml_content.global_connections, [])
+  connections_data       = local._global_connections
   connection_credentials = var.connection_credentials
 }
 
@@ -50,10 +50,10 @@ module "global_connections" {
 #############################################
 
 module "service_tokens" {
-  count  = length(try(local.yaml_content.service_tokens, [])) > 0 ? 1 : 0
+  count  = length(local._service_tokens) > 0 ? 1 : 0
   source = "./modules/service_tokens"
 
-  service_tokens_data = try(local.yaml_content.service_tokens, [])
+  service_tokens_data = local._service_tokens
 }
 
 #############################################
@@ -61,10 +61,10 @@ module "service_tokens" {
 #############################################
 
 module "groups" {
-  count  = length(try(local.yaml_content.groups, [])) > 0 ? 1 : 0
+  count  = length(local._groups) > 0 ? 1 : 0
   source = "./modules/groups"
 
-  groups_data = try(local.yaml_content.groups, [])
+  groups_data = local._groups
 }
 
 #############################################
@@ -76,7 +76,7 @@ module "user_groups" {
   source = "./modules/user_groups"
 
   user_groups_data = try(local.yaml_content.user_groups, [])
-  group_ids        = length(try(local.yaml_content.groups, [])) > 0 ? module.groups[0].group_ids : {}
+  group_ids        = length(local._groups) > 0 ? module.groups[0].group_ids : {}
 }
 
 #############################################
@@ -84,10 +84,10 @@ module "user_groups" {
 #############################################
 
 module "notifications" {
-  count  = length(try(local.yaml_content.notifications, [])) > 0 ? 1 : 0
+  count  = length(local._notifications_global) > 0 ? 1 : 0
   source = "./modules/notifications"
 
-  notifications_data = try(local.yaml_content.notifications, [])
+  notifications_data = local._notifications_global
 }
 
 #############################################
@@ -138,6 +138,7 @@ module "repository" {
   project_ids                = module.project.project_ids
   dbt_pat                    = var.dbt_pat
   enable_gitlab_deploy_token = var.enable_gitlab_deploy_token
+  global_repositories        = local._global_repositories
 }
 
 module "project_repository" {
@@ -182,7 +183,7 @@ module "environments" {
   projects               = local.projects
   project_ids            = module.project.project_ids
   credential_ids         = module.credentials.credential_ids
-  global_connection_ids  = length(try(local.yaml_content.global_connections, [])) > 0 ? module.global_connections[0].connection_ids : {}
+  global_connection_ids  = length(local._global_connections) > 0 ? module.global_connections[0].connection_ids : {}
   extended_attribute_ids = length(flatten([for p in local.projects : try(p.extended_attributes, [])])) > 0 ? module.extended_attributes[0].extended_attribute_ids : {}
 }
 
@@ -236,7 +237,7 @@ module "profiles" {
 
   projects               = local.projects
   project_ids            = module.project.project_ids
-  global_connection_ids  = length(try(local.yaml_content.global_connections, [])) > 0 ? module.global_connections[0].connection_ids : {}
+  global_connection_ids  = length(local._global_connections) > 0 ? module.global_connections[0].connection_ids : {}
   credential_ids         = module.credentials.credential_ids
   extended_attribute_ids = length(flatten([for p in local.projects : try(p.extended_attributes, [])])) > 0 ? module.extended_attributes[0].extended_attribute_ids : {}
 }

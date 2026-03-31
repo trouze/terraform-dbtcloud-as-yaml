@@ -9,7 +9,24 @@ set -euo pipefail
 
 TARGET=${1:-my-dbt-platform}
 REPO="trouze/terraform-dbtcloud-yaml"
-RELEASE_URL="https://github.com/$REPO/releases/latest/download/starter.tar.gz"
+RELEASE_URL="${RELEASE_URL:-https://github.com/$REPO/releases/latest/download/starter.tar.gz}"
+
+# Resolve the importer directory: prefer a copy alongside this script (local dev),
+# fall back to fetching it from the repo via git sparse-checkout.
+_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-}")" &>/dev/null && pwd || true)"
+if [[ -d "$_SCRIPT_DIR/importer" ]]; then
+  IMPORTER_DIR="$_SCRIPT_DIR/importer"
+  IMPORTER_PYTHONPATH="$_SCRIPT_DIR"
+else
+  # curl | bash path — fetch importer from the repo into a temp dir
+  _IMPORTER_TMP="$(mktemp -d)"
+  trap 'rm -rf "$_IMPORTER_TMP"' EXIT
+  git clone --no-checkout --depth=1 "https://github.com/$REPO" "$_IMPORTER_TMP/repo" --quiet
+  git -C "$_IMPORTER_TMP/repo" sparse-checkout set importer
+  git -C "$_IMPORTER_TMP/repo" checkout --quiet
+  IMPORTER_DIR="$_IMPORTER_TMP/repo/importer"
+  IMPORTER_PYTHONPATH="$_IMPORTER_TMP/repo"
+fi
 
 echo "Setting up dbt Platform Terraform starter in ./$TARGET ..."
 echo ""
@@ -63,11 +80,11 @@ if [[ "$IMPORT_ACCOUNT" =~ ^[Yy]$ ]]; then
         exit 1
     fi
 
-    # Virtualenv + slim deps (requires local checkout of this repo)
+    # Virtualenv + install importer package
     python3 -m venv "$TARGET/.venv"
     # shellcheck disable=SC1091
     source "$TARGET/.venv/bin/activate"
-    pip install -q -r importer/requirements.txt
+    pip install -q "$IMPORTER_DIR"
 
     printf "  dbt Cloud host URL [https://<your-account>.<region>.dbt.com]: "
     read -r DBT_SOURCE_HOST_URL
@@ -99,7 +116,7 @@ if [[ "$IMPORT_ACCOUNT" =~ ^[Yy]$ ]]; then
     fi
 
     export DBT_SOURCE_HOST_URL DBT_SOURCE_ACCOUNT_ID DBT_SOURCE_API_TOKEN
-    (cd "$TARGET" && python -m importer "${IMPORTER_FLAGS[@]}")
+    (cd "$TARGET" && dbtcloud-import init "${IMPORTER_FLAGS[@]}")
 
     # Pre-populate .env so Terraform credentials don't need to be re-entered
     if [[ -f "$TARGET/.env.example" ]]; then

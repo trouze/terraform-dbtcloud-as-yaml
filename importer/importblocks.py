@@ -1,6 +1,8 @@
 """Render Terraform import {} blocks from NormalizationContext.import_registry."""
 from __future__ import annotations
 
+import re
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -14,9 +16,34 @@ _HEADER = """\
 # After a successful apply, this file can be deleted — resources are now in state.
 """
 
+# Registry source pattern: matches trouze/yaml/dbtcloud (with optional host prefix)
+_REGISTRY_SOURCE_RE = re.compile(r'trouze/yaml/dbtcloud')
+_MODULE_BLOCK_RE = re.compile(
+    r'module\s+"([^"]+)"\s*\{([^}]*)\}',
+    re.DOTALL,
+)
 
-def generate_import_blocks(context: "NormalizationContext") -> str:
+
+def detect_module_prefix(search_dir: Path) -> str:
+    """Return 'module.<name>.' if main.tf in search_dir wraps the dbtcloud registry module.
+
+    Returns an empty string when running against the flat/root module structure,
+    meaning import addresses are already at the correct level.
+    """
+    main_tf = search_dir / "main.tf"
+    if not main_tf.exists():
+        return ""
+    content = main_tf.read_text(encoding="utf-8")
+    for match in _MODULE_BLOCK_RE.finditer(content):
+        block_body = match.group(2)
+        if _REGISTRY_SOURCE_RE.search(block_body):
+            return f"module.{match.group(1)}."
+    return ""
+
+
+def generate_import_blocks(context: "NormalizationContext", module_prefix: str = "") -> str:
     lines = [_HEADER]
     for entry in context.import_registry:
-        lines += ["import {", f'  to = {entry["address"]}', f'  id = "{entry["id"]}"', "}", ""]
+        address = f"{module_prefix}{entry['address']}"
+        lines += ["import {", f"  to = {address}", f'  id = "{entry["id"]}"', "}", ""]
     return "\n".join(lines)

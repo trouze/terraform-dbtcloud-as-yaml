@@ -46,3 +46,6 @@ __pycache__/
 
 .claude/
 *env/
+*build/
+*dist/
+*.egg-info/

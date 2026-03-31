@@ -10,7 +10,7 @@ locals {
   # ── Index locals: pre-computed key sets for cross-reference lookups ────────
 
   _valid_global_connection_keys = toset([
-    for c in try(local.yaml_content.global_connections, []) : try(c.key, c.name)
+    for c in local._global_connections : try(c.key, c.name)
   ])
 
   _valid_project_keys = toset([
@@ -18,7 +18,7 @@ locals {
   ])
 
   _valid_group_keys = toset([
-    for g in try(local.yaml_content.groups, []) : try(g.key, g.name)
+    for g in local._groups : try(g.key, g.name)
   ])
 
   # Environment keys per project: { project_key => set(env_key) }
@@ -184,7 +184,7 @@ locals {
   # ── V-10: global_connections[].type must be a valid warehouse type ─────────
 
   _errors_connection_type = [
-    for conn in try(local.yaml_content.global_connections, []) :
+    for conn in local._global_connections :
     "Global connection '${try(conn.key, conn.name)}' has type '${try(conn.type, "")}' which is not a recognized warehouse type. Valid types: [${join(", ", tolist(local._valid_connection_types))}]"
     if !contains(local._valid_connection_types, try(conn.type, ""))
   ]
@@ -216,7 +216,7 @@ locals {
   # ── V-13: service_token permission project_key → projects[].key ────────────
 
   _errors_service_token_project_keys = flatten([
-    for st in try(local.yaml_content.service_tokens, []) : [
+    for st in local._service_tokens : [
       for perm in try(st.permissions, []) :
       "Service token '${try(st.key, st.name)}' has a permission referencing project_key '${perm.project_key}' which is not a defined project. Available project keys: [${join(", ", tolist(local._valid_project_keys))}]"
       if(
@@ -296,10 +296,10 @@ check "schedule_config_without_trigger" {
 check "global_connections_protected" {
   assert {
     condition = length([
-      for c in try(local.yaml_content.global_connections, []) :
+      for c in local._global_connections :
       try(c.key, c.name)
       if !try(c.protected, false)
     ]) == 0
-    error_message = "Best practice: the following global connections have protected: false. Deleting a connection detaches all environments that reference it. Add protected: true to prevent accidental removal. Connections: ${join(", ", [for c in try(local.yaml_content.global_connections, []) : try(c.key, c.name) if !try(c.protected, false)])}"
+    error_message = "Best practice: the following global connections have protected: false. Deleting a connection detaches all environments that reference it. Add protected: true to prevent accidental removal. Connections: ${join(", ", [for c in local._global_connections : try(c.key, c.name) if !try(c.protected, false)])}"
   }
 }

@@ -3,7 +3,7 @@ terraform {
   required_providers {
     dbtcloud = {
       source  = "dbt-labs/dbtcloud"
-      version = "~> 1.8"
+      version = "~> 1.9"
     }
   }
 }
@@ -156,6 +156,9 @@ resource "dbtcloud_job" "jobs" {
   force_node_selection     = local.force_node_selection_effective[each.key]
   deferring_environment_id = local.resolve_deferring_environment_id[each.key]
 
+  job_type              = try(each.value.job_data.job_type, null)
+  compare_changes_flags = try(each.value.job_data.compare_changes_flags, null)
+
   schedule_cron     = local.schedule_cron_effective[each.key]
   schedule_days     = try(each.value.job_data.schedule_days, null)
   schedule_hours    = local.schedule_hours_effective[each.key]
@@ -191,6 +194,9 @@ resource "dbtcloud_job" "protected_jobs" {
   triggers_on_draft_pr     = try(each.value.job_data.triggers_on_draft_pr, false)
   force_node_selection     = local.force_node_selection_effective[each.key]
   deferring_environment_id = local.resolve_deferring_environment_id[each.key]
+
+  job_type              = try(each.value.job_data.job_type, null)
+  compare_changes_flags = try(each.value.job_data.compare_changes_flags, null)
 
   schedule_cron     = local.schedule_cron_effective[each.key]
   schedule_days     = try(each.value.job_data.schedule_days, null)

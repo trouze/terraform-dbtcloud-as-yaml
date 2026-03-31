@@ -119,7 +119,11 @@ class MappingConfig(BaseModel):
 class NormalizationContext:
     """Tracks state during normalization (placeholders, collisions, exclusions)."""
 
-    def __init__(self, config: MappingConfig):
+    def __init__(
+        self,
+        config: MappingConfig,
+        import_scope_project_ids: Optional[Set[int]] = None,
+    ):
         self.config = config
         self.placeholders: List[Dict[str, str]] = []
         self.exclusions: List[Dict[str, Any]] = []
@@ -130,6 +134,17 @@ class NormalizationContext:
         self.connection_key_to_normalized: Dict[str, str] = {}  # original connection key -> normalized key
         self.import_registry: List[Dict[str, Any]] = []  # {"address": str, "id": str}
         self._repo_id_by_key: Dict[str, int] = {}  # pre-alignment repo key -> source id
+        # None = register all (default); set of IDs = only register those projects
+        self.import_scope_project_ids: Optional[Set[int]] = import_scope_project_ids
+        self._current_import_project_id: Optional[int] = None  # cursor set per-project in core.py
+
+    def set_current_project(self, project_id: Optional[int]) -> None:
+        """Set the project cursor for scoped import registration."""
+        self._current_import_project_id = project_id
+
+    def clear_current_project(self) -> None:
+        """Clear the project cursor (used during globals normalization)."""
+        self._current_import_project_id = None
 
     def add_placeholder(self, lookup_id: str, description: str) -> None:
         """Record a LOOKUP placeholder."""
@@ -265,5 +280,9 @@ class NormalizationContext:
         """Register a Terraform address + dbt Cloud API ID for import block generation."""
         if source_id is None:
             return
+        if self.import_scope_project_ids is not None:
+            # _current_import_project_id is None during globals → automatically excluded
+            if self._current_import_project_id not in self.import_scope_project_ids:
+                return
         self.import_registry.append({"address": address, "id": str(source_id)})
 
