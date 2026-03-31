@@ -26,11 +26,12 @@ resource "dbtcloud_notification" "notifications" {
   for_each = local.notifications_map
 
   user_id           = try(each.value.target.user_id, each.value.user_id, null)
-  notification_type = local._type_map[each.value.type]
+  # Support both new schema (type string) and importer flat format (notification_type int)
+  notification_type = try(local._type_map[each.value.type], each.value.notification_type)
 
-  slack_channel_id   = try(each.value.target.channel_id, null)
-  slack_channel_name = try(each.value.target.channel_name, try(each.value.target.channel, null))
-  external_email     = try(each.value.target.email, null)
+  slack_channel_id   = try(each.value.target.channel_id, each.value.slack_channel_id, null)
+  slack_channel_name = try(each.value.target.channel_name, each.value.target.channel, each.value.slack_channel_name, null)
+  external_email     = try(each.value.target.email, each.value.external_email, null)
 
   on_cancel  = try(each.value.on_cancel, [])
   on_failure = try(each.value.on_failure, [])

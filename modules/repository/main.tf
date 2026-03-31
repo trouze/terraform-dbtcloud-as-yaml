@@ -19,10 +19,11 @@ locals {
   # When project.repository is a string slug, resolve it from _global_repos_by_key.
   repos_map = {
     for p in var.projects :
-    try(p.key, p.name) => (
-      can(p.repository.remote_url)
-      ? p.repository
-      : local._global_repos_by_key[tostring(p.repository)]
+    try(p.key, p.name) => try(
+      # String slug → resolve from global repositories index
+      local._global_repos_by_key[tostring(p.repository)],
+      # Inline object → use directly (tostring fails on objects, so try falls through)
+      p.repository
     )
     if try(p.repository, null) != null
   }

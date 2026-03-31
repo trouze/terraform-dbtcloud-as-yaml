@@ -89,6 +89,10 @@ if [[ "$IMPORT_ACCOUNT" =~ ^[Yy]$ ]]; then
     printf "  dbt Cloud host URL [https://<your-account>.<region>.dbt.com]: "
     read -r DBT_SOURCE_HOST_URL
     DBT_SOURCE_HOST_URL="${DBT_SOURCE_HOST_URL:-https://cloud.getdbt.com}"
+    # Normalize: strip any trailing /api so the importer (which appends /api
+    # itself) gets the bare host. The Terraform host_url needs /api, so we
+    # re-append it when writing .env below.
+    DBT_SOURCE_HOST_URL="${DBT_SOURCE_HOST_URL%/api}"
 
     printf "  Account ID: "
     read -r DBT_SOURCE_ACCOUNT_ID
@@ -126,7 +130,7 @@ target, acct, token, host = sys.argv[1:]
 txt = pathlib.Path(f'{target}/.env.example').read_text()
 txt = txt.replace('YOUR_ACCOUNT_ID', acct).replace('YOUR_API_TOKEN', token).replace('YOUR_HOST_URL', host)
 pathlib.Path(f'{target}/.env').write_text(txt)
-" "$TARGET" "$DBT_SOURCE_ACCOUNT_ID" "$DBT_SOURCE_API_TOKEN" "$DBT_SOURCE_HOST_URL"
+" "$TARGET" "$DBT_SOURCE_ACCOUNT_ID" "$DBT_SOURCE_API_TOKEN" "${DBT_SOURCE_HOST_URL}/api"
         echo "  \u2713  $TARGET/.env pre-filled with your dbt Cloud credentials"
     fi
 fi
