@@ -848,6 +848,372 @@ def test_register_for_import_skips_none_id():
     assert context.import_registry == []
 
 
+def test_collect_referenced_global_keys():
+    """_collect_referenced_global_keys returns correct connection/repo sets."""
+    from importer.normalizer.core import _collect_referenced_global_keys
+
+    v2_data = {
+        "projects": [
+            {
+                "key": "proj_a",
+                "repository": "repo_a",
+                "environments": [
+                    {"key": "prod", "connection": "conn_a"},
+                    {"key": "staging", "connection": "LOOKUP:missing"},
+                ],
+                "profiles": [{"connection_key": "conn_b"}],
+            },
+            {
+                "key": "proj_b",
+                "repository": "repo_a",  # shared repo
+                "environments": [{"key": "dev", "connection": "conn_a"}],
+                "profiles": [],
+            },
+        ]
+    }
+
+    refs = _collect_referenced_global_keys(v2_data)
+    assert refs["connections"] == {"conn_a", "conn_b"}
+    assert refs["repositories"] == {"repo_a"}
+
+
+def test_filter_globals_to_scope_removes_unreferenced():
+    """_filter_globals_to_scope removes unreferenced connections/repos."""
+    from importer.normalizer.core import _filter_globals_to_scope
+
+    v2_data = {
+        "globals": {
+            "connections": [
+                {"key": "conn_a", "name": "A"},
+                {"key": "conn_b", "name": "B"},
+                {"key": "conn_unused", "name": "Unused"},
+            ],
+            "repositories": [
+                {"key": "repo_a"},
+                {"key": "repo_unused"},
+            ],
+            "privatelink_endpoints": [
+                {"key": "pl_1"},
+            ],
+        }
+    }
+    referenced = {"connections": {"conn_a", "conn_b"}, "repositories": {"repo_a"}}
+    context = NormalizationContext(
+        MappingConfig(version=1, scope={}, resource_filters={}, normalization_options={}, output={})
+    )
+
+    _filter_globals_to_scope(v2_data, referenced, context)
+
+    assert [c["key"] for c in v2_data["globals"]["connections"]] == ["conn_a", "conn_b"]
+    assert [r["key"] for r in v2_data["globals"]["repositories"]] == ["repo_a"]
+    # No connections reference privatelink, so all endpoints removed
+    assert v2_data["globals"]["privatelink_endpoints"] == []
+
+
+def test_filter_globals_preserves_privatelink_referenced_by_connections():
+    """Privatelink endpoints referenced by retained connections are kept."""
+    from importer.normalizer.core import _filter_globals_to_scope
+
+    v2_data = {
+        "globals": {
+            "connections": [
+                {"key": "conn_a", "private_link_endpoint_key": "pl_keep"},
+                {"key": "conn_b"},
+            ],
+            "repositories": [{"key": "repo_a"}],
+            "privatelink_endpoints": [
+                {"key": "pl_keep"},
+                {"key": "pl_drop"},
+            ],
+        }
+    }
+    referenced = {"connections": {"conn_a", "conn_b"}, "repositories": {"repo_a"}}
+    context = NormalizationContext(
+        MappingConfig(version=1, scope={}, resource_filters={}, normalization_options={}, output={})
+    )
+
+    _filter_globals_to_scope(v2_data, referenced, context)
+
+    assert [p["key"] for p in v2_data["globals"]["privatelink_endpoints"]] == ["pl_keep"]
+
+
+def test_scoped_normalize_snapshot_filters_globals():
+    """End-to-end: specific_projects scope only outputs referenced globals."""
+    snapshot_dict = {
+        "account_id": 12345,
+        "account_name": "Test",
+        "globals": {
+            "connections": {
+                "conn_used": {
+                    "key": "conn_used", "id": 1, "name": "Used",
+                    "type": "snowflake", "details": {},
+                    "element_mapping_id": "C1", "include_in_conversion": True,
+                },
+                "conn_unused": {
+                    "key": "conn_unused", "id": 2, "name": "Unused",
+                    "type": "snowflake", "details": {},
+                    "element_mapping_id": "C2", "include_in_conversion": True,
+                },
+            },
+            "repositories": {
+                "repo_used": {
+                    "key": "repo_used", "id": 10,
+                    "remote_url": "https://github.com/org/repo",
+                    "git_clone_strategy": "deploy_key", "metadata": {},
+                    "element_mapping_id": "R1", "include_in_conversion": True,
+                },
+                "repo_unused": {
+                    "key": "repo_unused", "id": 11,
+                    "remote_url": "https://github.com/org/other",
+                    "git_clone_strategy": "deploy_key", "metadata": {},
+                    "element_mapping_id": "R2", "include_in_conversion": True,
+                },
+            },
+            "service_tokens": {}, "groups": {}, "notifications": {},
+            "webhooks": {}, "privatelink_endpoints": {},
+        },
+        "projects": [
+            {
+                "key": "my_project", "id": 100, "name": "My Project",
+                "repository_key": "repo_used",
+                "environments": [{
+                    "key": "prod", "id": 200, "name": "Production",
+                    "type": "deployment", "connection_key": "conn_used",
+                    "credential": {"schema": "prod"},
+                    "element_mapping_id": "E1", "include_in_conversion": True,
+                }],
+                "jobs": [], "environment_variables": [],
+                "metadata": {}, "element_mapping_id": "P1",
+                "include_in_conversion": True,
+            },
+            {
+                "key": "other_project", "id": 101, "name": "Other",
+                "repository_key": "repo_unused",
+                "environments": [{
+                    "key": "dev", "id": 201, "name": "Dev",
+                    "type": "deployment", "connection_key": "conn_unused",
+                    "credential": {"schema": "dev"},
+                    "element_mapping_id": "E2", "include_in_conversion": True,
+                }],
+                "jobs": [], "environment_variables": [],
+                "metadata": {}, "element_mapping_id": "P2",
+                "include_in_conversion": True,
+            },
+        ],
+    }
+
+    config = MappingConfig(
+        version=1,
+        scope={"mode": "specific_projects", "project_keys": ["my_project"]},
+        resource_filters={},
+        normalization_options={"strip_source_ids": True},
+        output={},
+    )
+
+    snapshot = AccountSnapshot(**snapshot_dict)
+    context = NormalizationContext(config)
+    result = normalize_snapshot(snapshot, config, context)
+
+    # Only my_project included
+    assert len(result["projects"]) == 1
+    assert result["projects"][0]["key"] == "my_project"
+
+    # Only referenced globals remain
+    conn_keys = [c["key"] for c in result["globals"]["connections"]]
+    repo_keys = [r["key"] for r in result["globals"]["repositories"]]
+    assert "conn_used" in conn_keys
+    assert "conn_unused" not in conn_keys
+    # repo_used gets aligned to project key "my_project" by _align_repository_keys_to_projects
+    assert "my_project" in repo_keys
+    assert "repo_unused" not in repo_keys
+
+
+def test_scoped_normalize_prunes_import_registry():
+    """Import entries for out-of-scope globals are removed from registry."""
+    snapshot_dict = {
+        "account_id": 12345,
+        "account_name": "Test",
+        "globals": {
+            "connections": {
+                "conn_used": {
+                    "key": "conn_used", "id": 1, "name": "Used",
+                    "type": "snowflake", "details": {},
+                    "element_mapping_id": "C1", "include_in_conversion": True,
+                },
+                "conn_unused": {
+                    "key": "conn_unused", "id": 2, "name": "Unused",
+                    "type": "snowflake", "details": {},
+                    "element_mapping_id": "C2", "include_in_conversion": True,
+                },
+            },
+            "repositories": {
+                "repo_used": {
+                    "key": "repo_used", "id": 10,
+                    "remote_url": "https://github.com/org/repo",
+                    "git_clone_strategy": "deploy_key", "metadata": {},
+                    "element_mapping_id": "R1", "include_in_conversion": True,
+                },
+            },
+            "service_tokens": {},
+            "groups": {
+                "member": {
+                    "key": "member", "id": 50, "name": "Member",
+                    "assign_by_default": False, "sso_mapping_groups": [],
+                    "metadata": {"group_permissions": []},
+                    "include_in_conversion": True,
+                },
+            },
+            "notifications": {},
+            "webhooks": {}, "privatelink_endpoints": {},
+        },
+        "projects": [
+            {
+                "key": "my_project", "id": 100, "name": "My Project",
+                "repository_key": "repo_used",
+                "environments": [{
+                    "key": "prod", "id": 200, "name": "Production",
+                    "type": "deployment", "connection_key": "conn_used",
+                    "credential": {"schema": "prod"},
+                    "element_mapping_id": "E1", "include_in_conversion": True,
+                }],
+                "jobs": [], "environment_variables": [],
+                "metadata": {}, "element_mapping_id": "P1",
+                "include_in_conversion": True,
+            },
+        ],
+    }
+
+    config = MappingConfig(
+        version=1,
+        scope={"mode": "specific_projects", "project_keys": ["my_project"]},
+        resource_filters={},
+        normalization_options={"strip_source_ids": True},
+        output={},
+    )
+
+    snapshot = AccountSnapshot(**snapshot_dict)
+    context = NormalizationContext(config)
+    result = normalize_snapshot(snapshot, config, context)
+
+    addresses = [e["address"] for e in context.import_registry]
+
+    # conn_unused should be pruned from import registry
+    assert not any("conn_unused" in a for a in addresses), \
+        f"conn_unused should be pruned, got: {addresses}"
+
+    # conn_used should still be present
+    assert any("conn_used" in a for a in addresses)
+
+    # groups module still has data (not filtered by scope) → imports kept
+    assert any(a.startswith("module.groups[0]") for a in addresses)
+
+
+def test_scoped_normalize_prunes_empty_module_imports():
+    """Import entries for empty global modules are pruned (count=0 in TF)."""
+    snapshot_dict = {
+        "account_id": 12345,
+        "account_name": "Test",
+        "globals": {
+            "connections": {
+                "conn_used": {
+                    "key": "conn_used", "id": 1, "name": "Used",
+                    "type": "snowflake", "details": {},
+                    "include_in_conversion": True,
+                },
+            },
+            "repositories": {
+                "repo_used": {
+                    "key": "repo_used", "id": 10,
+                    "remote_url": "https://github.com/org/repo",
+                    "git_clone_strategy": "deploy_key", "metadata": {},
+                    "element_mapping_id": "R1", "include_in_conversion": True,
+                },
+            },
+            # These are empty → their TF modules will have count=0
+            "service_tokens": {}, "groups": {}, "notifications": {},
+            "webhooks": {}, "privatelink_endpoints": {},
+        },
+        "projects": [
+            {
+                "key": "proj", "id": 100, "name": "Proj",
+                "repository_key": "repo_used",
+                "environments": [{
+                    "key": "prod", "id": 200, "name": "Prod",
+                    "type": "deployment", "connection_key": "conn_used",
+                    "credential": {"schema": "prod"},
+                    "element_mapping_id": "E1", "include_in_conversion": True,
+                }],
+                "jobs": [], "environment_variables": [],
+                "metadata": {}, "element_mapping_id": "P1",
+                "include_in_conversion": True,
+            },
+        ],
+    }
+
+    config = MappingConfig(
+        version=1,
+        scope={"mode": "specific_projects", "project_keys": ["proj"]},
+        resource_filters={},
+        normalization_options={"strip_source_ids": True},
+        output={},
+    )
+
+    snapshot = AccountSnapshot(**snapshot_dict)
+    context = NormalizationContext(config)
+    normalize_snapshot(snapshot, config, context)
+
+    addresses = [e["address"] for e in context.import_registry]
+
+    # Empty modules should have no import entries
+    assert not any(a.startswith("module.groups[0]") for a in addresses)
+    assert not any(a.startswith("module.service_tokens[0]") for a in addresses)
+    assert not any(a.startswith("module.notifications[0]") for a in addresses)
+
+    # Non-empty modules should still have entries
+    assert any("conn_used" in a for a in addresses)
+
+
+def test_unscoped_normalize_keeps_all_globals():
+    """all_projects mode keeps all globals unchanged."""
+    snapshot_dict = {
+        "account_id": 12345,
+        "account_name": "Test",
+        "globals": {
+            "connections": {
+                "conn_a": {
+                    "key": "conn_a", "id": 1, "name": "A",
+                    "type": "snowflake", "details": {},
+                    "include_in_conversion": True,
+                },
+                "conn_b": {
+                    "key": "conn_b", "id": 2, "name": "B",
+                    "type": "snowflake", "details": {},
+                    "include_in_conversion": True,
+                },
+            },
+            "repositories": {},
+            "service_tokens": {}, "groups": {}, "notifications": {},
+            "webhooks": {}, "privatelink_endpoints": {},
+        },
+        "projects": [],
+    }
+
+    config = MappingConfig(
+        version=1,
+        scope={"mode": "all_projects"},
+        resource_filters={},
+        normalization_options={"strip_source_ids": True},
+        output={},
+    )
+
+    snapshot = AccountSnapshot(**snapshot_dict)
+    context = NormalizationContext(config)
+    result = normalize_snapshot(snapshot, config, context)
+
+    # Both connections should remain
+    assert len(result["globals"]["connections"]) == 2
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
 

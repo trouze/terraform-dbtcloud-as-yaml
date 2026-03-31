@@ -410,12 +410,17 @@ def normalize_snapshot(
     # Normalize projects
     if config.is_resource_included("projects"):
         v2_data["projects"] = _normalize_projects(snapshot, config, context)
-    
+
+    # Scope globals to only those referenced by in-scope projects
+    if config.get_scope_mode() == "specific_projects" and v2_data.get("projects"):
+        referenced = _collect_referenced_global_keys(v2_data)
+        _filter_globals_to_scope(v2_data, referenced, context)
+
     # Post-processing: align repository keys to project keys.
     # The TF module keys repository resources by project key in for_each,
     # so the YAML repo key must match the project key for consistency with
     # adoption, protection tracking, and Terraform state.
-    _align_repository_keys_to_projects(v2_data)
+    _align_repository_keys_to_projects(v2_data, context)
 
     # Register repositories for import using post-alignment keys.
     # _normalize_repositories stored pre-alignment keys in context._repo_id_by_key;
@@ -445,7 +450,7 @@ def normalize_snapshot(
     return v2_data
 
 
-def _align_repository_keys_to_projects(v2_data: Dict[str, Any]) -> None:
+def _align_repository_keys_to_projects(v2_data: Dict[str, Any], context: "NormalizationContext" = None) -> None:
     """Rename global repository keys to match their associated project keys.
 
     The Terraform module (``modules/projects_v2/projects.tf``) uses the
@@ -508,9 +513,169 @@ def _align_repository_keys_to_projects(v2_data: Dict[str, Any]) -> None:
         existing_repo_keys.add(project_key)
         repo["key"] = project_key
 
+        # Track the rename so import registration can find the repo ID
+        if context is not None and repo_key in context._repo_id_by_key:
+            context._repo_id_by_key[project_key] = context._repo_id_by_key[repo_key]
+
         # Update every project that references this repo
         for pidx, _ in associations:
             projects[pidx]["repository"] = project_key
+
+
+def _collect_referenced_global_keys(v2_data: Dict[str, Any]) -> Dict[str, set]:
+    """Walk normalized projects and collect referenced connection/repository keys."""
+    connections: set = set()
+    repositories: set = set()
+
+    for project in v2_data.get("projects", []):
+        repo = project.get("repository")
+        if repo and not str(repo).startswith("LOOKUP:"):
+            repositories.add(repo)
+
+        for env in project.get("environments", []):
+            conn = env.get("connection")
+            if conn and not str(conn).startswith("LOOKUP:"):
+                connections.add(conn)
+
+        for profile in project.get("profiles", []):
+            conn = profile.get("connection_key")
+            if conn and not str(conn).startswith("LOOKUP:"):
+                connections.add(conn)
+
+    return {"connections": connections, "repositories": repositories}
+
+
+def _filter_globals_to_scope(
+    v2_data: Dict[str, Any],
+    referenced: Dict[str, set],
+    context: "NormalizationContext",
+) -> None:
+    """Filter globals in-place to only keep items referenced by in-scope projects.
+
+    Also transitively filters privatelink_endpoints to only those referenced
+    by retained connections, and prunes the import registry to match.
+    """
+    ref_conns = referenced.get("connections", set())
+    ref_repos = referenced.get("repositories", set())
+
+    # Nothing referenced at all → keep everything (safety net)
+    if not ref_conns and not ref_repos:
+        return
+
+    # Track which global keys survive filtering so we can prune import entries
+    retained_conn_keys: set = set()
+    retained_repo_keys: set = set()
+
+    if "connections" in v2_data.get("globals", {}):
+        v2_data["globals"]["connections"] = [
+            c for c in v2_data["globals"]["connections"] if c.get("key") in ref_conns
+        ]
+        retained_conn_keys = {c["key"] for c in v2_data["globals"]["connections"]}
+
+    if "repositories" in v2_data.get("globals", {}):
+        v2_data["globals"]["repositories"] = [
+            r for r in v2_data["globals"]["repositories"] if r.get("key") in ref_repos
+        ]
+        retained_repo_keys = {r["key"] for r in v2_data["globals"]["repositories"]}
+
+    # Transitively filter privatelink_endpoints to those referenced by retained connections
+    retained_pl_keys: set = set()
+    if "privatelink_endpoints" in v2_data.get("globals", {}):
+        for conn in v2_data["globals"].get("connections", []):
+            pl_key = conn.get("private_link_endpoint_key")
+            if pl_key and not str(pl_key).startswith("LOOKUP:"):
+                retained_pl_keys.add(pl_key)
+
+        if retained_pl_keys:
+            v2_data["globals"]["privatelink_endpoints"] = [
+                p for p in v2_data["globals"]["privatelink_endpoints"]
+                if p.get("key") in retained_pl_keys
+            ]
+        else:
+            v2_data["globals"]["privatelink_endpoints"] = []
+
+    # Prune import registry: remove entries for globals that were filtered out.
+    # Also remove entries for global resource types whose list is now empty
+    # (TF modules use count = length(list) > 0 ? 1 : 0, so [0] won't exist).
+    _prune_import_registry(v2_data, context, retained_conn_keys, retained_repo_keys, retained_pl_keys)
+
+
+def _prune_import_registry(
+    v2_data: Dict[str, Any],
+    context: "NormalizationContext",
+    retained_conn_keys: set,
+    retained_repo_keys: set,
+    retained_pl_keys: set,
+) -> None:
+    """Remove import registry entries for globals that no longer exist in v2_data.
+
+    Terraform modules with ``count = length(list) > 0 ? 1 : 0`` produce
+    ``module.X[0]`` addresses.  When the list is empty the module doesn't
+    exist and any leftover import blocks cause "Configuration … does not
+    exist" errors during ``terraform plan``.
+    """
+    globals_ = v2_data.get("globals", {})
+
+    # Map module address prefixes → whether that module's list is non-empty
+    # and, for connection/repo, which keys survived filtering.
+    empty_module_prefixes: List[str] = []
+
+    # Connections
+    if not globals_.get("connections"):
+        empty_module_prefixes.append("module.global_connections[0]")
+    # Repositories — module.repository has no [0] but still prune removed keys
+    # Service tokens
+    if not globals_.get("service_tokens"):
+        empty_module_prefixes.append("module.service_tokens[0]")
+    # Groups
+    if not globals_.get("groups"):
+        empty_module_prefixes.append("module.groups[0]")
+    # Notifications
+    if not globals_.get("notifications"):
+        empty_module_prefixes.append("module.notifications[0]")
+    # Privatelink endpoints (no module yet, but guard for future)
+    if not globals_.get("privatelink_endpoints"):
+        empty_module_prefixes.append("module.privatelink_endpoints[0]")
+    # OAuth configurations
+    if not globals_.get("oauth_configurations"):
+        empty_module_prefixes.append("module.oauth_configurations[0]")
+    # IP restrictions
+    if not globals_.get("ip_restrictions"):
+        empty_module_prefixes.append("module.ip_restrictions[0]")
+    # User groups
+    if not globals_.get("user_groups"):
+        empty_module_prefixes.append("module.user_groups[0]")
+
+    def _should_keep(entry: Dict[str, Any]) -> bool:
+        addr = entry.get("address", "")
+        # Drop entries for empty modules
+        for prefix in empty_module_prefixes:
+            if addr.startswith(prefix):
+                return False
+        # Drop entries for individually filtered-out connections
+        if addr.startswith("module.global_connections[0]") and retained_conn_keys:
+            # Extract key from address like ...connections["key"]
+            for k in _extract_for_each_key(addr):
+                if k not in retained_conn_keys:
+                    return False
+        # Drop entries for individually filtered-out repositories
+        if addr.startswith("module.repository.") and retained_repo_keys:
+            for k in _extract_for_each_key(addr):
+                if k not in retained_repo_keys:
+                    return False
+        return True
+
+    original_count = len(context.import_registry)
+    context.import_registry = [e for e in context.import_registry if _should_keep(e)]
+    pruned = original_count - len(context.import_registry)
+    if pruned:
+        log.info(f"Pruned {pruned} import registry entries for out-of-scope globals")
+
+
+def _extract_for_each_key(address: str) -> List[str]:
+    """Extract for_each keys from a Terraform address like ...resource["key"]."""
+    import re
+    return re.findall(r'\["([^"]+)"\]', address)
 
 
 def _normalize_account(snapshot: AccountSnapshot, config: MappingConfig) -> Dict[str, Any]:
@@ -1349,7 +1514,9 @@ def _normalize_environments(
                 getattr(env.credential, "tenant_id", None),
             )
             if tf_res:
-                context.register_for_import(f'module.credentials.{tf_res}["{composite}"]', env.credential.id)
+                # Provider expects import ID format: project_id:credential_id
+                cred_import_id = f"{project.id}:{env.credential.id}" if project.id else env.credential.id
+                context.register_for_import(f'module.credentials.{tf_res}["{composite}"]', cred_import_id)
 
         env_data = {
             "key": env.key,  # Use original key within project scope
