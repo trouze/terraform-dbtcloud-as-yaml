@@ -19,5 +19,10 @@ if __name__ == "__main__":
         help="Skip account-level globals (groups, service tokens, notifications, etc.). "
              "Connections and repositories are always fetched.",
     )
+    parser.add_argument(
+        "--import-blocks", action="store_true", default=False, dest="import_blocks",
+        help="Generate imports.tf with Terraform import {} blocks (requires Terraform >= 1.5). "
+             "Safe to delete after first 'terraform apply'.",
+    )
     args = parser.parse_args()
-    run(output_path=args.output, project_ids=args.project_ids, slim=args.slim)
+    run(output_path=args.output, project_ids=args.project_ids, slim=args.slim, import_blocks=args.import_blocks)

@@ -128,6 +128,8 @@ class NormalizationContext:
         self.project_id_to_key: Dict[int, str] = {}  # numeric project ID -> project key
         self.repository_key_to_normalized: Dict[str, str] = {}  # original repository key -> normalized key
         self.connection_key_to_normalized: Dict[str, str] = {}  # original connection key -> normalized key
+        self.import_registry: List[Dict[str, Any]] = []  # {"address": str, "id": str}
+        self._repo_id_by_key: Dict[str, int] = {}  # pre-alignment repo key -> source id
 
     def add_placeholder(self, lookup_id: str, description: str) -> None:
         """Record a LOOKUP placeholder."""
@@ -258,4 +260,10 @@ class NormalizationContext:
         if normalized:
             log.debug(f"Resolved connection key '{conn_key}' -> '{normalized}'")
         return normalized
+
+    def register_for_import(self, address: str, source_id: Any) -> None:
+        """Register a Terraform address + dbt Cloud API ID for import block generation."""
+        if source_id is None:
+            return
+        self.import_registry.append({"address": address, "id": str(source_id)})
 

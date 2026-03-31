@@ -298,6 +298,33 @@ def _get_element_id(obj: Any) -> Optional[str]:
     return getattr(obj, 'element_mapping_id', None)
 
 
+_CREDENTIAL_TF_RESOURCE: Dict[str, str] = {
+    "databricks":   "dbtcloud_databricks_credential.credentials",
+    "bigquery":     "dbtcloud_bigquery_credential.credentials",
+    "postgres":     "dbtcloud_postgres_credential.credentials",
+    "redshift":     "dbtcloud_redshift_credential.credentials",
+    "athena":       "dbtcloud_athena_credential.credentials",
+    "starburst":    "dbtcloud_starburst_credential.credentials",
+    "trino":        "dbtcloud_starburst_credential.credentials",
+    "apache_spark": "dbtcloud_spark_credential.credentials",
+    "spark":        "dbtcloud_spark_credential.credentials",
+    "teradata":     "dbtcloud_teradata_credential.credentials",
+}
+
+
+def _credential_tf_resource(cred_type: str, auth_type: str = "", tenant_id: Any = None) -> Optional[str]:
+    """Return the Terraform resource address fragment for a credential type."""
+    cred_type = (cred_type or "").lower()
+    if cred_type == "snowflake":
+        suffix = "credentials_keypair" if (auth_type or "").lower() == "keypair" else "credentials_password"
+        return f"dbtcloud_snowflake_credential.{suffix}"
+    if cred_type in ("fabric", "synapse"):
+        suffix = "credentials_sp" if tenant_id else "credentials_sql"
+        resource = "dbtcloud_fabric_credential" if cred_type == "fabric" else "dbtcloud_synapse_credential"
+        return f"{resource}.{suffix}"
+    return _CREDENTIAL_TF_RESOURCE.get(cred_type)
+
+
 def _should_include(obj: Any, config: MappingConfig) -> bool:
     """Check if object should be included based on include_in_conversion flag."""
     if config.should_include_inactive():
@@ -389,7 +416,23 @@ def normalize_snapshot(
     # so the YAML repo key must match the project key for consistency with
     # adoption, protection tracking, and Terraform state.
     _align_repository_keys_to_projects(v2_data)
-    
+
+    # Register repositories for import using post-alignment keys.
+    # _normalize_repositories stored pre-alignment keys in context._repo_id_by_key;
+    # here we match against the aligned keys now present in v2_data.
+    for repo_dict in v2_data.get("globals", {}).get("repositories", []):
+        aligned_key = repo_dict.get("key")
+        repo_id = context._repo_id_by_key.get(aligned_key)
+        if repo_id is None:
+            for old_key, rid in context._repo_id_by_key.items():
+                if context.repository_key_to_normalized.get(old_key) == aligned_key:
+                    repo_id = rid
+                    break
+        if repo_id:
+            context.register_for_import(
+                f'module.repository.dbtcloud_repository.repositories["{aligned_key}"]', repo_id
+            )
+
     # Add metadata section if there are placeholders
     if context.placeholders:
         v2_data["metadata"] = {"placeholders": context.placeholders}
@@ -530,7 +573,11 @@ def _normalize_connections(
             context.register_element(element_id, normalized_key)
         # Register connection key mapping for environment lookups
         context.register_connection_key(key, normalized_key)
-        
+        _r = "protected_connections" if getattr(conn, "protected", False) else "connections"
+        context.register_for_import(
+            f'module.global_connections[0].dbtcloud_global_connection.{_r}["{normalized_key}"]', conn.id
+        )
+
         normalized_type = conn.type or "unknown"
         connection_details = conn.details.get("connection_details")
         if normalized_type == "adapter" and isinstance(connection_details, dict):
@@ -652,7 +699,9 @@ def _normalize_repositories(
             context.register_element(_get_element_id(repo), normalized_key)
         # Register repository key mapping for project lookups
         context.register_repository_key(key, normalized_key)
-        
+        if repo.id:
+            context._repo_id_by_key[normalized_key] = repo.id
+
         repo_data = {
             "key": normalized_key,
             "remote_url": repo.remote_url,
@@ -740,7 +789,11 @@ def _normalize_service_tokens(
         normalized_key = context.resolve_collision(key, namespace="service_tokens")
         if _get_element_id(token):
             context.register_element(_get_element_id(token), normalized_key)
-        
+        _r = "protected_service_tokens" if getattr(token, "protected", False) else "service_tokens"
+        context.register_for_import(
+            f'module.service_tokens[0].dbtcloud_service_token.{_r}["{normalized_key}"]', token.id
+        )
+
         token_data = {
             "key": normalized_key,
             "name": token.name,
@@ -804,7 +857,11 @@ def _normalize_groups(
         normalized_key = context.resolve_collision(key, namespace="groups")
         if _get_element_id(group):
             context.register_element(_get_element_id(group), normalized_key)
-        
+        _r = "protected_groups" if getattr(group, "protected", False) else "groups"
+        context.register_for_import(
+            f'module.groups[0].dbtcloud_group.{_r}["{normalized_key}"]', group.id
+        )
+
         group_data = {
             "key": normalized_key,
             "name": group.name,
@@ -884,7 +941,10 @@ def _normalize_notifications(
         normalized_key = context.resolve_collision(key, namespace="notifications")
         if _get_element_id(notif):
             context.register_element(_get_element_id(notif), normalized_key)
-        
+        context.register_for_import(
+            f'module.notifications[0].dbtcloud_notification.notifications["{normalized_key}"]', notif.id
+        )
+
         notif_data = {
             "key": normalized_key,
             # Always include all optional fields for type consistency
@@ -1145,11 +1205,15 @@ def _normalize_projects(
         normalized_key = context.resolve_collision(project.key, namespace="projects")
         if _get_element_id(project):
             context.register_element(_get_element_id(project), normalized_key)
-        
+
         # Register project ID -> key mapping for permission resolution
         if project.id:
             context.register_project(project.id, normalized_key)
-        
+        _r = "protected_projects" if getattr(project, "protected", False) else "projects"
+        context.register_for_import(
+            f'module.project.dbtcloud_project.{_r}["{normalized_key}"]', project.id
+        )
+
         project_data = {
             "key": normalized_key,
             "name": project.name,
@@ -1179,8 +1243,10 @@ def _normalize_projects(
         
         # Normalize environments
         if config.is_resource_included("environments"):
-            project_data["environments"] = _normalize_environments(project, config, context)
-        
+            project_data["environments"] = _normalize_environments(
+                project, config, context, project_key=normalized_key
+            )
+
         # Normalize extended attributes
         if config.is_resource_included("extended_attributes"):
             project_data["extended_attributes"] = _normalize_extended_attributes(project, config, context)
@@ -1188,10 +1254,10 @@ def _normalize_projects(
         # Normalize profiles
         if config.is_resource_included("profiles"):
             project_data["profiles"] = _normalize_profiles(project, config, context)
-        
+
         # Normalize jobs
         if config.is_resource_included("jobs"):
-            project_data["jobs"] = _normalize_jobs(project, config, context)
+            project_data["jobs"] = _normalize_jobs(project, config, context, project_key=normalized_key)
         
         # Normalize environment variables
         if config.is_resource_included("environment_variables"):
@@ -1236,8 +1302,10 @@ def _normalize_environments(
     project: Project,
     config: MappingConfig,
     context: NormalizationContext,
+    project_key: str = "",
 ) -> List[Dict[str, Any]]:
     """Normalize environments for a project."""
+    _project_key = project_key or project.key
     result = []
     exclude_keys = config.get_exclude_keys("environments")
     exclude_ids = config.get_exclude_ids("environments")
@@ -1265,7 +1333,20 @@ def _normalize_environments(
         normalized_key = context.resolve_collision(f"{project.key}_{env.key}", namespace="environments")
         if _get_element_id(env):
             context.register_element(_get_element_id(env), normalized_key)
-        
+        composite = f"{_project_key}_{env.key}"
+        _r = "protected_environments" if getattr(env, "protected", False) else "environments"
+        context.register_for_import(
+            f'module.environments.dbtcloud_environment.{_r}["{composite}"]', env.id
+        )
+        if env.credential and env.credential.id:
+            tf_res = _credential_tf_resource(
+                env.credential.credential_type or "",
+                getattr(env.credential, "auth_type", "") or "",
+                getattr(env.credential, "tenant_id", None),
+            )
+            if tf_res:
+                context.register_for_import(f'module.credentials.{tf_res}["{composite}"]', env.credential.id)
+
         env_data = {
             "key": env.key,  # Use original key within project scope
             "name": env.name,
@@ -1420,6 +1501,7 @@ def _normalize_jobs(
     project: Project,
     config: MappingConfig,
     context: NormalizationContext,
+    project_key: str = "",
 ) -> List[Dict[str, Any]]:
     """Normalize jobs for a project."""
     result = []
@@ -1510,7 +1592,13 @@ def _normalize_jobs(
         normalized_full_key = context.resolve_collision(full_key, namespace="jobs")
         if _get_element_id(job):
             context.register_element(_get_element_id(job), normalized_full_key)
-        
+        _project_key = project_key or project.key
+        _tf_job_composite = f"{_project_key}_{job.key}"
+        _r = "protected_jobs" if getattr(job, "protected", False) else "jobs"
+        context.register_for_import(
+            f'module.jobs.dbtcloud_job.{_r}["{_tf_job_composite}"]', job.id
+        )
+
         # Extract the job-only portion of the normalized key (strip project prefix)
         # This handles collision suffixes (e.g., "job_name" -> "job_name_2")
         project_prefix = f"{project.key}_"

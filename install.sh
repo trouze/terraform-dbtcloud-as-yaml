@@ -92,6 +92,12 @@ if [[ "$IMPORT_ACCOUNT" =~ ^[Yy]$ ]]; then
         done
     fi
 
+    printf "  Generate imports.tf for Terraform state import? [y/N] "
+    read -r GENERATE_IMPORTS
+    if [[ "$GENERATE_IMPORTS" =~ ^[Yy]$ ]]; then
+        IMPORTER_FLAGS+=(--import-blocks)
+    fi
+
     export DBT_SOURCE_HOST_URL DBT_SOURCE_ACCOUNT_ID DBT_SOURCE_API_TOKEN
     (cd "$TARGET" && python -m importer "${IMPORTER_FLAGS[@]}")
 
@@ -115,6 +121,10 @@ echo "  1.  cd $TARGET"
 if [[ "${IMPORT_ACCOUNT:-N}" =~ ^[Yy]$ ]]; then
     echo "  2.  Review .env — your dbt Cloud credentials are pre-filled;"
     echo "      add warehouse credentials (TF_VAR_environment_credentials, etc.)"
+    if [[ "${GENERATE_IMPORTS:-N}" =~ ^[Yy]$ ]]; then
+        echo "  3.  source .env && terraform init && terraform apply  # imports existing state"
+        echo "      After a successful apply, delete imports.tf — resources are now in state."
+    fi
 else
     echo "  2.  cp .env.example .env"
     echo "      # fill in TF_VAR_dbt_account_id, TF_VAR_dbt_token, and warehouse credentials"

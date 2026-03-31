@@ -799,6 +799,55 @@ def test_group_permissions_are_deduplicated(default_mapping_config):
     assert permissions[0]["project_id"] is None
 
 
+def test_import_registry_populated(full_snapshot_dict, default_mapping_config):
+    """After normalize_snapshot(), import_registry should contain project/env/job entries."""
+    snapshot = AccountSnapshot(**full_snapshot_dict)
+    context = NormalizationContext(default_mapping_config)
+    normalize_snapshot(snapshot, default_mapping_config, context)
+
+    addresses = [e["address"] for e in context.import_registry]
+    assert any("dbtcloud_project" in a for a in addresses), "Expected project import block"
+    assert any("dbtcloud_environment" in a for a in addresses), "Expected environment import block"
+    assert any("dbtcloud_job" in a for a in addresses), "Expected job import block"
+
+
+def test_generate_import_blocks_output():
+    """generate_import_blocks() should produce correct HCL format."""
+    from importer.normalizer import MappingConfig, NormalizationContext
+    from importer.importblocks import generate_import_blocks
+
+    config = MappingConfig(
+        version=1,
+        scope={"mode": "all_projects"},
+        resource_filters={},
+        normalization_options={},
+        output={},
+    )
+    context = NormalizationContext(config)
+    context.register_for_import('module.project.dbtcloud_project.projects["analytics"]', 300)
+
+    output = generate_import_blocks(context)
+    assert 'to = module.project.dbtcloud_project.projects["analytics"]' in output
+    assert 'id = "300"' in output
+    assert output.startswith("# imports.tf")
+
+
+def test_register_for_import_skips_none_id():
+    """register_for_import() with source_id=None must not append to registry."""
+    from importer.normalizer import MappingConfig, NormalizationContext
+
+    config = MappingConfig(
+        version=1,
+        scope={"mode": "all_projects"},
+        resource_filters={},
+        normalization_options={},
+        output={},
+    )
+    context = NormalizationContext(config)
+    context.register_for_import("module.project.dbtcloud_project.projects[\"x\"]", None)
+    assert context.import_registry == []
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
 

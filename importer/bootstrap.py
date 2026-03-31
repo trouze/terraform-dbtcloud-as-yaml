@@ -31,6 +31,7 @@ def run(
     output_path: Path | None = None,
     project_ids: Optional[List[int]] = None,
     slim: bool = False,
+    import_blocks: bool = False,
 ) -> None:
     from importer.config import Settings
     from importer.client import DbtCloudClient
@@ -71,6 +72,12 @@ def run(
         output_path.write_text(yaml_output, encoding="utf-8")
 
         print(f"  \u2713  {output_path} written")
+
+        if import_blocks:
+            from importer.importblocks import generate_import_blocks
+            import_path = output_path.parent / "imports.tf"
+            import_path.write_text(generate_import_blocks(context), encoding="utf-8")
+            print(f"  \u2713  {import_path} written ({len(context.import_registry)} import blocks)")
 
         if context.placeholders:
             print(f"  \u26a0  {len(context.placeholders)} LOOKUP placeholders need manual resolution")
