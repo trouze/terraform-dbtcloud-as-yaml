@@ -11,16 +11,12 @@ terraform {
 locals {
   tokens_map = {
     for t in var.service_tokens_data :
-    try(t.key, t.name) => t
+    t.key => t
   }
 
-  # COMPAT(v1-schema): prefer service_token_permissions[] when non-empty, else legacy permissions[]
   service_tokens_permissions_by_key = {
     for k, t in local.tokens_map :
-    k => (
-      length(try(t.service_token_permissions, [])) > 0 ? try(t.service_token_permissions, []) :
-      try(t.permissions, [])
-    )
+    k => try(t.permissions, [])
   }
 
   protected_tokens_map = {

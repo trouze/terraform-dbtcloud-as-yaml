@@ -53,8 +53,8 @@ run "lineage_inline_token_fallback" {
         ]
       }
     ]
-    project_ids     = { analytics = "1001" }
-    lineage_tokens  = {}
+    project_ids    = { analytics = "1001" }
+    lineage_tokens = {}
   }
 
   assert {

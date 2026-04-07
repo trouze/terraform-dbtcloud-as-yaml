@@ -11,16 +11,12 @@ terraform {
 locals {
   groups_map = {
     for g in var.groups_data :
-    try(g.key, g.name) => g
+    g.key => g
   }
 
-  # COMPAT(v1-schema): prefer group_permissions[] when non-empty, else legacy permissions[] — collapse when v2 schema is canonical.
   groups_permissions_by_key = {
     for k, g in local.groups_map :
-    k => (
-      length(try(g.group_permissions, [])) > 0 ? try(g.group_permissions, []) :
-      try(g.permissions, [])
-    )
+    k => try(g.group_permissions, [])
   }
 
   protected_groups_map = {

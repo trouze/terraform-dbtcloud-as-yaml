@@ -27,10 +27,9 @@ locals {
     item.composite_key => item
   }
 
-  # Prefer connection, then connection_key (schema documents connection_key; some configs use connection).
   env_connection_ref = {
     for k, item in local.envs_map :
-    k => try(item.env_data.connection, null) != null ? item.env_data.connection : try(item.env_data.connection_key, null)
+    k => try(item.env_data.connection, null)
   }
 
   protected_envs_map = {
@@ -59,11 +58,11 @@ locals {
       lookup(var.global_connection_ids, tostring(local.env_connection_ref[k]), null) != null ?
       lookup(var.global_connection_ids, tostring(local.env_connection_ref[k]), null) :
       try(tonumber(local.env_connection_ref[k]), null) :
-      try(item.env_data.connection_id, null)
+      null
     )
   }
 
-  # COMPAT(v1-schema): key-based lookup, then legacy id remap, then raw extended_attributes_id
+  # extended_attributes_key lookup, source id remap, or raw extended_attributes_id
   resolve_extended_attributes_id = {
     for k, item in local.envs_map :
     k => try(coalesce(

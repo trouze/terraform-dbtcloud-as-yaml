@@ -9,40 +9,19 @@ terraform {
 }
 
 locals {
-  # Flatten all jobs across all projects.
-  # Jobs can be at project level (job.environment_key) or nested under environments.
-  # We support both layouts for backward compatibility.
-  all_jobs_flat = flatten(concat(
-    # Project-level jobs (new layout: project.jobs[].environment_key)
-    [
-      for p in var.projects : [
-        for job in try(p.jobs, []) : {
-          project_key   = try(p.key, p.name)
-          project_id    = var.project_ids[try(p.key, p.name)]
-          env_key       = try(job.environment_key, job.environment)
-          composite_key = "${try(p.key, p.name)}_${try(job.key, job.name)}"
-          job_key       = try(job.key, job.name)
-          job_data      = job
-        }
-      ]
-    ],
-    # Environment-nested jobs (legacy v1 layout: project.environments[].jobs[])
-    [
-      for p in var.projects : [
-        for env in try(p.environments, []) : [
-          for job in try(env.jobs, []) : {
-            project_key   = try(p.key, p.name)
-            project_id    = var.project_ids[try(p.key, p.name)]
-            env_key       = try(env.key, env.name)
-            # COMPAT(v1-schema): composite key uses env.name then env.key (legacy importer order)
-            composite_key = "${try(p.key, p.name)}_${try(env.name, env.key)}_${job.name}"
-            job_key       = try(job.key, job.name)
-            job_data      = job
-          }
-        ] if try(env.jobs, null) != null
-      ]
+  # Project-level jobs only (project.jobs[].environment_key).
+  all_jobs_flat = flatten([
+    for p in var.projects : [
+      for job in try(p.jobs, []) : {
+        project_key   = try(p.key, p.name)
+        project_id    = var.project_ids[try(p.key, p.name)]
+        env_key       = job.environment_key
+        composite_key = "${try(p.key, p.name)}_${try(job.key, job.name)}"
+        job_key       = try(job.key, job.name)
+        job_data      = job
+      }
     ]
-  ))
+  ])
 
   jobs_map = {
     for item in local.all_jobs_flat :
@@ -210,16 +189,16 @@ resource "dbtcloud_job" "jobs" {
   execute_steps  = each.value.job_data.execute_steps
   triggers       = each.value.job_data.triggers
 
-  dbt_version              = try(each.value.job_data.dbt_version, null)
-  description              = try(each.value.job_data.description, null)
-  errors_on_lint_failure   = local.errors_on_lint_failure_effective[each.key]
-  generate_docs            = try(each.value.job_data.generate_docs, false)
-  is_active                = try(each.value.job_data.is_active, true)
-  num_threads              = coalesce(try(each.value.job_data.num_threads, null), 4)
-  run_compare_changes      = local.validate_run_compare_changes[each.key]
-  compare_changes_flags    = local.compare_changes_flags_effective[each.key]
-  run_generate_sources     = try(each.value.job_data.run_generate_sources, false)
-  run_lint                 = local.run_lint_effective[each.key]
+  dbt_version            = try(each.value.job_data.dbt_version, null)
+  description            = try(each.value.job_data.description, null)
+  errors_on_lint_failure = local.errors_on_lint_failure_effective[each.key]
+  generate_docs          = try(each.value.job_data.generate_docs, false)
+  is_active              = try(each.value.job_data.is_active, true)
+  num_threads            = coalesce(try(each.value.job_data.num_threads, null), 4)
+  run_compare_changes    = local.validate_run_compare_changes[each.key]
+  compare_changes_flags  = local.compare_changes_flags_effective[each.key]
+  run_generate_sources   = try(each.value.job_data.run_generate_sources, false)
+  run_lint               = local.run_lint_effective[each.key]
   self_deferring = (
     try(each.value.job_data.deferring_environment_key, null) == null
   ) ? try(each.value.job_data.self_deferring, null) : null
@@ -266,16 +245,16 @@ resource "dbtcloud_job" "protected_jobs" {
   execute_steps  = each.value.job_data.execute_steps
   triggers       = each.value.job_data.triggers
 
-  dbt_version              = try(each.value.job_data.dbt_version, null)
-  description              = try(each.value.job_data.description, null)
-  errors_on_lint_failure   = local.errors_on_lint_failure_effective[each.key]
-  generate_docs            = try(each.value.job_data.generate_docs, false)
-  is_active                = try(each.value.job_data.is_active, true)
-  num_threads              = coalesce(try(each.value.job_data.num_threads, null), 4)
-  run_compare_changes      = local.validate_run_compare_changes[each.key]
-  compare_changes_flags    = local.compare_changes_flags_effective[each.key]
-  run_generate_sources     = try(each.value.job_data.run_generate_sources, false)
-  run_lint                 = local.run_lint_effective[each.key]
+  dbt_version            = try(each.value.job_data.dbt_version, null)
+  description            = try(each.value.job_data.description, null)
+  errors_on_lint_failure = local.errors_on_lint_failure_effective[each.key]
+  generate_docs          = try(each.value.job_data.generate_docs, false)
+  is_active              = try(each.value.job_data.is_active, true)
+  num_threads            = coalesce(try(each.value.job_data.num_threads, null), 4)
+  run_compare_changes    = local.validate_run_compare_changes[each.key]
+  compare_changes_flags  = local.compare_changes_flags_effective[each.key]
+  run_generate_sources   = try(each.value.job_data.run_generate_sources, false)
+  run_lint               = local.run_lint_effective[each.key]
   self_deferring = (
     try(each.value.job_data.deferring_environment_key, null) == null
   ) ? try(each.value.job_data.self_deferring, null) : null

@@ -10,7 +10,7 @@ terraform {
 
 locals {
   # BigQuery: deterministic placeholder when no real key material is supplied (matches v2 / API expectations for create).
-  bigquery_dummy_private_key_id = "0000000000000000000000000000000000000000"
+  bigquery_dummy_private_key_id   = "0000000000000000000000000000000000000000"
   bigquery_dummy_private_key_seed = "terraform-dbtcloud-yaml:dummy:bigquery:private-key"
   bigquery_dummy_private_key_body = join("", [
     for i in range(0, 8) : base64encode(sha512(format("%s:%d", local.bigquery_dummy_private_key_seed, i)))
@@ -24,7 +24,7 @@ locals {
 
   connections_map = {
     for conn in var.connections_data :
-    try(conn.key, conn.name) => conn
+    conn.key => conn
   }
 
   protected_connections_map = {
@@ -49,7 +49,7 @@ locals {
     if try(conn.private_link_endpoint_key, null) != null && try(conn.private_link_endpoint_id, null) == null
   ]) > 0
 
-  # COMPAT(v1-schema): resolve PrivateLink after optional YAML privatelink_endpoints[] + account data source (v2 importer shape).
+  # Resolve PrivateLink via globals.privatelink_endpoints + account data source when only private_link_endpoint_key is set.
   private_link_endpoint_id_by_key = {
     for k, conn in local.connections_map : k => (
       try(conn.private_link_endpoint_id, null) != null ?
@@ -58,7 +58,7 @@ locals {
         length(data.dbtcloud_privatelink_endpoints.all) > 0 &&
         try(conn.private_link_endpoint_key, null) != null &&
         lookup(local.privatelink_endpoints_map, conn.private_link_endpoint_key, null) != null
-      ) ? data.dbtcloud_privatelink_endpoints.all[0].endpoints[
+        ) ? data.dbtcloud_privatelink_endpoints.all[0].endpoints[
         index(
           [for ep in data.dbtcloud_privatelink_endpoints.all[0].endpoints : ep.id],
           lookup(local.privatelink_endpoints_map, conn.private_link_endpoint_key).endpoint_id
@@ -91,7 +91,7 @@ resource "dbtcloud_global_connection" "connections" {
 
   private_link_endpoint_id = local.private_link_endpoint_id_by_key[each.key]
 
-  # COMPAT(v1-schema): prefer provider_config / details (v2), else top-level YAML fields.
+  # Prefer provider_config, then details (globals.connections[]); else top-level fields on the connection object.
   databricks = try(each.value.type, "") == "databricks" ? {
     host          = try(each.value.provider_config.host, try(each.value.details.host, try(each.value.host, "")))
     http_path     = try(each.value.provider_config.http_path, try(each.value.details.http_path, try(each.value.http_path, "")))
@@ -112,24 +112,24 @@ resource "dbtcloud_global_connection" "connections" {
   } : null
 
   bigquery = try(each.value.type, "") == "bigquery" ? {
-    gcp_project_id              = try(each.value.provider_config.gcp_project_id, try(each.value.details.gcp_project_id, try(each.value.gcp_project_id, "")))
-    deployment_env_auth_type    = try(each.value.provider_config.deployment_env_auth_type, try(each.value.details.deployment_env_auth_type, null))
-    private_key_id              = coalesce(nonsensitive(try(var.connection_credentials[each.key].private_key_id, null)), try(each.value.provider_config.private_key_id, try(each.value.details.private_key_id, null)), local.bigquery_dummy_private_key_id)
-    private_key                 = coalesce(try(var.connection_credentials[each.key].private_key, try(each.value.provider_config.private_key, try(each.value.details.private_key, null))), local.bigquery_dummy_private_key)
-    client_email                = try(each.value.provider_config.client_email, try(each.value.details.client_email, try(each.value.client_email, null)))
-    client_id                   = try(each.value.provider_config.client_id, try(each.value.details.client_id, try(each.value.client_id, null)))
-    auth_uri                    = try(each.value.provider_config.auth_uri, try(each.value.details.auth_uri, try(each.value.auth_uri, null)))
-    token_uri                   = try(each.value.provider_config.token_uri, try(each.value.details.token_uri, try(each.value.token_uri, null)))
-    auth_provider_x509_cert_url = try(each.value.provider_config.auth_provider_x509_cert_url, try(each.value.details.auth_provider_x509_cert_url, try(each.value.auth_provider_x509_cert_url, null)))
-    client_x509_cert_url        = try(each.value.provider_config.client_x509_cert_url, try(each.value.details.client_x509_cert_url, try(each.value.client_x509_cert_url, null)))
-    application_id              = try(var.connection_credentials[each.key].application_id, try(each.value.provider_config.application_id, try(each.value.details.application_id, null)))
-    application_secret          = try(var.connection_credentials[each.key].application_secret, try(each.value.provider_config.application_secret, try(each.value.details.application_secret, null)))
-    scopes                      = try(each.value.provider_config.scopes, try(each.value.details.scopes, null))
-    timeout_seconds             = try(each.value.provider_config.timeout_seconds, try(each.value.details.timeout_seconds, try(each.value.timeout_seconds, null)))
-    location                    = try(each.value.provider_config.location, try(each.value.details.location, try(each.value.location, null)))
-    maximum_bytes_billed        = try(each.value.provider_config.maximum_bytes_billed, try(each.value.details.maximum_bytes_billed, null))
-    priority                    = try(each.value.provider_config.priority, try(each.value.details.priority, null))
-    retries                     = try(each.value.provider_config.retries, try(each.value.details.retries, null))
+    gcp_project_id                = try(each.value.provider_config.gcp_project_id, try(each.value.details.gcp_project_id, try(each.value.gcp_project_id, "")))
+    deployment_env_auth_type      = try(each.value.provider_config.deployment_env_auth_type, try(each.value.details.deployment_env_auth_type, null))
+    private_key_id                = coalesce(nonsensitive(try(var.connection_credentials[each.key].private_key_id, null)), try(each.value.provider_config.private_key_id, try(each.value.details.private_key_id, null)), local.bigquery_dummy_private_key_id)
+    private_key                   = coalesce(try(var.connection_credentials[each.key].private_key, try(each.value.provider_config.private_key, try(each.value.details.private_key, null))), local.bigquery_dummy_private_key)
+    client_email                  = try(each.value.provider_config.client_email, try(each.value.details.client_email, try(each.value.client_email, null)))
+    client_id                     = try(each.value.provider_config.client_id, try(each.value.details.client_id, try(each.value.client_id, null)))
+    auth_uri                      = try(each.value.provider_config.auth_uri, try(each.value.details.auth_uri, try(each.value.auth_uri, null)))
+    token_uri                     = try(each.value.provider_config.token_uri, try(each.value.details.token_uri, try(each.value.token_uri, null)))
+    auth_provider_x509_cert_url   = try(each.value.provider_config.auth_provider_x509_cert_url, try(each.value.details.auth_provider_x509_cert_url, try(each.value.auth_provider_x509_cert_url, null)))
+    client_x509_cert_url          = try(each.value.provider_config.client_x509_cert_url, try(each.value.details.client_x509_cert_url, try(each.value.client_x509_cert_url, null)))
+    application_id                = try(var.connection_credentials[each.key].application_id, try(each.value.provider_config.application_id, try(each.value.details.application_id, null)))
+    application_secret            = try(var.connection_credentials[each.key].application_secret, try(each.value.provider_config.application_secret, try(each.value.details.application_secret, null)))
+    scopes                        = try(each.value.provider_config.scopes, try(each.value.details.scopes, null))
+    timeout_seconds               = try(each.value.provider_config.timeout_seconds, try(each.value.details.timeout_seconds, try(each.value.timeout_seconds, null)))
+    location                      = try(each.value.provider_config.location, try(each.value.details.location, try(each.value.location, null)))
+    maximum_bytes_billed          = try(each.value.provider_config.maximum_bytes_billed, try(each.value.details.maximum_bytes_billed, null))
+    priority                      = try(each.value.provider_config.priority, try(each.value.details.priority, null))
+    retries                       = try(each.value.provider_config.retries, try(each.value.details.retries, null))
     job_creation_timeout_seconds  = try(each.value.provider_config.job_creation_timeout_seconds, null)
     job_execution_timeout_seconds = try(each.value.provider_config.job_execution_timeout_seconds, null)
     job_retry_deadline_seconds    = try(each.value.provider_config.job_retry_deadline_seconds, null)
@@ -196,7 +196,7 @@ resource "dbtcloud_global_connection" "connections" {
     query_timeout = try(each.value.provider_config.query_timeout, try(each.value.details.query_timeout, try(each.value.query_timeout, null)))
   } : null
 
-  # COMPAT(v1-schema): schema enum uses starburst_trino; provider block is starburst.
+  # YAML type starburst_trino maps to provider starburst block.
   starburst = contains(["starburst", "starburst_trino"], try(each.value.type, "")) ? {
     host   = try(each.value.provider_config.host, try(each.value.details.host, try(each.value.host, "")))
     port   = try(each.value.provider_config.port, try(each.value.details.port, try(each.value.port, null)))
@@ -217,7 +217,7 @@ resource "dbtcloud_global_connection" "connections" {
     data_transform_run_timeout = try(each.value.provider_config.data_transform_run_timeout, try(each.value.details.data_transform_run_timeout, try(each.value.data_transform_run_timeout, null)))
   } : null
 
-  # COMPAT(v1-schema): YAML type spark maps to provider apache_spark (same as credentials module).
+  # YAML type spark maps to provider apache_spark (same as credentials module).
   apache_spark = contains(["apache_spark", "spark"], try(each.value.type, "")) ? {
     method          = try(each.value.provider_config.method, try(each.value.details.method, try(each.value.method, "http")))
     host            = try(each.value.provider_config.host, try(each.value.details.host, try(each.value.host, "")))
@@ -270,24 +270,24 @@ resource "dbtcloud_global_connection" "protected_connections" {
   } : null
 
   bigquery = try(each.value.type, "") == "bigquery" ? {
-    gcp_project_id              = try(each.value.provider_config.gcp_project_id, try(each.value.details.gcp_project_id, try(each.value.gcp_project_id, "")))
-    deployment_env_auth_type    = try(each.value.provider_config.deployment_env_auth_type, try(each.value.details.deployment_env_auth_type, null))
-    private_key_id              = coalesce(nonsensitive(try(var.connection_credentials[each.key].private_key_id, null)), try(each.value.provider_config.private_key_id, try(each.value.details.private_key_id, null)), local.bigquery_dummy_private_key_id)
-    private_key                 = coalesce(try(var.connection_credentials[each.key].private_key, try(each.value.provider_config.private_key, try(each.value.details.private_key, null))), local.bigquery_dummy_private_key)
-    client_email                = try(each.value.provider_config.client_email, try(each.value.details.client_email, try(each.value.client_email, null)))
-    client_id                   = try(each.value.provider_config.client_id, try(each.value.details.client_id, try(each.value.client_id, null)))
-    auth_uri                    = try(each.value.provider_config.auth_uri, try(each.value.details.auth_uri, try(each.value.auth_uri, null)))
-    token_uri                   = try(each.value.provider_config.token_uri, try(each.value.details.token_uri, try(each.value.token_uri, null)))
-    auth_provider_x509_cert_url = try(each.value.provider_config.auth_provider_x509_cert_url, try(each.value.details.auth_provider_x509_cert_url, try(each.value.auth_provider_x509_cert_url, null)))
-    client_x509_cert_url        = try(each.value.provider_config.client_x509_cert_url, try(each.value.details.client_x509_cert_url, try(each.value.client_x509_cert_url, null)))
-    application_id              = try(var.connection_credentials[each.key].application_id, try(each.value.provider_config.application_id, try(each.value.details.application_id, null)))
-    application_secret          = try(var.connection_credentials[each.key].application_secret, try(each.value.provider_config.application_secret, try(each.value.details.application_secret, null)))
-    scopes                      = try(each.value.provider_config.scopes, try(each.value.details.scopes, null))
-    timeout_seconds             = try(each.value.provider_config.timeout_seconds, try(each.value.details.timeout_seconds, try(each.value.timeout_seconds, null)))
-    location                    = try(each.value.provider_config.location, try(each.value.details.location, try(each.value.location, null)))
-    maximum_bytes_billed        = try(each.value.provider_config.maximum_bytes_billed, try(each.value.details.maximum_bytes_billed, null))
-    priority                    = try(each.value.provider_config.priority, try(each.value.details.priority, null))
-    retries                     = try(each.value.provider_config.retries, try(each.value.details.retries, null))
+    gcp_project_id                = try(each.value.provider_config.gcp_project_id, try(each.value.details.gcp_project_id, try(each.value.gcp_project_id, "")))
+    deployment_env_auth_type      = try(each.value.provider_config.deployment_env_auth_type, try(each.value.details.deployment_env_auth_type, null))
+    private_key_id                = coalesce(nonsensitive(try(var.connection_credentials[each.key].private_key_id, null)), try(each.value.provider_config.private_key_id, try(each.value.details.private_key_id, null)), local.bigquery_dummy_private_key_id)
+    private_key                   = coalesce(try(var.connection_credentials[each.key].private_key, try(each.value.provider_config.private_key, try(each.value.details.private_key, null))), local.bigquery_dummy_private_key)
+    client_email                  = try(each.value.provider_config.client_email, try(each.value.details.client_email, try(each.value.client_email, null)))
+    client_id                     = try(each.value.provider_config.client_id, try(each.value.details.client_id, try(each.value.client_id, null)))
+    auth_uri                      = try(each.value.provider_config.auth_uri, try(each.value.details.auth_uri, try(each.value.auth_uri, null)))
+    token_uri                     = try(each.value.provider_config.token_uri, try(each.value.details.token_uri, try(each.value.token_uri, null)))
+    auth_provider_x509_cert_url   = try(each.value.provider_config.auth_provider_x509_cert_url, try(each.value.details.auth_provider_x509_cert_url, try(each.value.auth_provider_x509_cert_url, null)))
+    client_x509_cert_url          = try(each.value.provider_config.client_x509_cert_url, try(each.value.details.client_x509_cert_url, try(each.value.client_x509_cert_url, null)))
+    application_id                = try(var.connection_credentials[each.key].application_id, try(each.value.provider_config.application_id, try(each.value.details.application_id, null)))
+    application_secret            = try(var.connection_credentials[each.key].application_secret, try(each.value.provider_config.application_secret, try(each.value.details.application_secret, null)))
+    scopes                        = try(each.value.provider_config.scopes, try(each.value.details.scopes, null))
+    timeout_seconds               = try(each.value.provider_config.timeout_seconds, try(each.value.details.timeout_seconds, try(each.value.timeout_seconds, null)))
+    location                      = try(each.value.provider_config.location, try(each.value.details.location, try(each.value.location, null)))
+    maximum_bytes_billed          = try(each.value.provider_config.maximum_bytes_billed, try(each.value.details.maximum_bytes_billed, null))
+    priority                      = try(each.value.provider_config.priority, try(each.value.details.priority, null))
+    retries                       = try(each.value.provider_config.retries, try(each.value.details.retries, null))
     job_creation_timeout_seconds  = try(each.value.provider_config.job_creation_timeout_seconds, null)
     job_execution_timeout_seconds = try(each.value.provider_config.job_execution_timeout_seconds, null)
     job_retry_deadline_seconds    = try(each.value.provider_config.job_retry_deadline_seconds, null)

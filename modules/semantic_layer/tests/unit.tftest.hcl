@@ -27,7 +27,7 @@ run "semantic_layer_config_environment_id" {
   }
 }
 
-run "semantic_layer_environment_key_lookup" {
+run "semantic_layer_config_environment_key_lookup" {
   command = plan
 
   variables {
@@ -35,7 +35,7 @@ run "semantic_layer_environment_key_lookup" {
       {
         key  = "analytics"
         name = "Analytics"
-        semantic_layer = {
+        semantic_layer_config = {
           environment_key = "dev"
         }
       }
@@ -48,6 +48,6 @@ run "semantic_layer_environment_key_lookup" {
 
   assert {
     condition     = tostring(dbtcloud_semantic_layer_configuration.semantic_layer["analytics"].environment_id) == "8001"
-    error_message = "semantic_layer.environment_key should resolve via environment_ids composite key"
+    error_message = "semantic_layer_config.environment_key should resolve via environment_ids composite key"
   }
 }

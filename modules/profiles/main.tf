@@ -45,24 +45,18 @@ locals {
     )
   }
 
-  # COMPAT(v1-schema): v2/importer coalesce — profile composite, credentials_key → project_cred_key,
-  # else credential_key → project_credential_key, then legacy credentials_id remap / raw ids.
   resolve_profile_credential_id = {
     for item in local.all_profiles :
     item.composite_key => try(coalesce(
       lookup(var.credential_ids, item.composite_key, null),
       try(item.profile_data.credentials_key, null) != null && try(item.profile_data.credentials_key, "") != "" ?
       lookup(var.credential_ids, "${item.project_key}_${item.profile_data.credentials_key}", null) : null,
-      try(item.profile_data.credentials_key, null) == null || try(item.profile_data.credentials_key, "") == "" ?
-      lookup(var.credential_ids, "${item.project_key}_${try(item.profile_data.credential_key, "")}", null) : null,
       try(item.profile_data.credentials_id, null) != null ?
       lookup(var.credential_ids_by_source_id, tostring(item.profile_data.credentials_id), null) : null,
       try(tonumber(item.profile_data.credentials_id), null),
-      try(tonumber(item.profile_data.credentials_key), null)
     ), null)
   }
 
-  # COMPAT(v1-schema): key lookup, then legacy id remap, then raw extended_attributes_id (v2/importer)
   resolve_profile_extended_attributes_id = {
     for item in local.all_profiles :
     item.composite_key => try(coalesce(

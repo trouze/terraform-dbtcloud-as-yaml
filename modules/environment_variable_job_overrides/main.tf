@@ -9,37 +9,10 @@ terraform {
 }
 
 locals {
-  # Flatten env var job overrides from environment-nested jobs (legacy layout).
-  # job_key must match modules/jobs composite_key: project_key + try(env.name, env.key) + job.name
-  # COMPAT(v1-schema): env_var_overrides; v2/importer: environment_variable_overrides — merge(..., ...) (latter wins duplicate keys).
-  overrides_from_env_jobs = flatten([
-    for p in var.projects : [
-      for env in try(p.environments, []) : [
-        for job in try(env.jobs, []) : [
-          for var_name, var_value in merge(
-            try(job.env_var_overrides, {}),
-            try(job.environment_variable_overrides, {})
-            ) : {
-            project_key   = try(p.key, p.name)
-            project_id    = var.project_ids[try(p.key, p.name)]
-            job_key       = "${try(p.key, p.name)}_${try(env.name, env.key)}_${job.name}"
-            var_name      = var_name
-            var_value     = var_value
-            composite_key = "${try(p.key, p.name)}_${try(env.name, env.key)}_${job.name}_${var_name}"
-          }
-        ]
-      ] if try(env.jobs, null) != null
-    ]
-  ])
-
-  # Flatten env var job overrides from project-level jobs (new layout)
   overrides_from_project_jobs = flatten([
     for p in var.projects : [
       for job in try(p.jobs, []) : [
-        for var_name, var_value in merge(
-          try(job.env_var_overrides, {}),
-          try(job.environment_variable_overrides, {})
-          ) : {
+        for var_name, var_value in try(job.environment_variable_overrides, {}) : {
           project_key   = try(p.key, p.name)
           project_id    = var.project_ids[try(p.key, p.name)]
           job_key       = "${try(p.key, p.name)}_${try(job.key, job.name)}"
@@ -52,7 +25,7 @@ locals {
   ])
 
   all_overrides_map = {
-    for item in concat(local.overrides_from_env_jobs, local.overrides_from_project_jobs) :
+    for item in local.overrides_from_project_jobs :
     item.composite_key => item
   }
 }

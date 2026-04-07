@@ -14,10 +14,9 @@ terraform {
 #############################################
 
 locals {
-  # COMPAT(v1-schema): for_each key from key or legacy name — align with v2 schema when canonical.
   oauth_configurations_map = {
     for o in var.oauth_data :
-    try(o.key, o.name) => o
+    o.key => o
   }
   unprotected_oauth_map = {
     for key, oauth in local.oauth_configurations_map :

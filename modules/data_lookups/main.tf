@@ -23,11 +23,8 @@ locals {
       for p in var.projects : concat(
         [
           for env in try(p.environments, []) :
-          try(env.connection, null) != null ? env.connection : try(env.connection_key, null)
-          if(
-            (try(env.connection, null) != null ? env.connection : try(env.connection_key, null)) != null &&
-            startswith(tostring(try(env.connection, null) != null ? env.connection : try(env.connection_key, null)), "LOOKUP:")
-          )
+          try(env.connection, null)
+          if try(env.connection, null) != null && startswith(tostring(env.connection), "LOOKUP:")
         ],
         [
           for prof in try(p.profiles, []) :

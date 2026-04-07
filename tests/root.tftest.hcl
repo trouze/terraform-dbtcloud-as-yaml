@@ -16,7 +16,7 @@ variables {
   yaml_file      = "tests/fixtures/basic.yml"
 }
 
-# ── Single-project YAML (project: key) ───────────────────────────────────────
+# ── Single-project YAML (version: 1) ─────────────────────────────────────────
 
 run "single_project_yaml_produces_one_project" {
   command = plan
@@ -129,28 +129,28 @@ run "multi_project_jobs_keyed_correctly" {
   }
 }
 
-# ── version: 2 YAML (globals.* normalized at root) ─────────────────────────────
+# ── version: 1 YAML (globals.* normalized at root) ─────────────────────────────
 
-run "v2_yaml_flattens_globals_and_reports_schema_version" {
+run "v1_yaml_flattens_globals_and_reports_schema_version" {
   command = plan
 
   variables {
-    yaml_file = "tests/fixtures/v2_minimal.yml"
+    yaml_file = "tests/fixtures/v1_minimal.yml"
   }
 
   assert {
-    condition     = output.yaml_schema_version == 2
-    error_message = "Expected yaml_schema_version output 2 for version: 2 fixture"
+    condition     = output.yaml_schema_version == 1
+    error_message = "Expected yaml_schema_version output 1 for version: 1 fixture"
   }
 
   assert {
     condition     = output.yaml_account != null && output.yaml_account.host_url == "https://cloud.getdbt.com"
-    error_message = "Expected yaml_account.host_url from version: 2 YAML"
+    error_message = "Expected yaml_account.host_url from version: 1 YAML"
   }
 
   assert {
     condition     = contains(keys(output.project_ids), "my_project")
-    error_message = "Expected project key my_project after v2 normalization"
+    error_message = "Expected project key my_project after globals normalization"
   }
 
   assert {

@@ -1,5 +1,5 @@
 # Unit tests for modules/jobs
-# Validates dual layout support, composite key construction, environment ID
+# Validates project.jobs[] layout, composite key construction, environment ID
 # resolution, CI job detection, schedule mutual exclusivity, and protected jobs.
 # Run from modules/jobs/: terraform test
 
@@ -82,52 +82,6 @@ run "project_level_job_environment_id_resolved" {
   assert {
     condition     = dbtcloud_job.jobs["analytics_daily_run"].environment_id != null
     error_message = "Job environment_id should be looked up from environment_ids map (not null)"
-  }
-}
-
-# ── Legacy nested job layout ──────────────────────────────────────────────────
-
-run "legacy_nested_job_created" {
-  command = plan
-
-  variables {
-    projects = [
-      {
-        key  = "analytics"
-        name = "Analytics"
-        environments = [
-          {
-            name = "Production"
-            key  = "prod"
-            jobs = [
-              {
-                name          = "Legacy Job"
-                execute_steps = ["dbt run"]
-                triggers = {
-                  schedule             = false
-                  github_webhook       = false
-                  git_provider_webhook = false
-                  on_merge             = false
-                }
-              }
-            ]
-          }
-        ]
-      }
-    ]
-    project_ids     = { analytics = "1001" }
-    environment_ids = { analytics_prod = "2001" }
-  }
-
-  assert {
-    condition     = length(dbtcloud_job.jobs) == 1
-    error_message = "Expected one job from legacy nested layout"
-  }
-
-  assert {
-    # Legacy layout uses env.name (not env.key): "${project_key}_${env.name}_${job.name}"
-    condition     = contains(keys(dbtcloud_job.jobs), "analytics_Production_Legacy Job")
-    error_message = "Legacy layout composite key should be project_envname_jobname"
   }
 }
 

@@ -7,10 +7,16 @@
 #############################################
 
 locals {
+  # ── V-00a: YAML must declare version: 1 ─────────────────────────────────────
+
+  _errors_yaml_version = try(local._raw_yaml.version, null) == 1 ? [] : [
+    "YAML must set version: 1. See schemas/v1.json.",
+  ]
+
   # ── Index locals: pre-computed key sets for cross-reference lookups ────────
 
   _valid_global_connection_keys = toset([
-    for c in try(local.yaml_content.global_connections, []) : try(c.key, c.name)
+    for c in try(local.yaml_content.global_connections, []) : c.key
   ])
 
   _valid_project_keys = toset([
@@ -18,7 +24,7 @@ locals {
   ])
 
   _valid_group_keys = toset([
-    for g in try(local.yaml_content.groups, []) : try(g.key, g.name)
+    for g in try(local.yaml_content.groups, []) : g.key
   ])
 
   # Environment keys per project: { project_key => set(env_key) }
@@ -37,23 +43,14 @@ locals {
     ])
   }
 
-  # Effective artefact job refs (COMPAT v1 artefacts vs v2 project_artefacts; same rules as modules/project_artefacts)
   _artefact_docs_job_by_project = {
     for p in local.projects :
-    try(p.key, p.name) => (
-      try(p.project_artefacts.docs_job_key, null) != null && try(tostring(p.project_artefacts.docs_job_key), "") != ""
-      ? p.project_artefacts.docs_job_key
-      : try(p.artefacts.docs_job, null)
-    )
+    try(p.key, p.name) => try(p.project_artefacts.docs_job_key, null)
   }
 
   _artefact_freshness_job_by_project = {
     for p in local.projects :
-    try(p.key, p.name) => (
-      try(p.project_artefacts.freshness_job_key, null) != null && try(tostring(p.project_artefacts.freshness_job_key), "") != ""
-      ? p.project_artefacts.freshness_job_key
-      : try(p.artefacts.freshness_job, null)
-    )
+    try(p.key, p.name) => try(p.project_artefacts.freshness_job_key, null)
   }
 
   # Extended attribute keys per project: { project_key => set(ea_key) }
@@ -84,22 +81,20 @@ locals {
   ])
 
   _privatelink_endpoint_keys = toset([
-    for ple in try(local.yaml_content.privatelink_endpoints, []) : try(ple.key, ple.name)
+    for ple in try(local.yaml_content.privatelink_endpoints, []) : ple.key
   ])
 
-  # ── V-00: environments need connection (or connection_key) or primary_profile_key ─
+  # ── V-00: environments need connection or primary_profile_key ───────────────
 
   _errors_env_connection_or_profile = flatten([
     for p in local.projects : [
       for env in try(p.environments, []) :
       (
-        (
-          try(env.connection, null) == null && try(env.connection_key, null) == null
-          ) && (
+        try(env.connection, null) == null && (
           try(env.primary_profile_key, null) == null || try(env.primary_profile_key, "") == ""
         )
         ) ? [
-        "Environment '${try(env.key, env.name)}' in project '${try(p.key, p.name)}' must set connection or connection_key, or set primary_profile_key to a profiles[].key (v2/importer)."
+        "Environment '${try(env.key, env.name)}' in project '${try(p.key, p.name)}' must set connection (global connection key, id, or LOOKUP:…), or set primary_profile_key to a profiles[].key."
       ] : []
     ]
   ])
@@ -121,21 +116,20 @@ locals {
     ]
   ])
 
-  # ── V-01: connection / connection_key in environments → global_connections[].key (skip LOOKUP:… — resolved via module.data_lookups)
+  # ── V-01: connection in environments → global_connections[].key (skip LOOKUP:…)
 
   _errors_connection_key = flatten([
     for p in local.projects : [
       for env in try(p.environments, []) :
       try(
         (
-          # v2: connection is omitted when primary_profile_key supplies connection via profile
           try(env.primary_profile_key, null) == null || try(env.primary_profile_key, "") == ""
           ) && (
-          (try(env.connection, null) != null ? env.connection : try(env.connection_key, null)) != null &&
-          !startswith(tostring(try(env.connection, null) != null ? env.connection : try(env.connection_key, null)), "LOOKUP:") &&
-          !contains(local._valid_global_connection_keys, try(env.connection, null) != null ? env.connection : try(env.connection_key, null))
+          try(env.connection, null) != null &&
+          !startswith(tostring(env.connection), "LOOKUP:") &&
+          !contains(local._valid_global_connection_keys, env.connection)
         )
-        ? ["Environment '${try(env.key, env.name)}' in project '${try(p.key, p.name)}' references connection '${try(env.connection, null) != null ? env.connection : try(env.connection_key, null)}' but no global_connection with that key exists. Available keys: [${join(", ", tolist(local._valid_global_connection_keys))}]"]
+        ? ["Environment '${try(env.key, env.name)}' in project '${try(p.key, p.name)}' references connection '${env.connection}' but no global_connection with that key exists. Available keys: [${join(", ", tolist(local._valid_global_connection_keys))}]"]
         : [],
         []
       )
@@ -208,16 +202,15 @@ locals {
     ]
   ])
 
-  # ── V-03b: each extended_attributes[] must supply v1 content or v2 extended_attributes object (non-empty)
+  # ── V-03b: each extended_attributes[] must supply non-empty extended_attributes object
 
   _errors_ea_payload = flatten([
     for p in local.projects : [
       for ea in try(p.extended_attributes, []) :
       (
-        (try(ea.extended_attributes, null) == null || length(keys(try(ea.extended_attributes, {}))) == 0) &&
-        (try(ea.content, null) == null || length(keys(try(ea.content, {}))) == 0)
+        try(ea.extended_attributes, null) == null || length(keys(try(ea.extended_attributes, {}))) == 0
         ) ? [
-        "Project '${try(p.key, p.name)}' extended_attributes entry '${try(ea.key, ea.name)}' must set non-empty 'content' (v1) or 'extended_attributes' (v2/importer)."
+        "Project '${try(p.key, p.name)}' extended_attributes entry '${try(ea.key, ea.name)}' must set non-empty 'extended_attributes'."
       ] : []
     ]
   ])
@@ -239,53 +232,49 @@ locals {
     ]
   ])
 
-  # ── V-05: artefacts / project_artefacts job keys → jobs[].key (COMPAT v1 vs v2/importer names)
+  # ── V-05: project_artefacts job keys → jobs[].key ───────────────────────────
 
   _errors_artefact_job_keys = flatten([
     for p in local.projects :
-    try(p.artefacts, null) != null || try(p.project_artefacts, null) != null
+    try(p.project_artefacts, null) != null
     ? concat(
       local._artefact_docs_job_by_project[try(p.key, p.name)] != null && !contains(
         try(local._job_keys_by_project[try(p.key, p.name)], toset([])),
         local._artefact_docs_job_by_project[try(p.key, p.name)]
         ) ? [
-        "Project '${try(p.key, p.name)}' artefacts / project_artefacts docs job references key '${local._artefact_docs_job_by_project[try(p.key, p.name)]}' which does not exist. Available job keys: [${join(", ", tolist(try(local._job_keys_by_project[try(p.key, p.name)], toset([]))))}]"
+        "Project '${try(p.key, p.name)}' project_artefacts docs_job_key references key '${local._artefact_docs_job_by_project[try(p.key, p.name)]}' which does not exist. Available job keys: [${join(", ", tolist(try(local._job_keys_by_project[try(p.key, p.name)], toset([]))))}]"
       ] : [],
       local._artefact_freshness_job_by_project[try(p.key, p.name)] != null && !contains(
         try(local._job_keys_by_project[try(p.key, p.name)], toset([])),
         local._artefact_freshness_job_by_project[try(p.key, p.name)]
         ) ? [
-        "Project '${try(p.key, p.name)}' artefacts / project_artefacts freshness job references key '${local._artefact_freshness_job_by_project[try(p.key, p.name)]}' which does not exist. Available job keys: [${join(", ", tolist(try(local._job_keys_by_project[try(p.key, p.name)], toset([]))))}]"
+        "Project '${try(p.key, p.name)}' project_artefacts freshness_job_key references key '${local._artefact_freshness_job_by_project[try(p.key, p.name)]}' which does not exist. Available job keys: [${join(", ", tolist(try(local._job_keys_by_project[try(p.key, p.name)], toset([]))))}]"
       ] : [],
     )
     : []
   ])
 
-  # ── V-05b: semantic_layer / semantic_layer_config must resolve an environment ─
+  # ── V-05b: semantic_layer_config must resolve an environment ────────────────
 
   _errors_semantic_layer_env = flatten([
     for p in local.projects :
-    try(p.semantic_layer, null) != null || try(p.semantic_layer_config, null) != null
+    try(p.semantic_layer_config, null) != null
     ? (
       try(p.semantic_layer_config.environment_id, null) != null
       ? []
       : length(compact([
         try(p.semantic_layer_config.environment_key, null),
         try(p.semantic_layer_config.environment, null),
-        try(p.semantic_layer.environment_key, null),
-        try(p.semantic_layer.environment, null),
       ])) == 0
-      ? ["Project '${try(p.key, p.name)}' has semantic_layer or semantic_layer_config but no environment_id (v2) and no environment_key / environment to resolve against environments[].key."]
+      ? ["Project '${try(p.key, p.name)}' has semantic_layer_config but no environment_id and no environment_key / environment to resolve against environments[].key."]
       : !contains(
         try(local._env_keys_by_project[try(p.key, p.name)], toset([])),
         coalesce(
           try(p.semantic_layer_config.environment_key, null),
           try(p.semantic_layer_config.environment, null),
-          try(p.semantic_layer.environment_key, null),
-          try(p.semantic_layer.environment, null)
         )
         ) ? [
-        "Project '${try(p.key, p.name)}' semantic layer references environment '${coalesce(try(p.semantic_layer_config.environment_key, null), try(p.semantic_layer_config.environment, null), try(p.semantic_layer.environment_key, null), try(p.semantic_layer.environment, null))}' which does not exist. Available environment keys: [${join(", ", tolist(try(local._env_keys_by_project[try(p.key, p.name)], toset([]))))}]"
+        "Project '${try(p.key, p.name)}' semantic_layer_config references environment '${coalesce(try(p.semantic_layer_config.environment_key, null), try(p.semantic_layer_config.environment, null))}' which does not exist. Available environment keys: [${join(", ", tolist(try(local._env_keys_by_project[try(p.key, p.name)], toset([]))))}]"
       ] : []
     )
     : []
@@ -337,7 +326,7 @@ locals {
 
   _errors_connection_type = [
     for conn in try(local.yaml_content.global_connections, []) :
-    "Global connection '${try(conn.key, conn.name)}' has type '${try(conn.type, "")}' which is not a recognized warehouse type. Valid types: [${join(", ", tolist(local._valid_connection_types))}]"
+    "Global connection '${conn.key}' has type '${try(conn.type, "")}' which is not a recognized warehouse type. Valid types: [${join(", ", tolist(local._valid_connection_types))}]"
     if !contains(local._valid_connection_types, try(conn.type, ""))
   ]
 
@@ -345,7 +334,7 @@ locals {
 
   _errors_connection_privatelink_key = [
     for conn in try(local.yaml_content.global_connections, []) :
-    "Global connection '${try(conn.key, conn.name)}' references private_link_endpoint_key '${conn.private_link_endpoint_key}' but no privatelink_endpoints[] entry has that key. Define privatelink_endpoints at the YAML root or set private_link_endpoint_id."
+    "Global connection '${conn.key}' references private_link_endpoint_key '${conn.private_link_endpoint_key}' but no privatelink_endpoints[] entry has that key. Define globals.privatelink_endpoints or set private_link_endpoint_id."
     if(
       try(conn.private_link_endpoint_key, null) != null &&
       try(conn.private_link_endpoint_id, null) == null &&
@@ -391,14 +380,11 @@ locals {
   ])
 
   # ── V-13: service_token permission project_key → projects[].key ────────────
-  # Align with modules/service_tokens COMPAT: prefer service_token_permissions[] when non-empty.
 
   _errors_service_token_project_keys = flatten([
     for st in try(local.yaml_content.service_tokens, []) : [
-      for perm in(
-        length(try(st.service_token_permissions, [])) > 0 ? try(st.service_token_permissions, []) : try(st.permissions, [])
-      ) :
-      "Service token '${try(st.key, st.name)}' has a permission referencing project_key '${perm.project_key}' which is not a defined project. Available project keys: [${join(", ", tolist(local._valid_project_keys))}]"
+      for perm in try(st.permissions, []) :
+      "Service token '${st.key}' has a permission referencing project_key '${perm.project_key}' which is not a defined project. Available project keys: [${join(", ", tolist(local._valid_project_keys))}]"
       if(
         try(perm.project_key, null) != null &&
         !contains(local._valid_project_keys, perm.project_key)
@@ -409,6 +395,7 @@ locals {
   # ── Aggregated error list ──────────────────────────────────────────────────
 
   _all_validation_errors = compact(concat(
+    local._errors_yaml_version,
     local._errors_env_connection_or_profile,
     local._errors_primary_profile_key,
     local._errors_connection_key,
@@ -485,9 +472,9 @@ check "global_connections_protected" {
   assert {
     condition = length([
       for c in try(local.yaml_content.global_connections, []) :
-      try(c.key, c.name)
+      c.key
       if !try(c.protected, false)
     ]) == 0
-    error_message = "Best practice: the following global connections have protected: false. Deleting a connection detaches all environments that reference it. Add protected: true to prevent accidental removal. Connections: ${join(", ", [for c in try(local.yaml_content.global_connections, []) : try(c.key, c.name) if !try(c.protected, false)])}"
+    error_message = "Best practice: the following global connections have protected: false. Deleting a connection detaches all environments that reference it. Add protected: true to prevent accidental removal. Connections: ${join(", ", [for c in try(local.yaml_content.global_connections, []) : c.key if !try(c.protected, false)])}"
   }
 }

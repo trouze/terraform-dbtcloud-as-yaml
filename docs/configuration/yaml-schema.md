@@ -6,20 +6,27 @@ Complete field reference for `dbt-config.yml`. Every key the module reads is doc
 
 ## Full skeleton
 
-The top-level keys available in any `dbt-config.yml`:
+Terraform requires **`version: 1`**, **`account`**, and **`projects`**. Shared resources live under **`globals`**; the root module hoists `globals.connections`, `globals.privatelink_endpoints`, `globals.service_tokens`, `globals.groups`, and `globals.notifications` into the internal shapes modules consume. Optional account-level keys (`oauth_configurations`, `ip_restrictions`, `account_features`, `user_groups`) stay at the document root. Validate with `schemas/v1.json`.
 
 ```yaml
-# ── Account-level (all optional — omit any section you don't need) ────────────
-account_features: { ... }
-global_connections: [ ... ]
-service_tokens: [ ... ]
-groups: [ ... ]
-user_groups: [ ... ]
-notifications: [ ... ]
+version: 1
+account:
+  name: ...
+  host_url: https://cloud.getdbt.com
+
+globals:
+  connections: [ ... ]
+  privatelink_endpoints: [ ... ]
+  service_tokens: [ ... ]
+  groups: [ ... ]
+  notifications: [ ... ]
+
 oauth_configurations: [ ... ]
 ip_restrictions: [ ... ]
+account_features: { ... }
+user_groups: [ ... ]
+metadata: { ... }
 
-# ── Projects (required) ───────────────────────────────────────────────────────
 projects:
   - name: Analytics
     key: analytics
@@ -31,12 +38,9 @@ projects:
     extended_attributes: [ ... ]
     profiles: [ ... ]
     lineage_integrations: [ ... ]
-    artefacts: { ... }
-    semantic_layer: { ... }
+    project_artefacts: { ... }
+    semantic_layer_config: { ... }
 ```
-
-!!! note "Backward compatibility"
-    The singular `project:` key is accepted and automatically wrapped into a one-element list. Existing single-project configs work without change.
 
 ---
 
@@ -59,16 +63,16 @@ account_features:
 
 ---
 
-## `global_connections`
+## Global connections (`globals.connections`)
 
-Account-level warehouse connections shared across projects. Reference them from environments using `connection_key`.
+Define warehouse connections under **`globals.connections`** in YAML. Terraform hoists them to an internal `global_connections` list. Environments reference a connection with **`connection`** (key, numeric id, or `LOOKUP:…`).
 
 ### Common fields
 
 | Field | Type | Required | Default | Description |
 |---|---|---|---|---|
 | `name` | string | **yes** | — | Display name in dbt Cloud |
-| `key` | string | no | `name` | Unique identifier used in `connection_key` references |
+| `key` | string | **yes** | — | Unique identifier used in `environments[].connection` references |
 | `type` | string | **yes** | — | Adapter type — see valid values below |
 | `private_link_endpoint_id` | string | no | null | PrivateLink endpoint ID |
 | `protected` | bool | no | false | Prevents `terraform destroy` |
@@ -483,7 +487,7 @@ The strategy is auto-detected from the presence of `github_installation_id`, `gi
 | `key` | string | no | `name` | Unique identifier used in `deferring_environment_key`, etc. |
 | `type` | string | **yes** | — | `deployment` or `development` |
 | `deployment_type` | string | conditional | — | `production` or `staging` — required when `type: deployment` |
-| `connection_key` | string | no | null | References `global_connections[].key` |
+| `connection` | string | conditional | null | Global connection key, numeric id, or `LOOKUP:…` (omit when using `primary_profile_key`) |
 | `dbt_version` | string | no | null | Pin dbt Core version (e.g., `"1.9.0"`) |
 | `custom_branch` | string | no | null | Custom git branch (development envs) |
 | `enable_model_query_history` | bool | no | null | Enable query history tracking |
@@ -497,7 +501,7 @@ environments:
     key: prod
     type: deployment
     deployment_type: production
-    connection_key: databricks_prod
+    connection: databricks_prod
     dbt_version: "1.9.0"
     custom_branch: main
     enable_model_query_history: false
@@ -896,14 +900,14 @@ Per-project connection-level overrides applied at the environment level. Linked 
 extended_attributes:
   - name: Databricks HTTP Override
     key: databricks_overrides
-    content:
+    extended_attributes:
       databricks:
         http_path: /sql/1.0/warehouses/override-warehouse-id
         catalog: overridden_catalog
 
   - name: Snowflake Warehouse Override
     key: snowflake_overrides
-    content:
+    extended_attributes:
       snowflake:
         warehouse: HIGH_MEMORY_WH
 ```
@@ -918,10 +922,9 @@ Links a global connection + environment credential + extended attributes into a 
 |---|---|---|---|---|
 | `name` | string | **yes** | — | Display name |
 | `key` | string | no | `name` | Unique identifier |
-| `connection_key` | string | no | null | References `global_connections[].key` |
-| `connection_id` | number | no | null | Numeric connection ID (alternative to `connection_key`) |
-| `credential_key` | string | no | null | Composite key `"{project_key}_{env_key}"` |
-| `credentials_id` | number | no | null | Numeric credential ID (alternative to `credential_key`) |
+| `connection_key` | string | **yes** | — | References `globals.connections[].key` |
+| `credentials_key` | string | **yes** | — | Credential key / composite reference (see profiles module) |
+| `credentials_id` | number | no | null | Source credential id for import / remap |
 | `extended_attributes_key` | string | no | null | References `extended_attributes[].key` |
 
 ```yaml
@@ -929,7 +932,7 @@ Links a global connection + environment credential + extended attributes into a 
       - name: prod-profile
         key: prod_profile
         connection_key: databricks_prod
-        credential_key: analytics_prod
+        credentials_key: analytics_prod
         extended_attributes_key: databricks_overrides
 ```
 
@@ -962,37 +965,38 @@ Per-project lineage integrations (e.g., Tableau, Looker).
 
 ---
 
-### `artefacts`
+### `project_artefacts`
 
 Links the project's documentation and source freshness jobs. Both fields reference `jobs[].key`.
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `docs_job` | string | no | Job key for the documentation artifact |
-| `freshness_job` | string | no | Job key for the source freshness artifact |
+| `docs_job_key` | string | no | Job key for the documentation artifact |
+| `freshness_job_key` | string | no | Job key for the source freshness artifact |
 
 ```yaml
-    artefacts:
-      docs_job: prod_daily
-      freshness_job: prod_daily
+    project_artefacts:
+      docs_job_key: prod_daily
+      freshness_job_key: prod_daily
 ```
 
 ---
 
-### `semantic_layer`
+### `semantic_layer_config`
 
 Configures the dbt Semantic Layer for a project.
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `environment` | string | **yes** | References `environments[].key` |
+| `environment_id` | string | no | Numeric environment id (pass-through) |
+| `environment_key` / `environment` | string | no | References `environments[].key` |
 
 !!! warning "Create-only"
     The semantic layer configuration cannot be imported. It is created once and Terraform will not attempt to update it on subsequent runs if it already exists.
 
 ```yaml
-    semantic_layer:
-      environment: prod
+    semantic_layer_config:
+      environment_key: prod
 ```
 
 ---

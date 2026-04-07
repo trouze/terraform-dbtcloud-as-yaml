@@ -1,5 +1,5 @@
-# Minimal version: 2 layout — globals.connections + projects[] (normalized at Terraform root).
-version: 2
+# Minimal version: 1 layout — globals.connections + projects[] (normalized at Terraform root).
+version: 1
 account:
   name: Test Account
   host_url: https://cloud.getdbt.com
@@ -24,7 +24,10 @@ projects:
         type: deployment
         deployment_type: production
         protected: true
-        connection_key: test_wh
+        connection: test_wh
+        credential:
+          token_name: SNOWFLAKE_PASSWORD
+          schema: ANALYTICS
     jobs:
       - name: Daily Run
         key: daily_run
@@ -40,7 +43,7 @@ projects:
         schedule_days: [0, 1, 2, 3, 4]
         schedule_hours: [6]
     environment_variables:
-      - name: DBT_V2_MAP_FORM
+      - name: DBT_V1_MAP_FORM
         environment_values:
           prod: "map_value"
           project: "project_default"

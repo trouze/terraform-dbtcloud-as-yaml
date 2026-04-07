@@ -33,14 +33,9 @@ locals {
     if try(item.ea_data.protected, false) != true
   ]
 
-  # COMPAT(v1-schema): v2/importer uses .extended_attributes; v1 uses .content
   ea_body = {
     for item in local.all_extended_attributes :
-    item.composite_key => (
-      try(item.ea_data.extended_attributes, null) != null ?
-      item.ea_data.extended_attributes :
-      try(item.ea_data.content, {})
-    )
+    item.composite_key => try(item.ea_data.extended_attributes, {})
   }
 
   extended_attribute_ids_by_source_id = merge(
@@ -68,9 +63,8 @@ resource "dbtcloud_extended_attributes" "extended_attributes" {
     item.composite_key => item
   }
 
-  project_id = each.value.project_id
-  state      = coalesce(try(each.value.ea_data.state, null), 1)
-  # COMPAT(v1-schema): body from .extended_attributes (v2) or .content (v1)
+  project_id          = each.value.project_id
+  state               = coalesce(try(each.value.ea_data.state, null), 1)
   extended_attributes = jsonencode(local.ea_body[each.key])
 
   # Deferred: stock dbtcloud provider has no resource_metadata on this resource (terraform providers schema).
@@ -93,9 +87,8 @@ resource "dbtcloud_extended_attributes" "protected_extended_attributes" {
     item.composite_key => item
   }
 
-  project_id = each.value.project_id
-  state      = coalesce(try(each.value.ea_data.state, null), 1)
-  # COMPAT(v1-schema): body from .extended_attributes (v2) or .content (v1)
+  project_id          = each.value.project_id
+  state               = coalesce(try(each.value.ea_data.state, null), 1)
   extended_attributes = jsonencode(local.ea_body[each.key])
 
   # Deferred: stock dbtcloud provider has no resource_metadata on this resource.

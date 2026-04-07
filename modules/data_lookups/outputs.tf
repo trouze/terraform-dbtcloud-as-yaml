@@ -4,7 +4,7 @@ output "lookup_connection_ids" {
 }
 
 output "lookup_connection_keys" {
-  description = "Set of LOOKUP:… placeholders found under environments (connection / connection_key) and profiles (connection_key)"
+  description = "Set of LOOKUP:… placeholders found under environments.connection and profiles.connection_key"
   value       = local.lookup_connection_keys
 }
 

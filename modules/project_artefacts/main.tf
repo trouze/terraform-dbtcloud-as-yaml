@@ -9,29 +9,22 @@ terraform {
 }
 
 locals {
-  # COMPAT(v1-schema): artefacts.docs_job / freshness_job; v2/importer: project_artefacts.docs_job_key / freshness_job_key
   artefacts_rows = [
     for p in var.projects : {
-      project_key = try(p.key, p.name)
-      docs_job_key = (
-        try(p.project_artefacts.docs_job_key, null) != null && try(tostring(p.project_artefacts.docs_job_key), "") != ""
-        ? p.project_artefacts.docs_job_key
-        : try(p.artefacts.docs_job, null)
-      )
-      freshness_job_key = (
-        try(p.project_artefacts.freshness_job_key, null) != null && try(tostring(p.project_artefacts.freshness_job_key), "") != ""
-        ? p.project_artefacts.freshness_job_key
-        : try(p.artefacts.freshness_job, null)
-      )
-      has_block = try(p.artefacts, null) != null || try(p.project_artefacts, null) != null
+      project_key       = try(p.key, p.name)
+      docs_job_key      = try(p.project_artefacts.docs_job_key, null)
+      freshness_job_key = try(p.project_artefacts.freshness_job_key, null)
+      has_block         = try(p.project_artefacts, null) != null
     }
   ]
 
-  # v2 parity: only manage dbtcloud_project_artefacts when at least one job key is set
   artefacts_map = {
     for row in local.artefacts_rows :
     row.project_key => row
-    if row.has_block && (row.docs_job_key != null || row.freshness_job_key != null)
+    if row.has_block && (
+      (try(row.docs_job_key, null) != null && try(tostring(row.docs_job_key), "") != "") ||
+      (try(row.freshness_job_key, null) != null && try(tostring(row.freshness_job_key), "") != "")
+    )
   }
 }
 

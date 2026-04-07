@@ -9,11 +9,10 @@ terraform {
 }
 
 locals {
-  # COMPAT(v1-schema): semantic_layer.environment / environment_key; v2/importer: semantic_layer_config.environment_id (+ optional id for tooling)
   semantic_layer_map = {
     for p in var.projects :
     try(p.key, p.name) => p
-    if try(p.semantic_layer, null) != null || try(p.semantic_layer_config, null) != null
+    if try(p.semantic_layer_config, null) != null
   }
 
   semantic_environment_id = {
@@ -24,16 +23,12 @@ locals {
         length(compact([
           try(p.semantic_layer_config.environment_key, null),
           try(p.semantic_layer_config.environment, null),
-          try(p.semantic_layer.environment_key, null),
-          try(p.semantic_layer.environment, null),
         ])) > 0
         ? lookup(
           var.environment_ids,
           "${k}_${coalesce(
             try(p.semantic_layer_config.environment_key, null),
             try(p.semantic_layer_config.environment, null),
-            try(p.semantic_layer.environment_key, null),
-            try(p.semantic_layer.environment, null)
           )}",
           null
         )

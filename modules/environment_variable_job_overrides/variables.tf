@@ -1,5 +1,5 @@
 variable "projects" {
-  description = "List of project configurations. Overrides are read from project.jobs[] or project.environments[].jobs[] via env_var_overrides and/or environment_variable_overrides (merged; see modules/environment_variable_job_overrides)."
+  description = "List of project configurations. Job-level environment_variable_overrides on project.jobs[] (see modules/environment_variable_job_overrides)."
   type        = any
 }
 

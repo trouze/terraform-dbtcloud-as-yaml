@@ -9,10 +9,9 @@ terraform {
 }
 
 locals {
-  # COMPAT(v1-schema): for_each key from key or legacy name — align with v2 schema when canonical.
   notifications_map = {
     for n in var.notifications_data :
-    try(n.key, n.name) => n
+    n.key => n
   }
 
   unprotected_notifications_map = {

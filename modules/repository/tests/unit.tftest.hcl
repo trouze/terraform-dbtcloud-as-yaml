@@ -91,9 +91,9 @@ run "github_url_resolves_installation_from_discovery_map_without_pat" {
         }
       }
     ]
-    project_ids                    = { analytics = "1001" }
-    dbt_pat                        = null
-    github_installation_by_owner   = { "my-org" = 88332211 }
+    project_ids                     = { analytics = "1001" }
+    dbt_pat                         = null
+    github_installation_by_owner    = { "my-org" = 88332211 }
     github_installation_fallback_id = null
   }
 

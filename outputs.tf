@@ -122,11 +122,11 @@ output "project_artefact_ids" {
 }
 
 output "yaml_schema_version" {
-  description = "2 when the YAML file sets version: 2; otherwise 1 (implicit v1 layout)"
-  value       = try(local._raw_yaml.version, null) == 2 ? 2 : 1
+  description = "YAML version key from the config file (must be 1; see schemas/v1.json)"
+  value       = try(local._raw_yaml.version, null)
 }
 
 output "yaml_account" {
-  description = "When version: 2, the YAML account block (name, host_url, id); null for v1-only files"
-  value       = try(local._raw_yaml.version, null) == 2 ? try(local._raw_yaml.account, null) : null
+  description = "The YAML account block (name, host_url, id)"
+  value       = try(local._raw_yaml.account, null)
 }

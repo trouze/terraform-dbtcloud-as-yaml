@@ -1,5 +1,5 @@
 variable "projects" {
-  description = "List of project configurations. Jobs may be at project.jobs[] (with environment_key) or project.environments[].jobs[] (legacy)."
+  description = "List of project configurations. Jobs are defined only on project.jobs[] with environment_key."
   type        = any
 }
 

@@ -33,7 +33,7 @@ variable "dbt_pat" {
 }
 
 variable "dbt_host_url" {
-  description = "dbt Cloud host URL (e.g., https://cloud.getdbt.com or custom domain). Required by the Terraform dbtcloud provider; version: 2 YAML account.host_url is used only for HTTP lookups (module data_lookups) when this variable is null — mirror account.host_url here for real applies."
+  description = "dbt Cloud host URL (e.g., https://cloud.getdbt.com or custom domain). Required by the Terraform dbtcloud provider; version: 1 YAML account.host_url is used only for HTTP lookups (module data_lookups) when this variable is null — mirror account.host_url here for real applies."
   type        = string
   default     = null
 
@@ -48,7 +48,7 @@ variable "dbt_host_url" {
 #############################################
 
 variable "yaml_file" {
-  description = "Path to the YAML file defining dbt Cloud resources (projects, environments, jobs, etc.). Supports implicit v1 layout (project:/projects:) or version: 2 with globals.* (see schemas/v2.json); the root normalizes v2 into the internal v1-shaped locals modules consume."
+  description = "Path to the YAML file defining dbt Cloud resources. Must set version: 1 with account, globals.* (connections, optional groups, service_tokens, notifications, privatelink_endpoints), and projects[] — see schemas/v1.json. Root locals hoist globals into top-level keys modules consume and normalize environment_variables[].environment_values from maps to lists."
   type        = string
 
   validation {
@@ -128,60 +128,49 @@ variable "skip_global_project_permissions" {
 #############################################
 
 locals {
-  # Raw decoded YAML (before v2 → internal flattening).
   _raw_yaml = yamldecode(file(var.yaml_file))
 
-  _is_yaml_v2 = try(local._raw_yaml.version, null) == 2
-
-  # version: 2 — hoist globals.connections / globals.privatelink_endpoints into v1 top-level keys consumed by root modules.
-  # Always merge the same three keys (no `? {} : …`) so Terraform keeps a single object attribute type.
-  _yaml_global_connections = local._is_yaml_v2 ? try(local._raw_yaml.globals.connections, []) : try(local._raw_yaml.global_connections, [])
-
-  _yaml_privatelink_endpoints = local._is_yaml_v2 ? try(local._raw_yaml.globals.privatelink_endpoints, []) : try(local._raw_yaml.privatelink_endpoints, [])
-
-  _yaml_projects_flat = local._is_yaml_v2 ? local._raw_yaml.projects : try(local._raw_yaml.projects, [local._raw_yaml.project])
-
+  # version: 1 — hoist globals into the top-level keys root modules read.
   yaml_content = merge(
     {
       for k, v in local._raw_yaml : k => v
-      if !contains(["version", "account", "globals", "metadata"], k) && !(
-        local._is_yaml_v2 && contains(["projects", "global_connections", "privatelink_endpoints"], k)
-      )
+      if !contains([
+        "version",
+        "account",
+        "globals",
+        "metadata",
+        "projects",
+        "global_connections",
+        "privatelink_endpoints",
+        "service_tokens",
+        "groups",
+        "notifications",
+      ], k)
     },
     {
-      global_connections    = local._yaml_global_connections
-      privatelink_endpoints = local._yaml_privatelink_endpoints
-      projects              = local._yaml_projects_flat
+      global_connections    = try(local._raw_yaml.globals.connections, [])
+      privatelink_endpoints = try(local._raw_yaml.globals.privatelink_endpoints, [])
+      projects              = local._raw_yaml.projects
+      service_tokens        = try(local._raw_yaml.globals.service_tokens, [])
+      groups                = try(local._raw_yaml.globals.groups, [])
+      notifications         = try(local._raw_yaml.globals.notifications, [])
     },
   )
 
-  # Support both single project (project:) and multi-project (projects:) YAML shapes.
-  # Single-project users keep their existing YAML unchanged — the project: key is
-  # automatically wrapped into a one-element list.
-  _projects_from_yaml = try(
-    local.yaml_content.projects,
-    [local.yaml_content.project]
-  )
-
-  # COMPAT(v1-schema): environment_variables[].environment_values as [{env, value}, …] (v1) or map env_key → value (v2 JSON schema / importer).
+  # environment_variables[].environment_values: map env_key → value (YAML) → list of { env, value } for modules.
   projects = [
-    for p in local._projects_from_yaml : merge(p, {
+    for p in local.yaml_content.projects : merge(p, {
       environment_variables = [
         for ev in try(p.environment_variables, []) : merge(ev, {
-          environment_values = (
-            length(try([
-              for row in try(tolist(ev.environment_values), []) : row
-              if try(row.env, null) != null
-            ], [])) > 0
-            ? try(tolist(ev.environment_values), [])
-            : [for k, v in try(tomap(ev.environment_values), tomap({})) : { env = k, value = tostring(v) }]
-          )
+          environment_values = [
+            for k, v in try(tomap(ev.environment_values), tomap({})) : { env = k, value = tostring(v) }
+          ]
         })
       ]
     })
   ]
 
-  # HTTP helpers (module data_lookups): var.dbt_host_url, then version: 2 account.host_url, then public default (matches modules/data_lookups).
+  # HTTP helpers (module data_lookups): var.dbt_host_url, then version: 1 account.host_url, then public default (matches modules/data_lookups).
   dbt_host_url_effective = coalesce(
     var.dbt_host_url,
     try(local._raw_yaml.account.host_url, null) != null && try(trimspace(tostring(local._raw_yaml.account.host_url)), "") != "" ? trimspace(tostring(local._raw_yaml.account.host_url)) : null,
@@ -194,11 +183,8 @@ locals {
       for p in local.projects : concat(
         [
           for env in try(p.environments, []) :
-          try(env.connection, null) != null ? env.connection : try(env.connection_key, null)
-          if(
-            (try(env.connection, null) != null ? env.connection : try(env.connection_key, null)) != null &&
-            startswith(tostring(try(env.connection, null) != null ? env.connection : try(env.connection_key, null)), "LOOKUP:")
-          )
+          try(env.connection, null)
+          if try(env.connection, null) != null && startswith(tostring(env.connection), "LOOKUP:")
         ],
         [
           for prof in try(p.profiles, []) :

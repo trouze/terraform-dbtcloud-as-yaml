@@ -1,8 +1,7 @@
 #############################################
 # Root Module - dbt Cloud Resources
 #
-# Orchestrates all dbt Cloud resources from a YAML file.
-# Supports both single-project (project:) and multi-project (projects:) YAML.
+# Orchestrates all dbt Cloud resources from a YAML file (version: 1; schemas/v1.json).
 # Account-scoped resources are created first, then project-scoped resources.
 #############################################
 
@@ -289,7 +288,7 @@ module "lineage_integrations" {
 #############################################
 
 module "project_artefacts" {
-  count = length([for p in local.projects : p if try(p.artefacts, null) != null || try(p.project_artefacts, null) != null]) > 0 ? 1 : 0
+  count  = length([for p in local.projects : p if try(p.project_artefacts, null) != null]) > 0 ? 1 : 0
   source = "./modules/project_artefacts"
 
   projects    = local.projects
@@ -306,7 +305,7 @@ module "project_artefacts" {
 module "semantic_layer" {
   count = length([
     for p in local.projects : p
-    if try(p.semantic_layer, null) != null || try(p.semantic_layer_config, null) != null
+    if try(p.semantic_layer_config, null) != null
   ]) > 0 ? 1 : 0
   source = "./modules/semantic_layer"
 
