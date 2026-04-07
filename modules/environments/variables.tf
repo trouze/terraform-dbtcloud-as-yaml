@@ -31,3 +31,9 @@ variable "extended_attribute_ids_by_source_id" {
   type        = map(number)
   default     = {}
 }
+
+variable "profile_ids" {
+  description = "Map of composite key (project_key_profile_key) to dbt Cloud profile_id (from profiles module); used when environments set primary_profile_key."
+  type        = map(number)
+  default     = {}
+}

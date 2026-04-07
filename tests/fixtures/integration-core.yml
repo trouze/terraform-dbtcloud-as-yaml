@@ -1,3 +1,12 @@
+global_connections:
+  - name: TF Int WH
+    key: tf_int_wh
+    type: snowflake
+    protected: true
+    account: xy12345
+    database: ANALYTICS
+    warehouse: COMPUTE_WH
+
 projects:
   - name: TF Integration Core
     key: tf_int_core
@@ -5,6 +14,7 @@ projects:
       - name: Dev
         key: dev
         type: development
+        connection_key: tf_int_wh
     jobs:
       - name: Daily Run
         key: daily_run

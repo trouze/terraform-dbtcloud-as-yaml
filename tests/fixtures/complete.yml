@@ -1,3 +1,12 @@
+global_connections:
+  - name: Shared Warehouse
+    key: shared_wh
+    type: snowflake
+    protected: true
+    account: xy12345
+    database: ANALYTICS
+    warehouse: COMPUTE_WH
+
 projects:
   - name: Analytics
     key: analytics
@@ -5,11 +14,13 @@ projects:
       - name: Development
         key: dev
         type: development
+        connection_key: shared_wh
       - name: Production
         key: prod
         type: deployment
         deployment_type: production
         protected: true
+        connection_key: shared_wh
     jobs:
       - name: CI Check
         key: ci_check
@@ -42,3 +53,4 @@ projects:
         type: deployment
         deployment_type: production
         protected: true
+        connection_key: shared_wh

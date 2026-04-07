@@ -51,8 +51,9 @@ locals {
 
   # COMPAT(v1-schema): resolve PrivateLink after optional YAML privatelink_endpoints[] + account data source (v2 importer shape).
   private_link_endpoint_id_by_key = {
-    for k, conn in local.connections_map : k => coalesce(
-      try(conn.private_link_endpoint_id, null),
+    for k, conn in local.connections_map : k => (
+      try(conn.private_link_endpoint_id, null) != null ?
+      conn.private_link_endpoint_id :
       (
         length(data.dbtcloud_privatelink_endpoints.all) > 0 &&
         try(conn.private_link_endpoint_key, null) != null &&

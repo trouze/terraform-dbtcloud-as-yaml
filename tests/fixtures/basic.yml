@@ -1,3 +1,12 @@
+global_connections:
+  - name: Test Warehouse
+    key: test_wh
+    type: snowflake
+    protected: true
+    account: xy12345
+    database: ANALYTICS
+    warehouse: COMPUTE_WH
+
 project:
   name: My Test Project
   key: my_project
@@ -7,6 +16,7 @@ project:
       type: deployment
       deployment_type: production
       protected: true
+      connection_key: test_wh
   jobs:
     - name: Daily Run
       key: daily_run

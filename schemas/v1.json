@@ -449,6 +449,16 @@
             "properties": {
               "name": { "type": "string", "description": "Environment display name", "minLength": 1, "maxLength": 128 },
               "key": { "type": "string", "description": "Unique key within this project for cross-referencing", "pattern": "^[a-z0-9_]+$" },
+              "id": {
+                "type": ["integer", "string", "null"],
+                "description": "Legacy dbt Cloud environment id (import/migration); reserved for future resource_metadata / tooling (COMPAT v2/importer).",
+                "default": null
+              },
+              "primary_profile_key": {
+                "type": ["string", "null"],
+                "description": "References profiles[].key; when set, the environment uses primary_profile_id and omits connection_id, credential_id, and extended_attributes_id (v2/importer; matches projects_v2).",
+                "default": null
+              },
               "type": { "type": "string", "description": "Environment type", "enum": ["development", "deployment"], "default": "development" },
               "connection_key": { "type": "string", "description": "References global_connections[].key to attach a global connection, or LOOKUP:Connection Name for an existing account connection (see module data_lookups). If connection is also set, connection wins." },
               "connection": { "type": "string", "description": "Optional v2-style field; when set, takes precedence over connection_key. Same semantics (key, numeric id, or LOOKUP:Name)." },

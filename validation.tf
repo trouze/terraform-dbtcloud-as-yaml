@@ -45,6 +45,14 @@ locals {
     ])
   }
 
+  # Profile keys per project: { project_key => set(profile_key) }
+  _profile_keys_by_project = {
+    for p in local.projects :
+    try(p.key, p.name) => toset([
+      for prof in try(p.profiles, []) : try(prof.key, prof.name)
+    ])
+  }
+
   _valid_credential_types = toset([
     "databricks", "snowflake", "bigquery", "redshift", "postgres",
     "athena", "fabric", "synapse", "starburst", "trino",
@@ -60,6 +68,40 @@ locals {
     for ple in try(local.yaml_content.privatelink_endpoints, []) : try(ple.key, ple.name)
   ])
 
+  # ── V-00: environments need connection (or connection_key) or primary_profile_key ─
+
+  _errors_env_connection_or_profile = flatten([
+    for p in local.projects : [
+      for env in try(p.environments, []) :
+      (
+        (
+          try(env.connection, null) == null && try(env.connection_key, null) == null
+          ) && (
+          try(env.primary_profile_key, null) == null || try(env.primary_profile_key, "") == ""
+        )
+        ) ? [
+        "Environment '${try(env.key, env.name)}' in project '${try(p.key, p.name)}' must set connection or connection_key, or set primary_profile_key to a profiles[].key (v2/importer)."
+      ] : []
+    ]
+  ])
+
+  # ── V-00b: primary_profile_key → profiles[].key (same project) ─────────────
+
+  _errors_primary_profile_key = flatten([
+    for p in local.projects : [
+      for env in try(p.environments, []) :
+      try(
+        env.primary_profile_key != null && env.primary_profile_key != "" && !contains(
+          try(local._profile_keys_by_project[try(p.key, p.name)], toset([])),
+          env.primary_profile_key
+        )
+        ? ["Environment '${try(env.key, env.name)}' in project '${try(p.key, p.name)}' references primary_profile_key '${env.primary_profile_key}' but no profile with that key exists. Available profile keys: [${join(", ", tolist(try(local._profile_keys_by_project[try(p.key, p.name)], toset([]))))}]"]
+        : [],
+        []
+      )
+    ]
+  ])
+
   # ── V-01: connection / connection_key in environments → global_connections[].key (skip LOOKUP:… — resolved via module.data_lookups)
 
   _errors_connection_key = flatten([
@@ -67,6 +109,9 @@ locals {
       for env in try(p.environments, []) :
       try(
         (
+          # v2: connection is omitted when primary_profile_key supplies connection via profile
+          try(env.primary_profile_key, null) == null || try(env.primary_profile_key, "") == ""
+          ) && (
           (try(env.connection, null) != null ? env.connection : try(env.connection_key, null)) != null &&
           !startswith(tostring(try(env.connection, null) != null ? env.connection : try(env.connection_key, null)), "LOOKUP:") &&
           !contains(local._valid_global_connection_keys, try(env.connection, null) != null ? env.connection : try(env.connection_key, null))
@@ -279,6 +324,8 @@ locals {
   # ── Aggregated error list ──────────────────────────────────────────────────
 
   _all_validation_errors = compact(concat(
+    local._errors_env_connection_or_profile,
+    local._errors_primary_profile_key,
     local._errors_connection_key,
     local._errors_job_env_key,
     local._errors_ea_key,

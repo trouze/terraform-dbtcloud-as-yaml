@@ -102,7 +102,7 @@ output "extended_attribute_ids" {
 }
 
 output "profile_ids" {
-  description = "Map of composite key (project_key_profile_key) to dbt Cloud profile ID"
+  description = "Map of composite key (project_key_profile_key) to dbt Cloud profile_id (numeric API id)"
   value       = length(flatten([for p in local.projects : try(p.profiles, [])])) > 0 ? module.profiles[0].profile_ids : {}
 }
 
