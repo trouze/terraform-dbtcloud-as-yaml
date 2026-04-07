@@ -624,7 +624,12 @@
               "name": { "type": "string", "description": "Profile display name", "minLength": 1 },
               "key": { "type": "string", "description": "Unique key for this profile", "pattern": "^[a-z0-9_]+$" },
               "connection_key": { "type": "string", "description": "References global_connections[].key or LOOKUP:Connection Name for an existing account global connection (module data_lookups)" },
-              "credential_key": { "type": "string", "description": "Composite key (project_key_env_key) or project_key_profile_key referencing the credential to use" },
+              "credential_key": { "type": "string", "description": "Environment-style key for credential_ids lookup (${project_key}_${credential_key}); used when credentials_key is unset (v1 schema; v2 may use credentials_key — see modules/profiles)." },
+              "credentials_key": {
+                "type": ["string", "null"],
+                "description": "v2/importer: references a credential via project_key_credentials_key in credential_ids (e.g. environment warehouse key). When non-empty, resolved before credential_key for that lookup step (see modules/profiles).",
+                "default": null
+              },
               "credentials_id": {
                 "type": ["string", "integer", "null"],
                 "description": "Legacy dbt Cloud credentials_id or placeholder for migration; coalesced with credential_ids_by_source_id when set (COMPAT v2/importer).",
@@ -639,6 +644,16 @@
               "extended_attributes_id": {
                 "type": ["string", "integer", "null"],
                 "description": "Legacy dbt Cloud extended_attributes_id; coalesced with extended_attribute_ids_by_source_id when YAML extended_attributes[].id is set (COMPAT v2/importer; see modules/profiles).",
+                "default": null
+              },
+              "protected": {
+                "type": "boolean",
+                "description": "When true, the profile uses lifecycle.prevent_destroy in Terraform (v2/importer parity).",
+                "default": false
+              },
+              "id": {
+                "type": ["integer", "string", "null"],
+                "description": "Legacy dbt Cloud profile id (import/migration); reserved for future resource_metadata / tooling (COMPAT v2/importer).",
                 "default": null
               }
             },

@@ -123,6 +123,39 @@ locals {
     ]
   ])
 
+  # ── V-01b: connection_key on profiles → global_connections[].key (skip LOOKUP:…)
+
+  _errors_profile_connection_key = flatten([
+    for p in local.projects : [
+      for prof in try(p.profiles, []) :
+      try(
+        try(prof.connection_key, null) != null &&
+        !startswith(tostring(prof.connection_key), "LOOKUP:") &&
+        !contains(local._valid_global_connection_keys, prof.connection_key)
+        ? ["Profile '${try(prof.key, prof.name)}' in project '${try(p.key, p.name)}' references connection_key '${prof.connection_key}' but no global_connection with that key exists. Available keys: [${join(", ", tolist(local._valid_global_connection_keys))}]"]
+        : [],
+        []
+      )
+    ]
+  ])
+
+  # ── V-01c: extended_attributes_key on profiles → extended_attributes[].key
+
+  _errors_profile_ea_key = flatten([
+    for p in local.projects : [
+      for prof in try(p.profiles, []) :
+      try(
+        prof.extended_attributes_key != null && prof.extended_attributes_key != "" && !contains(
+          try(local._ea_keys_by_project[try(p.key, p.name)], toset([])),
+          prof.extended_attributes_key
+        )
+        ? ["Profile '${try(prof.key, prof.name)}' in project '${try(p.key, p.name)}' references extended_attributes_key '${prof.extended_attributes_key}' but no extended_attribute with that key exists. Available keys: [${join(", ", tolist(try(local._ea_keys_by_project[try(p.key, p.name)], toset([]))))}]"]
+        : [],
+        []
+      )
+    ]
+  ])
+
   # ── V-02: environment_key in jobs → environments[].key (same project) ──────
 
   _errors_job_env_key = flatten([
@@ -327,6 +360,8 @@ locals {
     local._errors_env_connection_or_profile,
     local._errors_primary_profile_key,
     local._errors_connection_key,
+    local._errors_profile_connection_key,
+    local._errors_profile_ea_key,
     local._errors_job_env_key,
     local._errors_ea_key,
     local._errors_ea_payload,

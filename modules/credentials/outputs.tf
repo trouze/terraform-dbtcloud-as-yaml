@@ -4,6 +4,6 @@ output "credential_ids" {
 }
 
 output "credential_ids_by_source_id" {
-  description = "Maps environments' YAML credential.id (legacy dbt Cloud ID) to the Terraform-managed credential_id after apply."
+  description = "Maps YAML credential.id (environment or standalone profile credentials, legacy dbt Cloud ID) to Terraform-managed credential_id after apply (COMPAT v2/importer)."
   value       = local.credential_ids_by_source_id
 }

@@ -92,12 +92,20 @@ locals {
     { for k, c in dbtcloud_teradata_credential.credentials : k => c.credential_id },
   )
 
-  # Map legacy YAML credential.id (dbt Cloud) -> Terraform-managed credential_id after apply (environments only).
-  credential_ids_by_source_id = {
-    for item in local.env_credential_owners_list :
-    tostring(item.cred_data.id) => local.merged_credential_ids[item.composite_key]
-    if try(item.cred_data.id, null) != null && try(local.merged_credential_ids[item.composite_key], null) != null
-  }
+  # Map legacy YAML credential.id (dbt Cloud) -> Terraform-managed credential_id after apply
+  # (environments and standalone profile credentials — COMPAT v2/importer).
+  credential_ids_by_source_id = merge(
+    {
+      for item in local.env_credential_owners_list :
+      tostring(item.cred_data.id) => local.merged_credential_ids[item.composite_key]
+      if try(item.cred_data.id, null) != null && try(local.merged_credential_ids[item.composite_key], null) != null
+    },
+    {
+      for k, item in local.standalone_profile_credential_owners :
+      tostring(item.cred_data.id) => local.merged_credential_ids[k]
+      if try(item.cred_data.id, null) != null && try(local.merged_credential_ids[k], null) != null
+    }
+  )
 }
 
 #############################################
