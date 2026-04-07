@@ -292,6 +292,7 @@ schedule_hours: [6, 18]            # UTC
 
 ## Documentation
 
+- **Hosted docs (GitHub Pages):** [dbt-labs.github.io/terraform-dbtcloud-as-yaml](https://dbt-labs.github.io/terraform-dbtcloud-as-yaml/)
 - [examples/basic/](examples/basic/) — clone-and-go starter with step-by-step README
 - [docs/configuration/yaml-schema.md](docs/configuration/yaml-schema.md) — full YAML field reference
 - [docs/guides/cicd.md](docs/guides/cicd.md) — CI/CD setup (GitHub Actions, etc.)

@@ -567,6 +567,6 @@ Before deploying to production:
 
 ## Getting Help
 
-- 📖 [Documentation](https://dbt-labs.github.io/terraform-dbtcloud-as-yaml)
+- 📖 [Documentation](https://dbt-labs.github.io/terraform-dbtcloud-as-yaml/)
 - 🐛 [Issues](https://github.com/dbt-labs/terraform-dbtcloud-as-yaml/issues)
 - 💬 [Discussions](https://github.com/dbt-labs/terraform-dbtcloud-as-yaml/discussions)

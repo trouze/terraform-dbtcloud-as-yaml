@@ -1,7 +1,8 @@
 site_name: terraform-dbtcloud-as-yaml
 site_description: Manage dbt Cloud infrastructure with Terraform using YAML configuration
 site_author: dbt Labs
-site_url: https://dbt-labs.github.io/terraform-dbtcloud-as-yaml
+# Default for local builds; deploy_docs.yml sets site_url from the repo on CI (owner.github.io/repo/)
+site_url: https://dbt-labs.github.io/terraform-dbtcloud-as-yaml/
 
 repo_url: https://github.com/dbt-labs/terraform-dbtcloud-as-yaml
 repo_name: dbt-labs/terraform-dbtcloud-as-yaml

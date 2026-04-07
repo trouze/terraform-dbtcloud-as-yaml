@@ -1,4 +1,6 @@
-# Workflow for building and deploying MkDocs documentation with Terraform docs to GitHub Pages
+# Deploy MkDocs + terraform-docs output to GitHub Pages.
+# Published URL (project site): https://dbt-labs.github.io/terraform-dbtcloud-as-yaml/
+# Repo setting: Settings → Pages → Build and deployment → Source: GitHub Actions
 name: Deploy Documentation to Pages
 
 on:
@@ -88,6 +90,21 @@ jobs:
       - name: Setup Pages
         id: pages
         uses: actions/configure-pages@v5
+
+      - name: Set MkDocs site_url for GitHub Pages
+        run: |
+          SITE_URL="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/"
+          python3 -c "
+          import re, pathlib, sys
+          site_url = sys.argv[1]
+          path = pathlib.Path('mkdocs.yml')
+          text = path.read_text()
+          text, n = re.subn(r'(?m)^site_url:.*$', f'site_url: {site_url}', text, count=1)
+          if n != 1:
+              sys.exit('Expected exactly one site_url line in mkdocs.yml')
+          path.write_text(text)
+          print(f'site_url -> {site_url}')
+          " "$SITE_URL"
       
       - name: Build with MkDocs
         run: |
