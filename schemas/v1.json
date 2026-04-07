@@ -50,7 +50,7 @@
 
     "privatelink_endpoints": {
       "type": "array",
-      "description": "Optional registry of PrivateLink endpoints (key + endpoint_id) for resolving global_connections[].private_link_endpoint_key; same pattern as v2 globals.privatelink_endpoints",
+      "description": "Optional registry of PrivateLink endpoints (key + endpoint_id) for resolving global_connections[].private_link_endpoint_key and project.repository.private_link_endpoint_key; same pattern as v2 globals.privatelink_endpoints",
       "items": {
         "type": "object",
         "properties": {
@@ -331,6 +331,11 @@
         "name": { "type": "string", "description": "Project display name", "minLength": 1, "maxLength": 128 },
         "key": { "type": "string", "description": "Unique key for cross-referencing this project", "pattern": "^[a-z0-9_]+$" },
         "protected": { "type": "boolean", "description": "Protect from accidental deletion via lifecycle ignore", "default": false },
+        "repository_protected": {
+          "type": ["boolean", "null"],
+          "description": "When set, controls repository + project_repository prevent_destroy independently of protected (v2 parity; falls back to protected when null)",
+          "default": null
+        },
 
         "repository": {
           "type": "object",
@@ -382,6 +387,11 @@
             "private_link_endpoint_id": {
               "type": ["string", "null"],
               "description": "Private Link endpoint ID for VPC access",
+              "default": null
+            },
+            "private_link_endpoint_key": {
+              "type": ["string", "null"],
+              "description": "References privatelink_endpoints[].key to resolve endpoint via data.dbtcloud_privatelink_endpoints when private_link_endpoint_id is omitted (v1 schema; v2 may rename — see COMPAT in modules/repository)",
               "default": null
             },
             "is_active": {

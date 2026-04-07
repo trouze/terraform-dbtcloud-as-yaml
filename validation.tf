@@ -209,6 +209,19 @@ locals {
     )
   ]
 
+  # ── V-10c: project.repository.private_link_endpoint_key → privatelink_endpoints[].key ─
+
+  _errors_repository_privatelink_key = [
+    for p in local.projects :
+    "Project '${try(p.key, p.name)}' repository references private_link_endpoint_key '${p.repository.private_link_endpoint_key}' but no privatelink_endpoints[] entry has that key. Define privatelink_endpoints at the YAML root or set private_link_endpoint_id."
+    if(
+      try(p.repository, null) != null &&
+      try(p.repository.private_link_endpoint_key, null) != null &&
+      try(p.repository.private_link_endpoint_id, null) == null &&
+      !contains(local._privatelink_endpoint_keys, p.repository.private_link_endpoint_key)
+    )
+  ]
+
   # ── V-11: schedule coherence — schedule:true requires schedule_type or cron ─
 
   _errors_schedule_config = flatten([
@@ -263,6 +276,7 @@ locals {
     local._errors_credential_type,
     local._errors_connection_type,
     local._errors_connection_privatelink_key,
+    local._errors_repository_privatelink_key,
     local._errors_schedule_config,
     local._errors_user_group_keys,
     local._errors_service_token_project_keys,

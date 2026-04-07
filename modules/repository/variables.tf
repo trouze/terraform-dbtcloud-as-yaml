@@ -32,3 +32,9 @@ variable "github_installation_fallback_id" {
   type        = number
   default     = null
 }
+
+variable "privatelink_endpoints" {
+  description = "Optional account-level PrivateLink registry (key + endpoint_id) for resolving repository.private_link_endpoint_key"
+  type        = list(any)
+  default     = []
+}

@@ -158,13 +158,15 @@ module "repository" {
   enable_gitlab_deploy_token      = var.enable_gitlab_deploy_token
   github_installation_by_owner    = length(module.data_lookups) > 0 ? module.data_lookups[0].github_installation_by_owner : {}
   github_installation_fallback_id = length(module.data_lookups) > 0 ? module.data_lookups[0].github_installation_fallback_id : null
+  privatelink_endpoints           = try(local.yaml_content.privatelink_endpoints, [])
 }
 
 module "project_repository" {
   source = "./modules/project_repository"
 
-  project_ids    = module.project.project_ids
-  repository_ids = module.repository.repository_ids
+  project_ids               = module.project.project_ids
+  repository_ids            = module.repository.repository_ids
+  protected_repository_keys = module.repository.protected_repository_keys
 }
 
 #############################################
