@@ -161,7 +161,7 @@ locals {
         ) ? data.dbtcloud_privatelink_endpoints.all[0].endpoints[
         index(
           [for ep in data.dbtcloud_privatelink_endpoints.all[0].endpoints : ep.id],
-          lookup(local.privatelink_endpoints_map, repo.private_link_endpoint_key).endpoint_id
+          lookup(local.privatelink_endpoints_map, repo.private_link_endpoint_key, { endpoint_id = null }).endpoint_id
         )
       ].id : null
     )
