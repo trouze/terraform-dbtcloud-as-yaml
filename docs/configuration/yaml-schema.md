@@ -82,16 +82,17 @@ Define warehouse connections under **`globals.connections`** in YAML. Terraform 
 ### Databricks
 
 ```yaml
-global_connections:
-  - name: Databricks Production
-    key: databricks_prod
-    type: databricks
-    host: adb-1234567890123456.7.azuredatabricks.net
-    http_path: /sql/1.0/warehouses/abc1234def567890
-    catalog: main                         # optional — Unity Catalog catalog name
-    private_link_endpoint_id: null        # optional
-    protected: false
-    # OAuth credentials via connection_credentials["databricks_prod"]
+globals:
+  connections:
+    - name: Databricks Production
+      key: databricks_prod
+      type: databricks
+      host: adb-1234567890123456.7.azuredatabricks.net
+      http_path: /sql/1.0/warehouses/abc1234def567890
+      catalog: main                         # optional — Unity Catalog catalog name
+      private_link_endpoint_id: null        # optional
+      protected: false
+      # OAuth credentials via connection_credentials["databricks_prod"]
 ```
 
 | Field | Type | Required | Default |
@@ -103,17 +104,18 @@ global_connections:
 ### Snowflake
 
 ```yaml
-global_connections:
-  - name: Snowflake Production
-    key: snowflake_prod
-    type: snowflake
-    account: xy12345.us-east-1
-    database: ANALYTICS
-    warehouse: TRANSFORMING
-    role: TRANSFORMER                     # optional
-    allow_sso: false                      # optional
-    client_session_keep_alive: false      # optional
-    # OAuth credentials via connection_credentials["snowflake_prod"]
+globals:
+  connections:
+    - name: Snowflake Production
+      key: snowflake_prod
+      type: snowflake
+      account: xy12345.us-east-1
+      database: ANALYTICS
+      warehouse: TRANSFORMING
+      role: TRANSFORMER                     # optional
+      allow_sso: false                      # optional
+      client_session_keep_alive: false      # optional
+      # OAuth credentials via connection_credentials["snowflake_prod"]
 ```
 
 | Field | Type | Required | Default |
@@ -128,20 +130,21 @@ global_connections:
 ### BigQuery
 
 ```yaml
-global_connections:
-  - name: BigQuery Production
-    key: bigquery_prod
-    type: bigquery
-    gcp_project_id: my-gcp-project-id
-    client_email: dbt-sa@my-project.iam.gserviceaccount.com   # optional
-    client_id: "123456789012345678901"                         # optional
-    auth_uri: https://accounts.google.com/o/oauth2/auth       # optional
-    token_uri: https://oauth2.googleapis.com/token            # optional
-    auth_provider_x509_cert_url: https://www.googleapis.com/oauth2/v1/certs   # optional
-    client_x509_cert_url: https://www.googleapis.com/...      # optional
-    timeout_seconds: 300                                       # optional
-    location: US                                               # optional
-    # private_key / private_key_id via connection_credentials["bigquery_prod"]
+globals:
+  connections:
+    - name: BigQuery Production
+      key: bigquery_prod
+      type: bigquery
+      gcp_project_id: my-gcp-project-id
+      client_email: dbt-sa@my-project.iam.gserviceaccount.com   # optional
+      client_id: "123456789012345678901"                         # optional
+      auth_uri: https://accounts.google.com/o/oauth2/auth       # optional
+      token_uri: https://oauth2.googleapis.com/token            # optional
+      auth_provider_x509_cert_url: https://www.googleapis.com/oauth2/v1/certs   # optional
+      client_x509_cert_url: https://www.googleapis.com/...      # optional
+      timeout_seconds: 300                                       # optional
+      location: US                                               # optional
+      # private_key / private_key_id via connection_credentials["bigquery_prod"]
 ```
 
 | Field | Type | Required | Default |
@@ -159,13 +162,14 @@ global_connections:
 ### Postgres
 
 ```yaml
-global_connections:
-  - name: Postgres Production
-    key: postgres_prod
-    type: postgres
-    hostname: my-host.rds.amazonaws.com
-    dbname: analytics
-    port: 5432                            # optional — default 5432
+globals:
+  connections:
+    - name: Postgres Production
+      key: postgres_prod
+      type: postgres
+      hostname: my-host.rds.amazonaws.com
+      dbname: analytics
+      port: 5432                            # optional — default 5432
 ```
 
 | Field | Type | Required | Default |
@@ -177,13 +181,14 @@ global_connections:
 ### Redshift
 
 ```yaml
-global_connections:
-  - name: Redshift Production
-    key: redshift_prod
-    type: redshift
-    hostname: my-cluster.abc123.us-east-1.redshift.amazonaws.com
-    dbname: analytics
-    port: 5439                            # optional — default 5439
+globals:
+  connections:
+    - name: Redshift Production
+      key: redshift_prod
+      type: redshift
+      hostname: my-cluster.abc123.us-east-1.redshift.amazonaws.com
+      dbname: analytics
+      port: 5439                            # optional — default 5439
 ```
 
 | Field | Type | Required | Default |
@@ -196,7 +201,7 @@ global_connections:
 
 ## `service_tokens`
 
-Account-level API service tokens.
+Account-level API service tokens. In YAML they belong under **`globals.service_tokens`** (the root module hoists them for modules).
 
 | Field | Type | Required | Default | Description |
 |---|---|---|---|---|
@@ -216,23 +221,24 @@ Account-level API service tokens.
 **Valid `permission_set` values:** `account_admin` · `git_admin` · `job_admin` · `job_runner` · `job_viewer` · `member` · `metadata_only` · `owner` · `readonly` · `seeker_user` · `webhook_admin`
 
 ```yaml
-service_tokens:
-  - name: CI Service Token
-    key: ci_token
-    protected: false
-    permissions:
-      - permission_set: job_runner
-        all_projects: true
-      - permission_set: git_admin
-        all_projects: false
-        project_id: 12345
+globals:
+  service_tokens:
+    - name: CI Service Token
+      key: ci_token
+      protected: false
+      permissions:
+        - permission_set: job_runner
+          all_projects: true
+        - permission_set: git_admin
+          all_projects: false
+          project_id: 12345
 ```
 
 ---
 
 ## `groups`
 
-Account-level user groups.
+Account-level user groups. In YAML they belong under **`globals.groups`**.
 
 | Field | Type | Required | Default | Description |
 |---|---|---|---|---|
@@ -248,22 +254,23 @@ Account-level user groups.
 Same structure as `service_tokens[].permissions[]` above.
 
 ```yaml
-groups:
-  - name: Developers
-    key: developers
-    assign_by_default: false
-    sso_mapping_groups:
-      - "data-team-eng"
-    permissions:
-      - permission_set: job_runner
-        all_projects: true
+globals:
+  groups:
+    - name: Developers
+      key: developers
+      assign_by_default: false
+      sso_mapping_groups:
+        - "data-team-eng"
+      permissions:
+        - permission_set: job_runner
+          all_projects: true
 ```
 
 ---
 
 ## `user_groups`
 
-Assigns existing dbt Cloud users to groups. `group_keys` references `groups[].key`.
+Assigns existing dbt Cloud users to groups. `group_keys` references **`globals.groups[].key`**.
 
 | Field | Type | Required | Default |
 |---|---|---|---|
@@ -282,7 +289,7 @@ user_groups:
 
 ## `notifications`
 
-Job notification rules.
+Job notification rules. In YAML they belong under **`globals.notifications`**.
 
 | Field | Type | Required | Default | Description |
 |---|---|---|---|---|
@@ -307,30 +314,31 @@ Job notification rules.
 | `3` | External email address |
 
 ```yaml
-notifications:
-  # dbt Cloud user notification
-  - name: prod-failures-user
-    key: prod_failures_user
-    notification_type: 1
-    user_id: 12345
-    on_failure: [1001, 1002]
-    on_success: []
+globals:
+  notifications:
+    # dbt Cloud user notification
+    - name: prod-failures-user
+      key: prod_failures_user
+      notification_type: 1
+      user_id: 12345
+      on_failure: [1001, 1002]
+      on_success: []
 
-  # Slack channel notification
-  - name: prod-failures-slack
-    key: prod_failures_slack
-    notification_type: 2
-    slack_channel_id: C0123456789
-    slack_channel_name: "#dbt-alerts"
-    on_failure: [1001, 1002]
-    on_cancel: [1001]
+    # Slack channel notification
+    - name: prod-failures-slack
+      key: prod_failures_slack
+      notification_type: 2
+      slack_channel_id: C0123456789
+      slack_channel_name: "#dbt-alerts"
+      on_failure: [1001, 1002]
+      on_cancel: [1001]
 
-  # External email notification
-  - name: prod-failures-email
-    key: prod_failures_email
-    notification_type: 3
-    external_email: oncall@example.com
-    on_failure: [1001]
+    # External email notification
+    - name: prod-failures-email
+      key: prod_failures_email
+      notification_type: 3
+      external_email: oncall@example.com
+      on_failure: [1001]
 ```
 
 ---
@@ -487,7 +495,7 @@ The strategy is auto-detected from the presence of `github_installation_id`, `gi
 | `key` | string | no | `name` | Unique identifier used in `deferring_environment_key`, etc. |
 | `type` | string | **yes** | — | `deployment` or `development` |
 | `deployment_type` | string | conditional | — | `production` or `staging` — required when `type: deployment` |
-| `connection` | string | conditional | null | Global connection key, numeric id, or `LOOKUP:…` (omit when using `primary_profile_key`) |
+| `connection` | string | conditional | null | Global connection key, numeric id, or `LOOKUP:…` — omit when using `primary_profile_key` (either `connection` or `primary_profile_key` must be set) |
 | `dbt_version` | string | no | null | Pin dbt Core version (e.g., `"1.9.0"`) |
 | `custom_branch` | string | no | null | Custom git branch (development envs) |
 | `enable_model_query_history` | bool | no | null | Enable query history tracking |
@@ -751,7 +759,7 @@ Jobs are defined at project level and reference environments by `key`. They are 
 | `dbt_version` | string | no | null | Pin dbt Core version (overrides environment) |
 | `num_threads` | number | no | 4 | Thread count |
 | `target_name` | string | no | null | dbt target name (e.g., `"prod"`) |
-| `timeout_seconds` | number | no | 0 | Job timeout — `0` means no timeout |
+| `timeout_seconds` | number | no | `0` | Job timeout in seconds — `0` means no timeout (provider default) |
 | `is_active` | bool | no | true | Whether the job is enabled |
 | `job_type` | string | no | — | `"scheduled"` · `"ci"` · `"merge"` |
 | `generate_docs` | bool | no | false | Regenerate docs on each run |
@@ -764,7 +772,25 @@ Jobs are defined at project level and reference environments by `key`. They are 
 | `self_deferring` | bool | no | null | Defer to the job's own previous run |
 | `force_node_selection` | bool | no | auto | SAO — set automatically; null for CI/merge jobs |
 | `protected` | bool | no | false | Prevents `terraform destroy` |
-| `env_var_overrides` | map(string) | no | {} | Job-level env var overrides |
+| `environment_variable_overrides` | map(string) | no | `{}` | Job-level env var overrides — creates `dbtcloud_environment_variable_job_override` resources |
+
+#### `environment_variable_overrides`
+
+Map of variable name to string value. Plain strings are written as the override `raw_value`. If a value starts with `secret_`, the prefix is stripped and the rest is used as a key into the Terraform `token_map` variable (same pattern as legacy Databricks `credential.token_name`).
+
+```yaml
+jobs:
+  - name: Production Daily
+    key: prod_daily
+    environment_key: prod
+    execute_steps:
+      - dbt build
+    triggers:
+      schedule: true
+    environment_variable_overrides:
+      DBT_SOME_FLAG: "1"
+      DBT_SECRET_TOKEN: secret_ci_dbt_token   # resolved from token_map["ci_dbt_token"]
+```
 
 #### `triggers`
 
@@ -809,7 +835,7 @@ jobs:
     deferring_environment_key: prod
     self_deferring: true
     protected: true
-    env_var_overrides:
+    environment_variable_overrides:
       DBT_TARGET: prod
 
   # CI job — triggered on PR
@@ -888,25 +914,25 @@ environment_variables:
 
 ### `extended_attributes[]`
 
-Per-project connection-level overrides applied at the environment level. Linked to environments via `extended_attributes_key`.
+Per-project connection-level overrides applied at the environment level. Linked from environments via `extended_attributes_key`. Terraform JSON-encodes the inner `extended_attributes` object for the dbt Cloud API (adapter-specific keys such as `databricks`, `snowflake`, etc.).
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `name` | string | **yes** | Display name |
-| `key` | string | no | Unique identifier — referenced by `environments[].extended_attributes_key` |
-| `content` | map | no | Nested YAML object of connection overrides |
+| `key` | string | **yes** (recommended) | Unique slug — referenced by `environments[].extended_attributes_key`. If omitted, Terraform falls back to `name`. |
+| `name` | string | no | Human-readable label (can be used as the identifier when `key` is omitted) |
+| `extended_attributes` | object | **yes** | Map of connection override fields (structure depends on warehouse type) |
+| `protected` | bool | no | Prevents `terraform destroy` when `true` |
+| `id` | number | no | Legacy dbt Cloud id for import / remap |
 
 ```yaml
 extended_attributes:
-  - name: Databricks HTTP Override
-    key: databricks_overrides
+  - key: databricks_overrides
     extended_attributes:
       databricks:
         http_path: /sql/1.0/warehouses/override-warehouse-id
         catalog: overridden_catalog
 
-  - name: Snowflake Warehouse Override
-    key: snowflake_overrides
+  - key: snowflake_overrides
     extended_attributes:
       snowflake:
         warehouse: HIGH_MEMORY_WH
@@ -1009,7 +1035,7 @@ Sensitive values are never written directly in YAML. Instead, they are passed as
 |---|---|---|
 | `token_map` | `"my_token_name"` | `credential.token_name` in YAML (legacy Databricks) |
 | `environment_credentials` | `"project_key_env_key"` | Environment `credential` block |
-| `connection_credentials` | `"connection_key"` | `global_connections[].key` |
+| `connection_credentials` | `"connection_key"` | `globals.connections[].key` |
 | `lineage_tokens` | `"project_key_integration_key"` | `lineage_integrations[].key` composite |
 | `oauth_client_secrets` | `"oauth_config_key"` | `oauth_configurations[].key` |
 

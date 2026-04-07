@@ -73,7 +73,7 @@ variable "target_name" {
 #############################################
 
 variable "token_map" {
-  description = "Map of credential token names to their actual values (e.g., Databricks tokens). Token names correspond to credential.token_name in YAML."
+  description = "Map of token names to secret values. Used for legacy Databricks credential.token_name in YAML and for jobs[].environment_variable_overrides values prefixed with secret_ (lookup key is the string after the prefix)."
   type        = map(string)
   default     = {}
   sensitive   = true

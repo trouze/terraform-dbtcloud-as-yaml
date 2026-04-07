@@ -317,6 +317,10 @@
       "description": "Extended attributes for environment-level connection overrides (flexible JSON config).",
       "properties": {
         "key": { "$ref": "#/$defs/slug" },
+        "name": {
+          "type": "string",
+          "description": "Display label; Terraform uses try(key, name) as the identifier when key is omitted."
+        },
         "id": {
           "type": ["integer", "null"],
           "description": "Optional extended attributes ID for reference.",
@@ -339,7 +343,8 @@
           "additionalProperties": true
         }
       },
-      "required": ["key", "extended_attributes"],
+      "required": ["extended_attributes"],
+      "anyOf": [{ "required": ["key"] }, { "required": ["name"] }],
       "additionalProperties": false
     },
     "environment": {
@@ -604,6 +609,11 @@
           "type": "array",
           "items": { "$ref": "#/$defs/slug" },
           "description": "References to notification targets defined in globals/projects."
+        },
+        "environment_variable_overrides": {
+          "type": "object",
+          "description": "Per-job environment variable overrides (dbtcloud_environment_variable_job_override). Values prefixed with secret_ are resolved via the token_map Terraform variable (remainder of the string is the map key).",
+          "additionalProperties": { "type": "string" }
         },
         "id": {
           "type": ["integer", "null"],
