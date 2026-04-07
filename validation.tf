@@ -53,7 +53,11 @@ locals {
 
   _valid_connection_types = toset([
     "databricks", "snowflake", "bigquery", "redshift", "postgres",
-    "spark", "starburst_trino", "apache_spark", "athena", "fabric", "synapse",
+    "spark", "starburst", "starburst_trino", "apache_spark", "athena", "fabric", "synapse", "teradata", "salesforce",
+  ])
+
+  _privatelink_endpoint_keys = toset([
+    for ple in try(local.yaml_content.privatelink_endpoints, []) : try(ple.key, ple.name)
   ])
 
   # ── V-01: connection_key in environments → global_connections[].key ────────
@@ -189,6 +193,18 @@ locals {
     if !contains(local._valid_connection_types, try(conn.type, ""))
   ]
 
+  # ── V-10b: global_connections[].private_link_endpoint_key → privatelink_endpoints[].key ─
+
+  _errors_connection_privatelink_key = [
+    for conn in try(local.yaml_content.global_connections, []) :
+    "Global connection '${try(conn.key, conn.name)}' references private_link_endpoint_key '${conn.private_link_endpoint_key}' but no privatelink_endpoints[] entry has that key. Define privatelink_endpoints at the YAML root or set private_link_endpoint_id."
+    if(
+      try(conn.private_link_endpoint_key, null) != null &&
+      try(conn.private_link_endpoint_id, null) == null &&
+      !contains(local._privatelink_endpoint_keys, conn.private_link_endpoint_key)
+    )
+  ]
+
   # ── V-11: schedule coherence — schedule:true requires schedule_type or cron ─
 
   _errors_schedule_config = flatten([
@@ -242,6 +258,7 @@ locals {
     local._errors_execute_steps,
     local._errors_credential_type,
     local._errors_connection_type,
+    local._errors_connection_privatelink_key,
     local._errors_schedule_config,
     local._errors_user_group_keys,
     local._errors_service_token_project_keys,

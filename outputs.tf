@@ -52,6 +52,11 @@ output "connection_ids" {
   value       = length(try(local.yaml_content.global_connections, [])) > 0 ? module.global_connections[0].connection_ids : {}
 }
 
+output "connections_provenance" {
+  description = "Global connections: YAML key, logical identity, optional source_id, protected flag, and dbt_connection_id (stock-provider alternative to resource_metadata)"
+  value       = length(try(local.yaml_content.global_connections, [])) > 0 ? module.global_connections[0].connections_provenance : {}
+}
+
 output "service_token_ids" {
   description = "Map of service token key to dbt Cloud service token ID"
   value       = length(try(local.yaml_content.service_tokens, [])) > 0 ? module.service_tokens[0].service_token_ids : {}

@@ -29,19 +29,35 @@
           "type": {
             "type": "string",
             "description": "Warehouse type",
-            "enum": ["databricks", "snowflake", "bigquery", "redshift", "postgres", "spark", "starburst_trino", "apache_spark", "athena", "fabric", "synapse"]
+            "enum": ["databricks", "snowflake", "bigquery", "redshift", "postgres", "spark", "starburst", "starburst_trino", "apache_spark", "athena", "fabric", "synapse", "teradata", "salesforce"]
           },
           "protected": { "type": "boolean", "description": "Protect from accidental deletion", "default": false },
           "host": { "type": "string", "description": "[Databricks] Workspace hostname (e.g. adb-1234.azuredatabricks.net)" },
           "http_path": { "type": "string", "description": "[Databricks] HTTP path for the warehouse or cluster" },
           "catalog": { "type": "string", "description": "[Databricks] Unity Catalog catalog name" },
           "account": { "type": "string", "description": "[Snowflake] Account identifier (e.g. xy12345.us-east-1)" },
-          "database": { "type": "string", "description": "[Snowflake] Default database" },
+          "database": { "type": "string", "description": "[Snowflake] Default database; [Salesforce] optional target database (provider default)" },
+          "login_url": { "type": "string", "description": "[Salesforce] Instance URL (e.g. https://login.salesforce.com)" },
+          "data_transform_run_timeout": { "type": "number", "description": "[Salesforce] Timeout in seconds for data transformation runs" },
           "warehouse": { "type": "string", "description": "[Snowflake] Virtual warehouse name" },
           "role": { "type": "string", "description": "[Snowflake] Default role" },
           "allow_sso": { "type": "boolean", "description": "[Snowflake] Allow SSO authentication" }
         },
         "required": ["name", "key", "type"],
+        "additionalProperties": true
+      }
+    },
+
+    "privatelink_endpoints": {
+      "type": "array",
+      "description": "Optional registry of PrivateLink endpoints (key + endpoint_id) for resolving global_connections[].private_link_endpoint_key; same pattern as v2 globals.privatelink_endpoints",
+      "items": {
+        "type": "object",
+        "properties": {
+          "key": { "type": "string", "description": "Stable key referenced by global_connections[].private_link_endpoint_key", "pattern": "^[a-z0-9_]+$" },
+          "endpoint_id": { "type": "string", "description": "PrivateLink endpoint identifier to match against dbt Cloud (data.dbtcloud_privatelink_endpoints)" }
+        },
+        "required": ["key", "endpoint_id"],
         "additionalProperties": true
       }
     },

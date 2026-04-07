@@ -43,6 +43,7 @@ module "global_connections" {
 
   connections_data       = try(local.yaml_content.global_connections, [])
   connection_credentials = var.connection_credentials
+  privatelink_endpoints  = try(local.yaml_content.privatelink_endpoints, [])
 }
 
 #############################################
