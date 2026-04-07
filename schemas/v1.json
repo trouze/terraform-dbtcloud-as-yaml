@@ -54,9 +54,12 @@
         "properties": {
           "name": { "type": "string", "description": "Service token display name", "minLength": 1 },
           "key": { "type": "string", "description": "Unique key for this service token", "pattern": "^[a-z0-9_]+$" },
+          "id": { "type": "string", "description": "Optional external identifier; included in Terraform output service_tokens_provenance as source_id" },
+          "protected": { "type": "boolean", "description": "When true, the token uses lifecycle.prevent_destroy", "default": false },
+          "state": { "type": "number", "description": "Service token state (1 = active, 2 = inactive)" },
           "permissions": {
             "type": "array",
-            "description": "Permission sets granted to this token",
+            "description": "Permission sets granted to this token (v1 schema key)",
             "items": {
               "type": "object",
               "properties": {
@@ -66,14 +69,62 @@
                   "enum": ["owner", "member", "developer", "analyst", "stakeholder", "readonly", "job_runner", "git_admin", "account_admin", "admin", "database_admin", "write_artifacts", "view_environment", "webhook_admin", "billing_admin", "semantic_layer_only"]
                 },
                 "all_projects": { "type": "boolean", "description": "Apply to all projects", "default": false },
-                "project_key": { "type": "string", "description": "Restrict to a specific project key" }
+                "project_key": { "type": "string", "description": "Restrict to a specific project key (resolved to project_id at apply via module wiring)" },
+                "project_id": { "type": "integer", "description": "Numeric dbt Cloud project ID when not using project_key" },
+                "writable_environment_categories": {
+                  "type": "array",
+                  "description": "Environment types for write permission scoping (analyst, database_admin, developer, git_admin, team_admin); omit means all (provider default)",
+                  "items": { "type": "string", "enum": ["all", "development", "staging", "production", "other"] }
+                }
+              },
+              "required": ["permission_set"],
+              "additionalProperties": false
+            }
+          },
+          "service_token_permissions": {
+            "type": "array",
+            "description": "Same shape as permissions[] (v2 / importer naming; preferred when non-empty — see COMPAT in modules/service_tokens)",
+            "items": {
+              "type": "object",
+              "properties": {
+                "permission_set": {
+                  "type": "string",
+                  "description": "Permission set name",
+                  "enum": ["owner", "member", "developer", "analyst", "stakeholder", "readonly", "job_runner", "git_admin", "account_admin", "admin", "database_admin", "write_artifacts", "view_environment", "webhook_admin", "billing_admin", "semantic_layer_only"]
+                },
+                "all_projects": { "type": "boolean", "description": "Apply to all projects", "default": false },
+                "project_key": { "type": "string", "description": "Restrict to a specific project key (resolved to project_id at apply via module wiring)" },
+                "project_id": { "type": "integer", "description": "Numeric dbt Cloud project ID when not using project_key" },
+                "writable_environment_categories": {
+                  "type": "array",
+                  "description": "Environment types for write permission scoping (analyst, database_admin, developer, git_admin, team_admin); omit means all (provider default)",
+                  "items": { "type": "string", "enum": ["all", "development", "staging", "production", "other"] }
+                }
               },
               "required": ["permission_set"],
               "additionalProperties": false
             }
           }
         },
-        "required": ["name", "key", "permissions"],
+        "required": ["name", "key"],
+        "allOf": [
+          {
+            "anyOf": [
+              {
+                "properties": {
+                  "permissions": { "type": "array", "minItems": 1 }
+                },
+                "required": ["permissions"]
+              },
+              {
+                "properties": {
+                  "service_token_permissions": { "type": "array", "minItems": 1 }
+                },
+                "required": ["service_token_permissions"]
+              }
+            ]
+          }
+        ],
         "additionalProperties": false
       }
     },

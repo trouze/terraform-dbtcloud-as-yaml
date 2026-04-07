@@ -214,10 +214,13 @@ locals {
   ])
 
   # ── V-13: service_token permission project_key → projects[].key ────────────
+  # Align with modules/service_tokens COMPAT: prefer service_token_permissions[] when non-empty.
 
   _errors_service_token_project_keys = flatten([
     for st in try(local.yaml_content.service_tokens, []) : [
-      for perm in try(st.permissions, []) :
+      for perm in(
+        length(try(st.service_token_permissions, [])) > 0 ? try(st.service_token_permissions, []) : try(st.permissions, [])
+      ) :
       "Service token '${try(st.key, st.name)}' has a permission referencing project_key '${perm.project_key}' which is not a defined project. Available project keys: [${join(", ", tolist(local._valid_project_keys))}]"
       if(
         try(perm.project_key, null) != null &&

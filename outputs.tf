@@ -57,6 +57,11 @@ output "service_token_ids" {
   value       = length(try(local.yaml_content.service_tokens, [])) > 0 ? module.service_tokens[0].service_token_ids : {}
 }
 
+output "service_tokens_provenance" {
+  description = "Account service tokens: YAML key, logical identity, optional source_id, protected flag, and dbt_service_token_id (stock-provider alternative to resource_metadata)"
+  value       = length(try(local.yaml_content.service_tokens, [])) > 0 ? module.service_tokens[0].service_tokens_provenance : {}
+}
+
 output "group_ids" {
   description = "Map of group key to dbt Cloud group ID"
   value       = length(try(local.yaml_content.groups, [])) > 0 ? module.groups[0].group_ids : {}

@@ -46,17 +46,6 @@ module "global_connections" {
 }
 
 #############################################
-# Account-Level: Service Tokens
-#############################################
-
-module "service_tokens" {
-  count  = length(try(local.yaml_content.service_tokens, [])) > 0 ? 1 : 0
-  source = "./modules/service_tokens"
-
-  service_tokens_data = try(local.yaml_content.service_tokens, [])
-}
-
-#############################################
 # Account-Level: Groups
 #############################################
 
@@ -123,6 +112,20 @@ module "project" {
 
   projects    = local.projects
   target_name = var.target_name
+}
+
+#############################################
+# Account-Level: Service Tokens
+# Declared after project so permissions[].project_key resolves via project_ids.
+#############################################
+
+module "service_tokens" {
+  count  = length(try(local.yaml_content.service_tokens, [])) > 0 ? 1 : 0
+  source = "./modules/service_tokens"
+
+  service_tokens_data             = try(local.yaml_content.service_tokens, [])
+  project_ids                     = module.project.project_ids
+  skip_global_project_permissions = var.skip_global_project_permissions
 }
 
 #############################################
