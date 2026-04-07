@@ -34,6 +34,34 @@ locals {
     )
   }
 
+  # GitHub owner segment from remote_url (github.com only), for installation lookup
+  # With a single capture group, regexall returns one element per match; inner list is [ capture ] (see terraform console).
+  github_owner_from_url = {
+    for k, repo in local.repos_map :
+    k => try(regexall("github\\.com[/:]([^/]+)/", trimspace(try(repo.remote_url, "")))[0][0], null)
+  }
+
+  installation_id_from_discovery = {
+    for k, repo in local.repos_map :
+    k => lookup(
+      var.github_installation_by_owner,
+      try(local.github_owner_from_url[k], null) != null && trimspace(tostring(local.github_owner_from_url[k])) != "" ? lower(local.github_owner_from_url[k]) : "",
+      null
+    )
+  }
+
+  # YAML github_installation_id > owner match from discovery map > account fallback installation
+  resolved_github_installation_id = {
+    for k, repo in local.repos_map :
+    k => (
+      try(repo.github_installation_id, null) != null ? try(repo.github_installation_id, null) : (
+        local.installation_id_from_discovery[k] != null ?
+        local.installation_id_from_discovery[k] :
+        try(var.github_installation_fallback_id, null)
+      )
+    )
+  }
+
   # Effective git clone strategy per repo (with fallbacks)
   effective_git_clone_strategy = {
     for k, repo in local.repos_map :
@@ -47,14 +75,19 @@ locals {
       try(repo.git_clone_strategy, "") == "deploy_token" ? (
         var.enable_gitlab_deploy_token ? "deploy_token" : "deploy_key"
       ) :
-      # GitHub App: use if installation ID available, else deploy_key
+      # GitHub App: need a resolvable installation id, or PAT (discovery may populate id at apply)
       try(repo.git_clone_strategy, "") == "github_app" ? (
-        try(repo.github_installation_id, null) != null || var.dbt_pat != null ? "github_app" : "deploy_key"
+        try(repo.github_installation_id, null) != null ||
+        local.resolved_github_installation_id[k] != null ||
+        var.dbt_pat != null
+        ? "github_app" : "deploy_key"
       ) :
       # Explicit strategy set to something other than the above
       try(repo.git_clone_strategy, null) != null ? try(repo.git_clone_strategy, "deploy_key") :
-      # Auto-detect defaults
-      local.detected_provider[k] == "github" ? "github_app" :
+      # Auto-detect defaults — GitHub uses github_app only when installation can be resolved or PAT enables discovery
+      local.detected_provider[k] == "github" ? (
+        local.resolved_github_installation_id[k] != null || var.dbt_pat != null ? "github_app" : "deploy_key"
+      ) :
       local.detected_provider[k] == "gitlab" ? "deploy_token" :
       local.detected_provider[k] == "azure_devops" ? "azure_active_directory_app" :
       "deploy_key"
@@ -125,7 +158,7 @@ resource "dbtcloud_repository" "repositories" {
 
   github_installation_id = (
     local.effective_git_clone_strategy[each.key] == "github_app"
-    ? try(each.value.github_installation_id, null)
+    ? local.resolved_github_installation_id[each.key]
     : null
   )
 
@@ -162,7 +195,7 @@ resource "dbtcloud_repository" "protected_repositories" {
 
   github_installation_id = (
     local.effective_git_clone_strategy[each.key] == "github_app"
-    ? try(each.value.github_installation_id, null)
+    ? local.resolved_github_installation_id[each.key]
     : null
   )
 

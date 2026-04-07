@@ -60,14 +60,18 @@ locals {
     for ple in try(local.yaml_content.privatelink_endpoints, []) : try(ple.key, ple.name)
   ])
 
-  # ── V-01: connection_key in environments → global_connections[].key ────────
+  # ── V-01: connection / connection_key in environments → global_connections[].key (skip LOOKUP:… — resolved via module.data_lookups)
 
   _errors_connection_key = flatten([
     for p in local.projects : [
       for env in try(p.environments, []) :
       try(
-        env.connection_key != null && !contains(local._valid_global_connection_keys, env.connection_key)
-        ? ["Environment '${try(env.key, env.name)}' in project '${try(p.key, p.name)}' references connection_key '${env.connection_key}' but no global_connection with that key exists. Available keys: [${join(", ", tolist(local._valid_global_connection_keys))}]"]
+        (
+          (try(env.connection, null) != null ? env.connection : try(env.connection_key, null)) != null &&
+          !startswith(tostring(try(env.connection, null) != null ? env.connection : try(env.connection_key, null)), "LOOKUP:") &&
+          !contains(local._valid_global_connection_keys, try(env.connection, null) != null ? env.connection : try(env.connection_key, null))
+        )
+        ? ["Environment '${try(env.key, env.name)}' in project '${try(p.key, p.name)}' references connection '${try(env.connection, null) != null ? env.connection : try(env.connection_key, null)}' but no global_connection with that key exists. Available keys: [${join(", ", tolist(local._valid_global_connection_keys))}]"]
         : [],
         []
       )

@@ -137,4 +137,32 @@ locals {
     local.yaml_content.projects,
     [local.yaml_content.project]
   )
+
+  # Gating for module.data_lookups — keep in sync with modules/data_lookups LOOKUP extraction.
+  _lookup_connection_ref_strings = toset([
+    for conn_ref in flatten([
+      for p in local.projects : concat(
+        [
+          for env in try(p.environments, []) :
+          try(env.connection, null) != null ? env.connection : try(env.connection_key, null)
+          if(
+            (try(env.connection, null) != null ? env.connection : try(env.connection_key, null)) != null &&
+            startswith(tostring(try(env.connection, null) != null ? env.connection : try(env.connection_key, null)), "LOOKUP:")
+          )
+        ],
+        [
+          for prof in try(p.profiles, []) :
+          try(prof.connection_key, null)
+          if try(prof.connection_key, null) != null && startswith(tostring(prof.connection_key), "LOOKUP:")
+        ]
+      )
+    ]) :
+    tostring(conn_ref) if startswith(tostring(conn_ref), "LOOKUP:")
+  ])
+
+  # Merged map for environments/profiles: Terraform-managed global_connections + pre-existing account connections (LOOKUP:…).
+  global_connection_ids_effective = merge(
+    length(module.data_lookups) > 0 ? module.data_lookups[0].lookup_connection_ids : {},
+    length(try(local.yaml_content.global_connections, [])) > 0 ? module.global_connections[0].connection_ids : {},
+  )
 }

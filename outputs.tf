@@ -48,8 +48,23 @@ output "job_ids" {
 #############################################
 
 output "connection_ids" {
-  description = "Map of global connection key to dbt Cloud connection ID"
-  value       = length(try(local.yaml_content.global_connections, [])) > 0 ? module.global_connections[0].connection_ids : {}
+  description = "Map of global connection key (and LOOKUP:… placeholders) to dbt Cloud connection ID — merged managed global_connections + data_lookups"
+  value       = local.global_connection_ids_effective
+}
+
+output "lookup_connection_ids" {
+  description = "Subset of connection_ids from LOOKUP:… resolution only (empty if module.data_lookups not used)"
+  value       = length(module.data_lookups) > 0 ? module.data_lookups[0].lookup_connection_ids : {}
+}
+
+output "github_installation_by_owner" {
+  description = "GitHub App installation id by org/user login (from dbt integrations API when dbt_pat is set)"
+  value       = length(module.data_lookups) > 0 ? module.data_lookups[0].github_installation_by_owner : {}
+}
+
+output "github_installation_fallback_id" {
+  description = "First GitHub installation id when owner-based match is not used"
+  value       = length(module.data_lookups) > 0 ? module.data_lookups[0].github_installation_fallback_id : null
 }
 
 output "connections_provenance" {

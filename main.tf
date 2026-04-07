@@ -47,6 +47,19 @@ module "global_connections" {
 }
 
 #############################################
+# Account-Level: Data lookups (LOOKUP: + GitHub installations)
+#############################################
+
+module "data_lookups" {
+  count  = length(local._lookup_connection_ref_strings) > 0 || var.dbt_pat != null ? 1 : 0
+  source = "./modules/data_lookups"
+
+  projects     = local.projects
+  dbt_pat      = var.dbt_pat
+  dbt_host_url = var.dbt_host_url
+}
+
+#############################################
 # Account-Level: Groups
 #############################################
 
@@ -139,10 +152,12 @@ module "repository" {
     dbtcloud = dbtcloud.pat_provider
   }
 
-  projects                   = local.projects
-  project_ids                = module.project.project_ids
-  dbt_pat                    = var.dbt_pat
-  enable_gitlab_deploy_token = var.enable_gitlab_deploy_token
+  projects                        = local.projects
+  project_ids                     = module.project.project_ids
+  dbt_pat                         = var.dbt_pat
+  enable_gitlab_deploy_token      = var.enable_gitlab_deploy_token
+  github_installation_by_owner    = length(module.data_lookups) > 0 ? module.data_lookups[0].github_installation_by_owner : {}
+  github_installation_fallback_id = length(module.data_lookups) > 0 ? module.data_lookups[0].github_installation_fallback_id : null
 }
 
 module "project_repository" {
@@ -187,7 +202,7 @@ module "environments" {
   projects               = local.projects
   project_ids            = module.project.project_ids
   credential_ids         = module.credentials.credential_ids
-  global_connection_ids  = length(try(local.yaml_content.global_connections, [])) > 0 ? module.global_connections[0].connection_ids : {}
+  global_connection_ids  = local.global_connection_ids_effective
   extended_attribute_ids = length(flatten([for p in local.projects : try(p.extended_attributes, [])])) > 0 ? module.extended_attributes[0].extended_attribute_ids : {}
 }
 
@@ -241,7 +256,7 @@ module "profiles" {
 
   projects               = local.projects
   project_ids            = module.project.project_ids
-  global_connection_ids  = length(try(local.yaml_content.global_connections, [])) > 0 ? module.global_connections[0].connection_ids : {}
+  global_connection_ids  = local.global_connection_ids_effective
   credential_ids         = module.credentials.credential_ids
   extended_attribute_ids = length(flatten([for p in local.projects : try(p.extended_attributes, [])])) > 0 ? module.extended_attributes[0].extended_attribute_ids : {}
 }

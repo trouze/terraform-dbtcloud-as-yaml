@@ -420,7 +420,8 @@
               "name": { "type": "string", "description": "Environment display name", "minLength": 1, "maxLength": 128 },
               "key": { "type": "string", "description": "Unique key within this project for cross-referencing", "pattern": "^[a-z0-9_]+$" },
               "type": { "type": "string", "description": "Environment type", "enum": ["development", "deployment"], "default": "development" },
-              "connection_key": { "type": "string", "description": "References global_connections[].key to attach a global connection" },
+              "connection_key": { "type": "string", "description": "References global_connections[].key to attach a global connection, or LOOKUP:Connection Name for an existing account connection (see module data_lookups). If connection is also set, connection wins." },
+              "connection": { "type": "string", "description": "Optional v2-style field; when set, takes precedence over connection_key. Same semantics (key, numeric id, or LOOKUP:Name)." },
               "deployment_type": {
                 "type": ["string", "null"],
                 "description": "Deployment environment classification (required for type: deployment)",
@@ -572,7 +573,7 @@
             "properties": {
               "name": { "type": "string", "description": "Profile display name", "minLength": 1 },
               "key": { "type": "string", "description": "Unique key for this profile", "pattern": "^[a-z0-9_]+$" },
-              "connection_key": { "type": "string", "description": "References global_connections[].key" },
+              "connection_key": { "type": "string", "description": "References global_connections[].key or LOOKUP:Connection Name for an existing account global connection (module data_lookups)" },
               "credential_key": { "type": "string", "description": "Composite key (project_key_env_key) or environment key referencing the credential to use" },
               "extended_attributes_key": { "type": ["string", "null"], "description": "References extended_attributes[].key for adapter overrides", "default": null }
             },

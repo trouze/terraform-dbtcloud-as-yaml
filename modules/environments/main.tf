@@ -27,6 +27,12 @@ locals {
     item.composite_key => item
   }
 
+  # Prefer connection, then connection_key (schema documents connection_key; some configs use connection).
+  env_connection_ref = {
+    for k, item in local.envs_map :
+    k => try(item.env_data.connection, null) != null ? item.env_data.connection : try(item.env_data.connection_key, null)
+  }
+
   protected_envs_map = {
     for k, item in local.envs_map :
     k => item
@@ -45,15 +51,14 @@ locals {
     k => lookup(var.credential_ids, k, null)
   }
 
-  # Resolve connection_id: prefer connection key lookup (global connections),
-  # fall back to direct numeric ID from YAML
+  # Resolve connection_id: global connection key, LOOKUP:… placeholder, or numeric id.
   resolve_connection_id = {
     for k, item in local.envs_map :
     k => (
-      try(item.env_data.connection, null) != null ?
-      lookup(var.global_connection_ids, tostring(item.env_data.connection), null) != null ?
-      lookup(var.global_connection_ids, tostring(item.env_data.connection), null) :
-      try(tonumber(item.env_data.connection), null) :
+      local.env_connection_ref[k] != null ?
+      lookup(var.global_connection_ids, tostring(local.env_connection_ref[k]), null) != null ?
+      lookup(var.global_connection_ids, tostring(local.env_connection_ref[k]), null) :
+      try(tonumber(local.env_connection_ref[k]), null) :
       try(item.env_data.connection_id, null)
     )
   }
