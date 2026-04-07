@@ -8,10 +8,29 @@ terraform {
   }
 }
 
+#############################################
+# User Groups (account-level, maps users to group IDs)
+# No delete support — manages group membership only.
+#
+# Provenance: v2 set resource_metadata on assignments; stock dbtcloud may not
+# support that on dbtcloud_user_groups — mirror intent via
+# local.user_groups_provenance and output user_groups_provenance.
+#############################################
+
 locals {
   user_groups_map = {
     for ug in var.user_groups_data :
-    tostring(ug.user_id) => ug
+    coalesce(try(ug.key, null), tostring(ug.user_id)) => ug
+  }
+
+  user_groups_provenance = {
+    for key, ug in local.user_groups_map :
+    key => {
+      source_key      = key
+      source_identity = "USERGRP:${key}"
+      source_id       = try(ug.id, null)
+      user_id         = ug.user_id
+    }
   }
 }
 

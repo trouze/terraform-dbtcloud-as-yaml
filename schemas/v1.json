@@ -100,6 +100,8 @@
       "items": {
         "type": "object",
         "properties": {
+          "key": { "type": "string", "description": "Optional unique Terraform for_each key; defaults to string user_id", "pattern": "^[a-z0-9_]+$" },
+          "id": { "type": "string", "description": "Optional external identifier; included in Terraform output user_groups_provenance as source_id" },
           "user_id": { "type": "integer", "description": "dbt Cloud user ID", "minimum": 1 },
           "group_keys": { "type": "array", "description": "List of group keys to assign the user to", "items": { "type": "string" }, "minItems": 1 }
         },
