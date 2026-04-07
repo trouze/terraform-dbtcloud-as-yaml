@@ -143,6 +143,7 @@
         "properties": {
           "name": { "type": "string", "description": "OAuth config display name", "minLength": 1 },
           "key": { "type": "string", "description": "Unique key (also used as lookup key in oauth_client_secrets)", "pattern": "^[a-z0-9_]+$" },
+          "id": { "type": "string", "description": "Optional external identifier; included in Terraform output oauth_configurations_provenance as source_id (not sent to dbt Cloud unless the provider supports it)" },
           "protected": { "type": "boolean", "description": "When true, use prevent_destroy lifecycle on this OAuth configuration", "default": false },
           "type": { "type": "string", "description": "OAuth provider type", "enum": ["snowflake"] },
           "authorize_url": { "type": "string", "description": "OAuth authorization endpoint URL" },

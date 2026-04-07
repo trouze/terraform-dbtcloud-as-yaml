@@ -67,6 +67,11 @@ output "oauth_configuration_ids" {
   value       = length(try(local.yaml_content.oauth_configurations, [])) > 0 ? module.oauth_configurations[0].oauth_configuration_ids : {}
 }
 
+output "oauth_configurations_provenance" {
+  description = "OAuth configs: YAML key, logical identity, optional source_id, and dbt_oauth_configuration_id (stock-provider alternative to resource_metadata)"
+  value       = length(try(local.yaml_content.oauth_configurations, [])) > 0 ? module.oauth_configurations[0].oauth_configurations_provenance : {}
+}
+
 output "ip_rule_ids" {
   description = "Map of IP rule key to dbt Cloud IP restriction rule ID"
   value       = length(try(local.yaml_content.ip_restrictions, [])) > 0 ? module.ip_restrictions[0].ip_rule_ids : {}

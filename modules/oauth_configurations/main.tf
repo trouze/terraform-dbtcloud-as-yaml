@@ -12,8 +12,9 @@ terraform {
 # OAuth configurations (account-level)
 # client_secret is sensitive — sourced from var.oauth_client_secrets (or optional YAML).
 #
-# projects_v2 also sets resource_metadata on this resource; the dbtcloud provider ~> 1.8
-# does not expose that argument on dbtcloud_oauth_configuration yet — add when upgrading.
+# Provenance: v2 set resource_metadata on the resource; stock dbtcloud does not support
+# that block on dbtcloud_oauth_configuration — mirror intent via local.oauth_configurations_provenance
+# and output oauth_configurations_provenance (see migration plan).
 #############################################
 
 locals {
@@ -28,6 +29,17 @@ locals {
   protected_oauth_map = {
     for key, oauth in local.oauth_configurations_map :
     key => oauth if try(oauth.protected, false)
+  }
+
+  oauth_configurations_provenance = {
+    for key, oauth in local.oauth_configurations_map :
+    key => {
+      source_key      = key
+      source_name     = oauth.name
+      source_identity = "OAUTH:${key}"
+      source_id       = try(oauth.id, null)
+      protected       = try(oauth.protected, false)
+    }
   }
 }
 
