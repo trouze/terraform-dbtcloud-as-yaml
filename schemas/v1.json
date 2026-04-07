@@ -164,6 +164,7 @@
         "properties": {
           "name": { "type": "string", "description": "Rule display name", "minLength": 1 },
           "key": { "type": "string", "description": "Unique key for this rule", "pattern": "^[a-z0-9_]+$" },
+          "id": { "type": "string", "description": "Optional external identifier; included in Terraform output ip_rules_provenance as source_id (not sent to dbt Cloud unless the provider supports it)" },
           "protected": { "type": "boolean", "description": "When true, sets lifecycle.prevent_destroy on the rule", "default": false },
           "description": { "type": "string", "description": "Human-readable description" },
           "type": { "type": "string", "description": "Rule type: allow or deny", "enum": ["allow", "deny"] },

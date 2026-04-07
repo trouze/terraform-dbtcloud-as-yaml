@@ -72,6 +72,11 @@ output "ip_rule_ids" {
   value       = length(try(local.yaml_content.ip_restrictions, [])) > 0 ? module.ip_restrictions[0].ip_rule_ids : {}
 }
 
+output "ip_rules_provenance" {
+  description = "IP restriction rules: YAML key, logical identity, optional source_id, and dbt_rule_id (stock-provider alternative to resource_metadata)"
+  value       = length(try(local.yaml_content.ip_restrictions, [])) > 0 ? module.ip_restrictions[0].ip_rules_provenance : {}
+}
+
 #############################################
 # Project-Scoped Outputs
 #############################################
