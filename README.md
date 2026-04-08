@@ -4,7 +4,9 @@
 [![dbt Cloud Provider](https://img.shields.io/badge/dbt--cloud--provider-%3E%3D%201.8-blue)](https://registry.terraform.io/providers/dbt-labs/dbtcloud/latest)
 [![License](https://img.shields.io/badge/license-Apache%202.0-green)](./LICENSE)
 
-## Get started in 60 seconds
+Managing dbt Cloud infrastructure shouldn't require deep Terraform expertise. Whether you've never written HCL or just don't want to untangle the provider's resource model yourself, this module gives you a single YAML file that maps to how dbt Platform actually works — projects, environments, jobs, and connections — with relationship wiring, credential handling, and production safeguards built in.
+
+## Begin managing your dbt Platform resources as code in 60 seconds
 
 ```bash
 curl -fsSL https://github.com/dbt-labs/terraform-dbtcloud-as-yaml/releases/latest/download/install.sh | bash
