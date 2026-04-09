@@ -1,0 +1,41 @@
+name: "Validate dbt Cloud YAML"
+description: >
+  Validates a dbt Cloud YAML configuration file against the dbt Cloud
+  Terraform YAML schema (v1) before running Terraform or requiring any
+  dbt Cloud credentials.
+
+branding:
+  icon: check-circle
+  color: green
+
+inputs:
+  file:
+    description: "Path to the dbt Cloud YAML configuration file to validate."
+    required: false
+    default: "dbt-config.yml"
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+      with:
+        python-version: "3.x"
+
+    - name: Install check-jsonschema
+      shell: bash
+      run: pip install --quiet "check-jsonschema==0.37.1"
+
+    - name: Validate YAML against schema
+      shell: bash
+      env:
+        INPUT_FILE: ${{ inputs.file }}
+      run: |
+        SCHEMA="${{ github.action_path }}/../schemas/v1.json"
+        if [ ! -f "${SCHEMA}" ]; then
+          echo "Error: schema file not found at '${SCHEMA}'."
+          exit 1
+        fi
+        echo "Validating '${INPUT_FILE}' against dbt Cloud YAML schema v1..."
+        check-jsonschema --schemafile "${SCHEMA}" "${INPUT_FILE}"
+        echo "Validation passed."

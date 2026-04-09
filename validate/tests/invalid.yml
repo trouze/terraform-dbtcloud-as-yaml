@@ -1,0 +1,6 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/dbt-labs/terraform-dbtcloud-as-yaml/refs/heads/main/schemas/v1.json
+# Invalid dbt Cloud YAML: missing required 'version' field and account.host_url.
+# Used to test that the validate GitHub Action correctly rejects bad input.
+
+account:
+  name: Broken-Account

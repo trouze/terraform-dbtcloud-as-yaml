@@ -76,6 +76,7 @@ nav:
       - Project Repository: reference/module-project_repository.md
   - Guides:
     - CI/CD Integration: guides/cicd.md
+    - YAML Validation Action: guides/yaml-validation.md
     - Best Practices: guides/best-practices.md
     - Troubleshooting: guides/troubleshooting.md
 

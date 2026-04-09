@@ -284,6 +284,38 @@ schedule_hours: [6, 18]            # UTC
 
 ---
 
+## Validate your YAML in CI (GitHub Action)
+
+Use the bundled `validate` action to check your `dbt-config.yml` against the
+JSON schema **before** running Terraform or supplying any dbt Cloud credentials.
+This catches typos and structural errors early in your pull-request workflow.
+
+```yaml
+# .github/workflows/dbt-cloud-validate.yml
+name: Validate dbt Cloud YAML
+
+on: [push, pull_request]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dbt-labs/terraform-dbtcloud-as-yaml/validate@v1  # pin to a release tag or commit SHA
+        with:
+          file: dbt-config.yml   # default; omit if your file is named dbt-config.yml
+```
+
+| Input | Default | Description |
+|---|---|---|
+| `file` | `dbt-config.yml` | Path to the YAML file to validate (relative to the workspace root). |
+
+The action exits with code `1` and prints a structured error report when the
+file does not conform to the schema, so your CI run fails fast without needing
+Terraform credentials.
+
+---
+
 ## Requirements
 
 - Terraform >= 1.0
