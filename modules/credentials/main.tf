@@ -63,17 +63,20 @@ locals {
 
   available_env_cred_keys = toset(nonsensitive(keys(var.environment_credentials)))
 
-  # credential_type: env var takes precedence; falls back to cred_data for profile credentials
-  # that declare credential_type in the YAML credential: block rather than the env var.
+  # credential_type: env var takes precedence when explicitly set; falls back to cred_data from YAML.
+  # Entries in environment_credentials that omit credential_type do not clobber the YAML value.
   env_cred_types = nonsensitive(merge(
     { for k, item in local.all_credential_owners_map : k => try(item.cred_data.credential_type, "") },
-    { for k, v in var.environment_credentials : k => try(v.credential_type, "") }
+    { for k, v in var.environment_credentials : k => v.credential_type
+      if try(v.credential_type, "") != "" }
   ))
 
-  # auth_type: env var takes precedence; falls back to cred_data for profile credentials.
+  # auth_type: env var takes precedence when explicitly set; falls back to cred_data from YAML.
+  # Entries in environment_credentials that omit auth_type do not clobber the YAML value.
   env_cred_auth_types = nonsensitive(merge(
     { for k, item in local.all_credential_owners_map : k => try(item.cred_data.auth_type, "password") },
-    { for k, v in var.environment_credentials : k => try(v.auth_type, "password") }
+    { for k, v in var.environment_credentials : k => v.auth_type
+      if try(v.auth_type, "") != "" }
   ))
 
   # Fabric/Synapse: service principal auth uses tenant_id
