@@ -29,6 +29,7 @@ resources:
     module_dir: environments
     schema_only_fields:
       - connection_id       # deprecated YAML compat alias for connection resourceRef
+      - target_name         # not a dbtcloud_environment provider attribute; read by credentials module for dbt target name
     fields:
       name:             { disposition: yaml, yaml_field: name }
       type:             { disposition: yaml, yaml_field: type }
@@ -36,7 +37,7 @@ resources:
       custom_branch:    { disposition: yaml, yaml_field: custom_branch }
       deployment_type:  { disposition: yaml, yaml_field: deployment_type }
       enable_model_query_history: { disposition: yaml, yaml_field: enable_model_query_history }
-      target_name:      { disposition: yaml, yaml_field: target_name }
+      target_name:      { disposition: excluded, reason: "Not a dbtcloud_environment provider attribute; passed to credentials module via environment_credentials" }
       is_active:        { disposition: yaml, yaml_field: is_active }
       use_custom_branch:    { disposition: computed, reason: "Derived: custom_branch != null" }
       connection_id:        { disposition: computed, reason: "Resolved from env.connection resourceRef" }
