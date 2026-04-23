@@ -41,7 +41,7 @@ repos:
         language: system
         pass_filenames: false
         stages: [pre-push]
-        always_run: true
+        files: ^(.*\.tf$|tests/|\.terraform\.lock\.hcl$)
 
       - id: terraform-test-modules
         name: terraform test (modules, mock)
@@ -49,7 +49,7 @@ repos:
         language: system
         pass_filenames: false
         stages: [pre-push]
-        always_run: true
+        files: ^modules/
 
       - id: yaml-schema-valid
         name: yaml schema accepts valid.yml
