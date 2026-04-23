@@ -43,7 +43,7 @@ provider_schema_cache.json
 scripts/provider_schema_cache.json
 
 # Internal publishing checklist (keep local only)
-.claude/implementation/public.md
+.claude/*
 
 # act secrets file (local dev only)
 .secrets
