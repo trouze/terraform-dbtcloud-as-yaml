@@ -45,10 +45,18 @@ Feature requests are welcome! Please include:
    - Update documentation as needed
 
 3. **Test your changes**
+
+   Pre-commit hooks run automatically on `git commit` (fmt, validate, lint, docs) and pre-push hooks run on `git push` (terraform test + YAML schema self-tests). To run all hooks manually without committing:
+
    ```bash
-   make fmt      # auto-format
-   make test     # run tests with mock providers (no credentials needed)
-   make lint     # run tflint
+   pre-commit run --all-files
+   ```
+
+   To check CI parity before opening a PR:
+
+   ```bash
+   act
+   act -j <jobname>
    ```
 
 4. **Commit with clear messages**
@@ -68,6 +76,11 @@ Feature requests are welcome! Please include:
 - Terraform >= 1.7 (use [tfenv](https://github.com/tfutils/tfenv) or [asdf](https://asdf-vm.com/) — `.terraform-version` is provided)
 - [tflint](https://github.com/terraform-linters/tflint)
 - Git
+- [pre-commit](https://pre-commit.com/#install)
+- [uv](https://docs.astral.sh/uv/getting-started/installation/)
+- Docker (required by `act`)
+- [act](https://github.com/nektos/act)
+- [terraform-docs](https://terraform-docs.io/user-guide/installation/) v0.20.0
 
 ### Local Development
 
@@ -78,29 +91,41 @@ cd terraform-dbtcloud-as-yaml
 terraform init -backend=false
 ```
 
-### Available Make Targets
+One-time setup after cloning:
 
-Run `make help` to see all targets:
+```bash
+pre-commit install --hook-type pre-commit --hook-type pre-push
+```
 
-```
-make fmt           # Auto-format all Terraform files
-make fmt-check     # Check formatting without modifying (used in CI)
-make lint          # Run tflint on all modules
-make validate      # Run terraform validate
-make test          # Run terraform test with mock providers (no credentials needed)
-make docs          # Regenerate terraform-docs for all modules
-make pre-commit    # Run all pre-commit hooks on staged files
-```
+### Developer workflow
+
+| Action | What runs |
+|---|---|
+| `git commit` | fmt, validate, lint, docs, schema-drift (pre-commit hooks) |
+| `git push` | `terraform test` (root + all 5 modules), YAML schema self-tests (pre-push hooks) |
+| `pre-commit run --all-files` | All pre-commit hooks on every file |
+| `bash scripts/gen-docs.sh` | Regenerate terraform-docs manually |
+| `act` | Full CI parity — all jobs |
+| `act -j <jobname>` | Single CI job (`validate`, `module-tests`, `docs`, `schema-drift`, `yaml-validate`, `mkdocs-build`) |
+| `cd test && RUN_INTEGRATION_TESTS=1 DBT_CLOUD_ACCOUNT_ID=... DBT_CLOUD_TOKEN=... go test -v -timeout 30m -run Integration ./...` | Integration tests (requires dbt Cloud credentials) |
 
 ## Testing
 
-Before submitting a PR:
+Before submitting a PR, verify that all hooks pass and CI is green locally:
 
 ```bash
-make fmt-check   # verify formatting
-make test        # runs all tests against mock providers — no dbt Cloud credentials needed
-make lint        # check for linting issues
+pre-commit run --all-files
+act
 ```
+
+For integration tests (requires dbt Cloud credentials):
+
+```bash
+cd test && RUN_INTEGRATION_TESTS=1 DBT_CLOUD_ACCOUNT_ID=<id> DBT_CLOUD_TOKEN=<token> \
+  go test -v -timeout 30m -run Integration ./...
+```
+
+You can also trigger the `integration.yml` workflow from the GitHub Actions UI.
 
 ## Documentation
 
