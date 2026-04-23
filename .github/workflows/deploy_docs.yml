@@ -15,16 +15,6 @@ on:
       - 'schemas/**'
       - 'topologies/**'
       - '.github/workflows/deploy_docs.yml'
-  
-  pull_request:
-    types: [opened, synchronize]
-    paths:
-      - 'docs/**'
-      - 'mkdocs.yml'
-      - '*.tf'
-      - 'modules/**'
-      - 'schemas/**'
-      - 'topologies/**'
 
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
@@ -77,7 +67,7 @@ jobs:
           terraform-docs --version
       
       - name: Generate Terraform documentation
-        run: make docs
+        run: bash scripts/gen-docs.sh
       
       - name: Setup Pages
         id: pages
@@ -109,7 +99,7 @@ jobs:
 
   # Deployment job
   deploy:
-    if: github.event_name == 'push' || github.event.pull_request.merged == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
