@@ -17,8 +17,8 @@
 
 ## Checklist
 
-- [ ] `make fmt` passes
-- [ ] `make test` passes
-- [ ] `make lint` passes
+- [ ] pre-commit hooks pass (`git commit` triggers fmt, validate, lint, docs)
+- [ ] pre-push hooks pass (`git push` triggers terraform test + YAML schema self-tests)
+- [ ] `act` passes locally (or `act -j <job>` for the jobs you touched)
 - [ ] `CHANGELOG.md` updated under `[Unreleased]`
 - [ ] Docs updated if behavior changed
