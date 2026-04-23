@@ -1,18 +1,24 @@
 repos:
-  # Terraform formatting and documentation
-  - repo: local
+  # Terraform formatting and validation (commit stage)
+  - repo: https://github.com/antonbabenko/pre-commit-terraform
+    rev: v1.96.2
     hooks:
-      - id: terraform-docs-go
-        name: terraform-docs
-        description: Generate terraform documentation
-        entry: terraform-docs -c .terraform-docs.yml
-        language: system
-        files: ^[^/]*\.tf$
-        exclude: ^\.terraform/.*$
+      - id: terraform_fmt
+      - id: terraform_validate
+        args: [--init-args=-backend=false]
 
-  # Terraform linting
+  # Local hooks
   - repo: local
     hooks:
+      - id: terraform-docs
+        name: generate terraform docs
+        description: Generate terraform documentation for all modules
+        entry: bash scripts/gen-docs.sh
+        language: system
+        files: \.tf$
+        exclude: ^\.terraform/.*$
+        pass_filenames: false
+
       - id: tflint
         name: tflint
         description: Run tflint to check terraform code quality
@@ -20,6 +26,46 @@ repos:
         language: system
         files: \.tf$
         exclude: ^\.terraform/.*$
+
+      - id: schema-drift
+        name: schema drift check
+        entry: uv run --with PyYAML scripts/check_schema_drift.py --mapping scripts/resource_mapping.yml --schema schemas/v1.json --terraform-dir .
+        language: system
+        files: ^(schemas/|scripts/resource_mapping\.yml$|\.terraform\.lock\.hcl$)
+        pass_filenames: false
+        require_serial: true
+
+      - id: terraform-test-root
+        name: terraform test (root, mock)
+        entry: terraform test
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+        always_run: true
+
+      - id: terraform-test-modules
+        name: terraform test (modules, mock)
+        entry: bash -c 'for m in project environments jobs credentials repository; do (cd modules/$m && terraform init -backend=false && terraform test -verbose) || exit 1; done'
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+        always_run: true
+
+      - id: yaml-schema-valid
+        name: yaml schema accepts valid.yml
+        entry: bash -c 'uvx check-jsonschema==0.37.1 --schemafile schemas/v1.json validate/tests/valid.yml'
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+        always_run: true
+
+      - id: yaml-schema-invalid
+        name: yaml schema rejects invalid.yml
+        entry: bash -c '! uvx check-jsonschema==0.37.1 --schemafile schemas/v1.json validate/tests/invalid.yml'
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+        always_run: true
 
   # General linting and formatting
   - repo: https://github.com/pre-commit/pre-commit-hooks
