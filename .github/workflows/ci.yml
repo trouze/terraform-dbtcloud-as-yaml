@@ -30,8 +30,6 @@ on:
       - ".terraform.lock.hcl"
       - ".github/workflows/ci.yml"
       - "!topologies/**"
-  schedule:
-    - cron: "0 8 * * 1"
 
 permissions:
   contents: read
